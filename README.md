@@ -16,7 +16,7 @@ npm run build  # production bundle
 - Source in `src/`, reference legacy code in `src-ori/`
 - Keep `memory-bank/` for design artifacts
 - Instructions are in .github\instructions
--
+- Specifications are in the specs/
 
 ## Enterprise packaging
 
