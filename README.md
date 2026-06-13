@@ -15,6 +15,8 @@ npm run build  # production bundle
 - TypeScript strict mode enforced
 - Source in `src/`, reference legacy code in `src-ori/`
 - Keep `memory-bank/` for design artifacts
+- Instructions are in .github\instructions
+-
 
 ## Enterprise packaging
 
