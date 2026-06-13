@@ -1,0 +1,98 @@
+
+
+#Ignore vscode AI rules
+.github\instructions\codacy.instructions.md
+
+src-ori
+# =============================================
+# Dependencies
+# =============================================
+node_modules/
+
+# =============================================
+# Build & Compilation Output
+# =============================================
+dist/
+build/
+out/
+lib/
+compiled/
+.vite/
+
+# =============================================
+# TypeScript
+# =============================================
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+*.d.ts.map
+*.js.map
+*.mjs.map
+*.cjs.map
+
+# =============================================
+# Environment & Secrets
+# =============================================
+.env
+.env*.local
+.env.*.local
+*.env
+.npmrc
+
+# =============================================
+# Logs & Runtime
+# =============================================
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# =============================================
+# Testing & Coverage
+# =============================================
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+junit/
+
+# =============================================
+# Kilo Code & AI Agent Artifacts
+# =============================================
+.kilo/
+.kilocode/
+#memory-bank/          # ← Keep if you want memory bank version-controlled
+.context/
+.memory/
+
+# Temporary debug/crap files
+crap-*.txt
+crap-*.md
+crap-output.txt
+crap-debug.txt
+crap-report.md
+codacy-local-eslint.txt
+codacy-wsl-eslint.txt
+
+# =============================================
+# Editor & OS
+# =============================================
+.vscode/
+*.code-workspace
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+*~
+
+# Editor caches
+.eslintcache
+.cache/
+
+# =============================================
+# Misc
+# =============================================
+.codacy/
