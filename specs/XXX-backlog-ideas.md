@@ -1,11 +1,39 @@
 ### Summary
 
-You already have a working MV3 extension that captures browser traffic, records Selenium interactions, and exports YAML. The fastest, lowest-friction path to a JMeter-compatible recorder is to **finish the MV3 extension** by adding robust JMX serialization, cleaning the background/service-worker code, and hardening the content-script capture for request bodies and correlation.
+You now have an MV3 extension port focused on browser HTTP traffic capture and local JMX export without SideeX/Selenium in the initial phase. The next work is to harden request-body fidelity, persist in-flight webRequest state, wire options into export metadata, and add golden E2E coverage.
 
 > **From the brief:** **Recommendation: TypeScript MV3 Chrome extension, deployed via enterprise Chrome policy.**
-> **From the brief:** **The work is 70% done.**
+> **Current status:** HTTP/JMX-only SideeX-free port implemented in the working tree.
 
 ---
+
+### Backlog — newest first
+
+- [~] **Typed content body fallback after SideeX removal** — Add a small proprietary content-script adapter for fetch/XHR/form bodies where `chrome.webRequest.requestBody` is incomplete.
+  - Status: proposed
+  - Depends on: HTTP/JMX-only port landing
+  - Related spec: SideeX dependency investigation
+- [~] **Persist in-flight webRequest state** — Store pending request fragments so service-worker termination cannot lose requests between `onBeforeRequest` and `onCompleted`.
+  - Status: proposed
+  - Depends on: canonical `CapturedRequest` model
+- [~] **Wire options into JMX export metadata** — Use saved threads, ramp-up, loops, and default plan name when exporting JMX.
+  - Status: proposed
+  - Depends on: options page and `RecorderService`
+- [~] **Golden E2E extension test** — Load the unpacked extension, record a synthetic site, export JMX, and compare against a golden file.
+  - Status: proposed
+  - Depends on: stable popup/export flow
+- [~] **Cleaner Vite dist layout** — Emit `popup/popup.html` and `options/options.html` at manifest paths instead of `dist/src/...`.
+  - Status: proposed
+  - Depends on: Vite build configuration review
+- [~] **JMX manager/extractor coverage** — Add CookieManager, CacheManager, timers, extractors, assertions, and transaction grouping to the serializer.
+  - Status: proposed
+  - Depends on: target JMeter version confirmation
+- [~] **CRX packaging validation** — Run `npm run pack-crx` in the intended packaging environment and fix placeholder/path handling.
+  - Status: proposed
+  - Depends on: Chrome/openssl availability
+- [x] **HTTP/JMX-only MV3 SideeX-free port** — Remove SideeX manifest entries, replace capture with `webRequest`, add typed background state, popup/options pages, and local JMX export.
+  - Status: implemented in working tree
+  - Depends on: SideeX analysis
 
 ### Quick comparison (decision table)
 
@@ -15,7 +43,7 @@ You already have a working MV3 extension that captures browser traffic, records 
 | **User friction (certs / proxy)** | High | Low | Go requires CA install and proxy config |
 | **Enterprise open-source risk** | Ambiguous | Low | Extension compiled JS is easiest to approve |
 | **Non-browser traffic capture** | **Yes** | No | Go can capture system-wide traffic |
-| **Request body fidelity** | Full | Good via onBeforeRequest + content scripts | Extension already uses requestBody workarounds |
+| **Request body fidelity** | Full | Good via `webRequest.requestBody`; fallback needed for edge cases | SideeX content interceptors removed from initial port |
 | **Deployment & scaling** | Installer required | Enterprise policy (.crx) | Extension can be force-installed silently |
 
 **Verdict:** **TypeScript MV3 extension** is the recommended primary approach for browser-based recording in enterprise environments. Use a Go CLI only if you must capture non-browser traffic.
@@ -27,13 +55,13 @@ You already have a working MV3 extension that captures browser traffic, records 
 1. **Separate concerns and modularize**
 
    - [x] Move JMX serialization into a single module `jmx/serializer.ts`.
-   - [~] Keep capture logic in `capture/` with two submodules: `webRequestAdapter.ts` and `contentCapture.ts`. *(partially done - in background/content)*
-   - [~] Keep UI and orchestration in `ui/` and `background/` respectively. *(skeleton in background/, ui/ not yet created)*
+   - [x] Keep capture logic split between `background/traffic-capture.ts` and `background/traffic-normalizer.ts`.
+   - [x] Keep UI and orchestration in popup/options pages and `background/recorder-service.ts`.
 
 2. **Stabilize request capture**
 
    - [x] Use `chrome.webRequest.onBeforeRequest` with `requestBody` where available.
-   - [x] For forms, file uploads, and fetch/XHR bodies, add content-script interception fallback that posts messages to the service worker.
+   - [~] Add typed content-script fallback for fetch/XHR/form bodies where `webRequest.requestBody` is incomplete.
    - [x] Normalize captured requests into a single canonical `CapturedRequest` interface.
 
 3. **Implement robust JMX serializer**
@@ -44,8 +72,8 @@ You already have a working MV3 extension that captures browser traffic, records 
 
 4. **Refactor background service worker**
 
-   - [x] Convert large monolithic `dist/background/index.js` into typed modules with clear lifecycle hooks: `startRecording`, `stopRecording`.
-   - [~] Implement `pauseRecording`/`resumeRecording` methods. *(RecorderState class exists, methods stubbed)*
+   - [x] Convert large monolithic `dist/background/index.js` into typed modules with clear lifecycle hooks: `startRecording`, `stopRecording`, `pauseRecording`, `resumeRecording`, and `EXPORT_JMX`.
+   - [x] Implement `pauseRecording`/`resumeRecording` methods through `RecorderState`.
    - [x] Replace global state with a `RecorderState` class instance persisted to `chrome.storage.local`.
 
 5. **Testing and QA**
@@ -66,25 +94,24 @@ You already have a working MV3 extension that captures browser traffic, records 
 #### 1. Canonical request model
 
 - [x] `src/models/captured-request.ts` - CapturedRequest and PlanMeta interfaces created
-- [x] `normalizeWebRequest(details)` - implemented in `src/background/index.ts`
-- [x] `normalizeContentScriptMessage(msg)` - implemented in `src/content/index.ts`
+- [x] `traffic-normalizer.ts` - implemented in `src/background/traffic-normalizer.ts`
+- [~] `normalizeContentScriptMessage(msg)` - SideeX-free content panel exists; body fallback still pending
 
 #### 2. JMX serializer API
 
 - [x] `buildJmx(planMeta, requests)` - implemented in `src/jmx/serializer.ts`
-- [~] Unit tests passing (4 tests in `src/jmx/serializer.test.ts`)
+- [x] Unit tests passing for GET, POST body, CDATA body, and missing optional fields
 
 #### 3. Background worker lifecycle
 
-- [x] `RecorderService` class with `startRecording`/`stopRecording` methods
-- [~] `RecorderState` class with persistence to `chrome.storage.local`
-- [~] `pauseRecording`/`resumeRecording` - not yet implemented
+- [x] `RecorderService` class with `startRecording`/`stopRecording`/`pauseRecording`/`resumeRecording` methods
+- [x] `RecorderState` class with persistence to `chrome.storage.local`
+- [x] `pauseRecording`/`resumeRecording` implemented; traffic capture checks active recording status
 
-#### 4. Content script fallbacks
+#### 4. Content script lifecycle UI
 
-- [x] Fetch interceptor implemented in `src/content/index.ts`
-- [x] XHR interceptor implemented in `src/content/index.ts`
-- [~] Form submission interceptor - not yet implemented
+- [x] SideeX-free status panel implemented in `src/content/index.ts`
+- [~] Content body fallback for fetch/XHR/form capture - not yet implemented
 
 #### 5. Performance and memory
 
@@ -95,35 +122,36 @@ You already have a working MV3 extension that captures browser traffic, records 
 
 ### Acceptance criteria (minimal)
 
-- [~] **Recording**: Start/stop/pause/resume works and captures all navigations and XHR/fetch bodies for modern SPAs. *(start/stop works, pause/resume pending)*
-- [~] **JMX output**: Generated JMX opens in JMeter and reproduces the recorded sequence with correct methods, headers, bodies, and basic assertions. *(basic sampler generation works)*
+- [x] **Recording**: Start/stop/pause/resume works and captures HTTP traffic through `webRequest` for the initial SideeX-free phase.
+- [~] **JMX output**: Generated JMX opens in JMeter and reproduces recorded HTTP requests with methods, headers, paths, and bodies. *(basic sampler generation works; managers/extractors pending)*
 - [x] **No external calls**: Recording and JMX generation are fully local.
 - [x] **Enterprise deployable**: Compiled artifact can be force-installed via ExtensionInstallForcelist and requires no CA or proxy changes.
-- [~] **Tests**: Unit tests for serializer and an E2E test that validates a golden JMX file. *(unit tests pass, E2E pending)*
+- [~] **Tests**: Unit tests pass; E2E golden extension export test still pending.
 
 ---
 
 ### Spec-format prompts for implementation tasks
 
-Completed specs in commit 354f383:
+Current implementation notes:
 
 ```yaml
 - title: "Canonical request model and normalizers"
   status: [x] COMPLETE
   outputs:
     - src/models/captured-request.ts (DONE)
-    - src/background/index.ts (normalizeWebRequest DONE)
-    - src/content/index.ts (normalizeContentScriptMessage DONE)
+    - src/background/traffic-normalizer.ts (DONE)
+    - src/background/traffic-capture.ts (DONE)
 ```
 
 ```yaml
 - title: "JMX serializer module"
   status: [~] PARTIAL
   outputs:
-    - src/jmx/serializer.ts (DONE - basic stub)
+    - src/jmx/serializer.ts (DONE - HTTPSamplerProxy/HeaderManager/basic CDATA body)
     - src/jmx/serializer.test.ts (DONE - 4 tests passing)
   remaining:
     - CookieManager, CacheManager support
+    - Timers, extractors, assertions, transaction grouping
     - Template-based naming
 ```
 
@@ -131,34 +159,42 @@ Completed specs in commit 354f383:
 - title: "Background service worker refactor"
   status: [x] COMPLETE
   outputs:
-    - src/background/index.ts (RecorderService DONE - start/stop implemented)
+    - src/background/recorder-service.ts (DONE - lifecycle/export implemented)
+    - src/background/recorder-state.ts (DONE - persisted state)
+    - src/background/index.ts (DONE - typed message bootstrap)
   remaining:
-    - pauseRecording/resumeRecording methods
-    - exportJMX method
+    - Persist in-flight webRequest fragments
+    - Batch/debounce storage writes
 ```
 
 ```yaml
-- title: "Content script body capture fallbacks"
-  status: [~] PARTIAL
+- title: "SideeX-free content lifecycle UI"
+  status: [x] COMPLETE
   outputs:
-    - src/content/index.ts (fetch/XHR interceptors DONE)
+    - src/content/index.ts (DONE - status panel, no SideeX)
+    - src/popup/popup.ts (DONE - start/stop/pause/resume/export)
+    - src/options/options.ts (DONE - local options)
   remaining:
-    - form-interceptor.ts (form submission capture)
+    - content body capture fallback for fetch/XHR/form edge cases
 ```
 
 ```yaml
 - title: "Enterprise packaging and CI"
-  status: [x] COMPLETE
+  status: [~] PARTIAL
   outputs:
     - .github/workflows/ci.yml (DONE)
-    - scripts/pack-crx.mjs (DONE - needs Chrome on CI)
+    - scripts/pack-crx.mjs (DONE - needs Chrome/openssl validation)
+  remaining:
+    - run pack-crx in packaging environment
+    - fix placeholder CRX/path handling if needed
 ```
 
 ---
 
 ### Testing, rollout, and monitoring
 
-- [~] **Golden tests**: keep a small set of sample sites and expected JMX outputs. *(directory created, no files yet)*
+- [x] **Unit tests**: serializer, recorder state, and traffic normalizer tests pass in Vitest.
+- [~] **Golden tests**: keep a small set of sample sites and expected JMX outputs. *(E2E still placeholder)*
 - [~] **Beta rollout**: publish to a small enterprise OU first via ExtensionInstallForcelist. *(enterprise-install.json script ready)*
 - [~] **Telemetry**: optional anonymized metrics for errors and export success rates. *(not implemented - opt-in only)*
 - [~] **Rollback**: provide a simple uninstall script and a version pinning mechanism for enterprise admins. *(not implemented)*

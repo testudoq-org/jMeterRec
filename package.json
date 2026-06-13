@@ -1,7 +1,7 @@
 {
   "name": "bm-jmx-recorder",
   "version": "0.1.0",
-  "description": "MV3 Chrome extension that captures HTTP + Selenium interactions and exports JMX",
+  "description": "MV3 Chrome extension that captures HTTP traffic and exports JMX",
   "type": "module",
   "scripts": {
     "dev": "vite build --watch --mode development",

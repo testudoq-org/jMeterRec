@@ -1,72 +1,140 @@
-/// <reference types="chrome" />
+import type { RecorderSnapshot } from '../messages'
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+const CONTAINER_ID = 'bm-jmx-recorder-transaction-panel'
 
-function interceptFetch(): void {
-  const originalFetch = window.fetch.bind(window)
-  ;(window as any).fetch = async (input: RequestInfo, init?: RequestInit) => {
-    const url =
-      typeof input === 'string'
-        ? input
-        : input instanceof URL
-          ? input.toString()
-          : (input as Request).url
-    const method = init?.method ?? 'GET'
+type ContentMessage =
+  | { type: 'ADD_TRANSACTION_POPUP_UI' }
+  | { type: 'REMOVE_TRANSACTION_POPUP_UI' }
+  | { type: 'STATE_CHANGED'; snapshot: RecorderSnapshot }
+  | { type: 'REQUEST_CAPTURED' }
 
-    const headers = init?.headers as Record<string, string> | undefined
-    const contentType = headers?.['content-type'] ?? headers?.['Content-Type']
+let panel: HTMLDivElement | undefined
+let requestCount = 0
 
-    void chrome.runtime
-      .sendMessage({
-        type: 'CAPTURE_FETCH',
-        url,
-        method: String(method),
-        body: init?.body,
-        contentType,
-      })
-      .catch(() => {})
+function showPanel(): void {
+  if (panel?.isConnected) {
+    return
+  }
 
-    return originalFetch(input, init)
+  panel = document.createElement('div')
+  panel.id = CONTAINER_ID
+  panel.setAttribute('role', 'status')
+  panel.style.cssText = [
+    'position:fixed',
+    'right:16px',
+    'top:16px',
+    'z-index:2147483647',
+    'min-width:220px',
+    'padding:10px 12px',
+    'border:1px solid #9aa7b7',
+    'border-radius:8px',
+    'background:#ffffff',
+    'box-shadow:0 4px 18px rgba(15,23,42,0.22)',
+    'color:#0f172a',
+    'font:13px/1.4 Arial, sans-serif',
+  ].join(';')
+
+  panel.innerHTML = `
+    <div style="font-weight:700;margin-bottom:4px;">BM JMX Recorder</div>
+    <div id="bm-jmx-recorder-status">Idle</div>
+    <div id="bm-jmx-recorder-count">Requests: 0</div>
+  `
+
+  document.documentElement.append(panel)
+}
+
+function removePanel(): void {
+  panel?.remove()
+  panel = undefined
+}
+
+function updatePanel(snapshot: RecorderSnapshot): void {
+  requestCount = snapshot.requestCount
+  showPanel()
+
+  const status = panel?.querySelector<HTMLElement>('#bm-jmx-recorder-status')
+  const count = panel?.querySelector<HTMLElement>('#bm-jmx-recorder-count')
+
+  if (status !== null && status !== undefined) {
+    status.textContent =
+      snapshot.status === 'recording'
+        ? 'Recording'
+        : snapshot.status === 'paused'
+          ? 'Paused'
+          : 'Idle'
+  }
+
+  if (count !== null && count !== undefined) {
+    count.textContent = `Requests: ${requestCount}`
   }
 }
 
-function interceptXHR(): void {
-  const originalOpen = XMLHttpRequest.prototype.open
-  const originalSend = XMLHttpRequest.prototype.send
-
-  // Override open with proper signature
-  XMLHttpRequest.prototype.open = function (
-    this: XMLHttpRequest,
-    method: string,
-    url: string | URL,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _async?: boolean,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _username?: string | null | undefined,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _password?: string | null | undefined
-  ): void {
-    ;(this as any)._url = String(url)
-    ;(this as any)._method = method
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-    ;(originalOpen as any).call(this, method, url)
+function isContentMessage(message: unknown): message is ContentMessage {
+  if (typeof message !== 'object' || message === null) {
+    return false
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  XMLHttpRequest.prototype.send = function (body?: any): void {
-    void chrome.runtime
-      .sendMessage({
-        type: 'CAPTURE_XHR',
-        url: (this as any)._url,
-        method: (this as any)._method,
-        body,
-      })
-      .catch(() => {})
-    return originalSend.call(this, body)
-  }
+  const record = message as Record<string, unknown>
+
+  return (
+    (record.type === 'ADD_TRANSACTION_POPUP_UI' && Object.keys(record).length === 1) ||
+    (record.type === 'REMOVE_TRANSACTION_POPUP_UI' && Object.keys(record).length === 1) ||
+    (record.type === 'STATE_CHANGED' &&
+      typeof record.snapshot === 'object' &&
+      record.snapshot !== null) ||
+    (record.type === 'REQUEST_CAPTURED' && Object.keys(record).length === 1)
+  )
 }
 
-interceptFetch()
-interceptXHR()
+chrome.runtime.onMessage.addListener((message: unknown) => {
+  if (!isContentMessage(message)) {
+    return
+  }
 
-console.log('BM JMX Recorder content script loaded')
+  switch (message.type) {
+    case 'ADD_TRANSACTION_POPUP_UI':
+      updatePanel({
+        status: 'idle',
+        recording: false,
+        planName: 'Untitled Plan',
+        requestCount,
+      })
+      break
+    case 'REMOVE_TRANSACTION_POPUP_UI':
+      removePanel()
+      break
+    case 'STATE_CHANGED':
+      updatePanel(message.snapshot)
+      break
+    case 'REQUEST_CAPTURED':
+      updatePanel({
+        status: 'recording',
+        recording: true,
+        planName: 'Untitled Plan',
+        requestCount: requestCount + 1,
+      })
+      break
+  }
+})
+
+chrome.runtime
+  .sendMessage({ type: 'GET_STATE' })
+  .then((response: unknown) => {
+    if (isStateResponse(response) && response.success && response.snapshot?.recording) {
+      updatePanel(response.snapshot)
+    }
+  })
+  .catch((err: unknown) => {
+    console.warn('Unable to read recorder state in content script.', err)
+  })
+
+function isStateResponse(
+  response: unknown
+): response is { success: boolean; snapshot?: RecorderSnapshot } {
+  return (
+    typeof response === 'object' &&
+    response !== null &&
+    'success' in response &&
+    typeof (response as Record<string, unknown>).success === 'boolean'
+  )
+}
