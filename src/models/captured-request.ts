@@ -5,13 +5,19 @@ export interface CapturedRequest {
   timestamp: string
   method: string
   url: string
+  path?: string
   headers: Record<string, string>
   queryParams: Record<string, string>
-  body?: string | ArrayBuffer
+  body?: string
   contentType?: string
   tabId?: number
   frameId?: number
+  type?: string
   initiator?: string
+  statusCode?: number
+  responseHeaders?: Record<string, string>
+  error?: string
+  completedAt?: string
 }
 
 export interface PlanMeta {

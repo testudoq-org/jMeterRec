@@ -1,0 +1,139 @@
+import { buildJmx } from '../jmx/serializer'
+import type { BackgroundRequest, BackgroundResponse, RecorderSnapshot } from '../messages'
+import type { CapturedRequest, PlanMeta } from '../models/captured-request'
+import { RecorderState } from './recorder-state'
+import { TrafficCaptureService } from './traffic-capture'
+
+export interface RecorderServiceOptions {
+  state?: RecorderState
+  trafficCapture?: TrafficCaptureService
+}
+
+export class RecorderService {
+  private readonly state: RecorderState
+  private readonly trafficCapture: TrafficCaptureService
+  private initialized = false
+
+  constructor(options: RecorderServiceOptions = {}) {
+    this.state = options.state ?? new RecorderState()
+    this.trafficCapture = options.trafficCapture ?? new TrafficCaptureService(this.state)
+  }
+
+  async initialize(): Promise<void> {
+    if (this.initialized) {
+      return
+    }
+
+    await this.state.load()
+    this.trafficCapture.start()
+    this.initialized = true
+  }
+
+  async startRecording(planName: string, tabId?: number): Promise<void> {
+    this.state.start(planName, tabId)
+    await this.state.save()
+    this.broadcastState()
+  }
+
+  async stopRecording(): Promise<CapturedRequest[]> {
+    const requests = this.state.getRequests()
+    this.state.stop()
+    await this.state.save()
+    this.broadcastState()
+    return requests
+  }
+
+  async pauseRecording(): Promise<void> {
+    this.state.pause()
+    await this.state.save()
+    this.broadcastState()
+  }
+
+  async resumeRecording(): Promise<void> {
+    this.state.resume()
+    await this.state.save()
+    this.broadcastState()
+  }
+
+  async clearRequests(): Promise<void> {
+    this.state.clearRequests()
+    await this.state.save()
+    this.broadcastState()
+  }
+
+  getSnapshot(): RecorderSnapshot {
+    return this.state.getSnapshot()
+  }
+
+  getRequests(): CapturedRequest[] {
+    return this.state.getRequests()
+  }
+
+  async handleMessage(message: BackgroundRequest): Promise<BackgroundResponse> {
+    try {
+      switch (message.type) {
+        case 'START_RECORDING':
+          await this.startRecording(message.planName, message.tabId)
+          return { success: true, snapshot: this.getSnapshot() }
+        case 'STOP_RECORDING': {
+          const requestCount = (await this.stopRecording()).length
+          return { success: true, requestCount }
+        }
+        case 'PAUSE_RECORDING':
+          await this.pauseRecording()
+          return { success: true, snapshot: this.getSnapshot() }
+        case 'RESUME_RECORDING':
+          await this.resumeRecording()
+          return { success: true, snapshot: this.getSnapshot() }
+        case 'GET_STATE':
+          return { success: true, snapshot: this.getSnapshot() }
+        case 'GET_REQUESTS':
+          return { success: true, requests: this.getRequests() }
+        case 'CLEAR_REQUESTS':
+          await this.clearRequests()
+          return { success: true, snapshot: this.getSnapshot() }
+        case 'EXPORT_JMX':
+          return this.buildExportResponse()
+        default:
+          return unreachable(message)
+      }
+    } catch (err) {
+      return { success: false, error: toErrorMessage(err) }
+    }
+  }
+
+  private buildExportResponse(): BackgroundResponse {
+    const meta: PlanMeta = {
+      name: this.state.getSnapshot().planName,
+      threadGroup: { threads: 1, rampUp: 1, loops: 1 },
+    }
+
+    return {
+      success: true,
+      jmx: buildJmx(meta, this.state.getRequests()),
+      filename: `${safeFilename(this.state.getSnapshot().planName)}.jmx`,
+    }
+  }
+
+  private broadcastState(): void {
+    chrome.runtime
+      .sendMessage({ type: 'STATE_CHANGED', snapshot: this.state.getSnapshot() })
+      .catch((err: unknown) => {
+        console.warn('Unable to broadcast recorder state.', err)
+      })
+  }
+}
+
+function safeFilename(value: string): string {
+  const filename = value.trim().replace(/[^a-z0-9._-]+/gi, '-')
+
+  return filename.length > 0 ? filename : 'Untitled-Plan'
+}
+
+function toErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : 'Unexpected recorder error'
+}
+
+function unreachable(value: never): BackgroundResponse {
+  return { success: false, error: `Unsupported message type: ${String(value)}` }
+}

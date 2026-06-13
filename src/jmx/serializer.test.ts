@@ -47,10 +47,10 @@ describe('buildJmx', () => {
     const jmx = buildJmx(meta, requests)
 
     expect(jmx).toContain('POST')
-    expect(jmx).toContain('<![CDATA[{&quot;name&quot;:&quot;test&quot;}]]>')
+    expect(jmx).toContain('<![CDATA[{"name":"test"}]]>')
   })
 
-  it('escapes XML special characters in body', () => {
+  it('keeps POST bodies as raw CDATA', () => {
     const requests: CapturedRequest[] = [
       {
         id: '3',
@@ -65,10 +65,8 @@ describe('buildJmx', () => {
 
     const jmx = buildJmx(meta, requests)
 
-    expect(jmx).toContain('&lt;')
-    expect(jmx).toContain('&gt;')
-    expect(jmx).not.toContain('<script>')
-    expect(jmx).not.toContain('</script>')
+    expect(jmx).toContain('<![CDATA[{"value":"<script>alert(1)</script>"}]]>')
+    expect(jmx).not.toContain('&lt;script&gt;')
   })
 
   it('handles missing optional fields gracefully', () => {

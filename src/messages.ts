@@ -1,0 +1,30 @@
+export type RecorderStatus = 'idle' | 'recording' | 'paused'
+
+export interface RecorderSnapshot {
+  status: RecorderStatus
+  recording: boolean
+  planName: string
+  requestCount: number
+  tabId?: number
+  startedAt?: string
+}
+
+export type BackgroundRequest =
+  | { type: 'START_RECORDING'; planName: string; tabId?: number }
+  | { type: 'STOP_RECORDING' }
+  | { type: 'PAUSE_RECORDING' }
+  | { type: 'RESUME_RECORDING' }
+  | { type: 'GET_STATE' }
+  | { type: 'GET_REQUESTS' }
+  | { type: 'CLEAR_REQUESTS' }
+  | { type: 'EXPORT_JMX' }
+
+export type BackgroundResponse =
+  | { success: true; snapshot?: RecorderSnapshot; requests?: unknown[] }
+  | { success: true; requestCount: number }
+  | { success: true; jmx: string; filename: string }
+  | { success: false; error: string }
+
+export type BackgroundBroadcast =
+  | { type: 'STATE_CHANGED'; snapshot: RecorderSnapshot }
+  | { type: 'REQUEST_CAPTURED'; request: unknown }

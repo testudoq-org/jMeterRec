@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BM JMX Recorder Options</title>
+    <style>
+      body {
+        max-width: 720px;
+        margin: 32px auto;
+        padding: 0 16px;
+        font-family: Arial, sans-serif;
+        color: #0f172a;
+      }
+
+      h1 {
+        margin-top: 0;
+      }
+
+      label {
+        display: block;
+        margin: 16px 0 6px;
+        font-weight: 700;
+      }
+
+      input {
+        width: 100%;
+        max-width: 320px;
+        padding: 8px;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+      }
+
+      button {
+        margin-top: 20px;
+        padding: 10px 16px;
+        border: 0;
+        border-radius: 6px;
+        background: #2563eb;
+        color: white;
+        cursor: pointer;
+      }
+
+      #saved {
+        margin-top: 12px;
+        color: #15803d;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>BM JMX Recorder Options</h1>
+    <p>These defaults are used when exporting captured HTTP traffic to JMeter JMX.</p>
+
+    <label for="defaultPlanName">Default plan name</label>
+    <input id="defaultPlanName" type="text" />
+
+    <label for="threads">Threads</label>
+    <input id="threads" type="number" min="1" />
+
+    <label for="rampUp">Ramp-up seconds</label>
+    <input id="rampUp" type="number" min="0" />
+
+    <label for="loops">Loop count</label>
+    <input id="loops" type="number" min="1" />
+
+    <button id="save">Save options</button>
+    <div id="saved" aria-live="polite"></div>
+
+    <script type="module" src="./options.ts"></script>
+  </body>
+</html>
