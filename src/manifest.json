@@ -1,1 +1,35 @@
-{"action": {"default_popup": "src/popup/popup.html", "default_title": "Capultura"}, "background": {"service_worker": "background/background.js", "type": "module"}, "content_scripts": [{"all_frames": true, "js": ["content/content.js"], "matches": ["<all_urls>"], "run_at": "document_start"}], "description": "Capultura — Record, script and scale real browser flows (Selenium, JMX, Playwright) for reliable performance testing.", "host_permissions": ["<all_urls>"], "manifest_version": 3, "name": "Capultura", "options_ui": {"open_in_tab": true, "page": "src/options/options.html"}, "permissions": ["storage", "unlimitedStorage", "webRequest", "activeTab"], "version": "0.1.0"}
+{
+  "manifest_version": 3,
+  "name": "Capultura",
+  "version": "0.1.0",
+  "description": "Capultura — Record, script and scale real browser flows (Selenium, JMX, Playwright) for reliable performance testing.",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "permissions": ["storage", "unlimitedStorage", "webRequest", "activeTab"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background/background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "all_frames": true,
+      "js": ["content/content.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_title": "Capultura",
+    "default_icon": "icons/icon-128.png"
+  },
+  "options_ui": {
+    "page": "src/options/options.html",
+    "open_in_tab": true
+  }
+}

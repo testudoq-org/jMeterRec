@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="50%" r="40%">
+      <stop offset="0%" stop-color="#F5A623" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#F5A623" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="bgGrad" cx="30%" cy="25%" r="70%">
+      <stop offset="0%" stop-color="#1A2845"/>
+      <stop offset="100%" stop-color="#080E1C"/>
+    </radialGradient>
+    <filter id="softglow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="128" height="128" rx="22" fill="url(#bgGrad)"/>
+
+  <!-- Subtle grid lines suggesting data flow -->
+  <line x1="0" y1="43" x2="128" y2="43" stroke="#1E3060" stroke-width="0.5" opacity="0.6"/>
+  <line x1="0" y1="85" x2="128" y2="85" stroke="#1E3060" stroke-width="0.5" opacity="0.6"/>
+  <line x1="43" y1="0" x2="43" y2="128" stroke="#1E3060" stroke-width="0.5" opacity="0.6"/>
+  <line x1="85" y1="0" x2="85" y2="128" stroke="#1E3060" stroke-width="0.5" opacity="0.6"/>
+
+  <!-- Glow behind record dot -->
+  <circle cx="64" cy="64" r="38" fill="url(#glow)"/>
+
+  <!-- Capture brackets — corner L-shapes in amber -->
+  <!-- Top-left -->
+  <path d="M20 40 L20 20 L40 20" fill="none" stroke="#F5A623" stroke-width="6"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Top-right -->
+  <path d="M88 20 L108 20 L108 40" fill="none" stroke="#F5A623" stroke-width="6"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Bottom-left -->
+  <path d="M20 88 L20 108 L40 108" fill="none" stroke="#F5A623" stroke-width="6"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Bottom-right -->
+  <path d="M88 108 L108 108 L108 88" fill="none" stroke="#F5A623" stroke-width="6"
+        stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Horizontal flow stream lines suggesting traffic -->
+  <line x1="20" y1="64" x2="46" y2="64" stroke="#4ECDC4" stroke-width="2"
+        stroke-linecap="round" opacity="0.8"/>
+  <line x1="82" y1="64" x2="108" y2="64" stroke="#4ECDC4" stroke-width="2"
+        stroke-linecap="round" opacity="0.8"/>
+
+  <!-- Record dot — the signature element -->
+  <circle cx="64" cy="64" r="18" fill="#F5A623" filter="url(#softglow)"/>
+  <!-- Inner shine -->
+  <circle cx="58" cy="58" r="5" fill="#FFFFFF" opacity="0.2"/>
+</svg>
