@@ -4,7 +4,7 @@ import { RecorderService } from './recorder-service'
 const service = new RecorderService()
 
 service.initialize().catch((err: unknown) => {
-  console.error('Failed to initialize BM JMX Recorder.', err)
+  console.error('Failed to initialize Capultura.', err)
 })
 
 chrome.runtime.onMessage.addListener((message: BackgroundRequest, _sender, sendResponse) => {
@@ -22,5 +22,5 @@ chrome.runtime.onMessage.addListener((message: BackgroundRequest, _sender, sendR
 })
 
 chrome.runtime.onInstalled.addListener(() => {
-  console.log('BM JMX Recorder installed')
+  console.log('Capultura installed')
 })

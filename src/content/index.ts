@@ -3,7 +3,7 @@ import type { RecorderSnapshot } from '../messages'
 // Import action recorder to enable DOM action capture
 import './action-recorder'
 
-const CONTAINER_ID = 'bm-jmx-recorder-transaction-panel'
+const CONTAINER_ID = 'capultura-transaction-panel'
 
 type ContentMessage =
   | { type: 'ADD_TRANSACTION_POPUP_UI' }
@@ -38,9 +38,9 @@ function showPanel(): void {
   ].join(';')
 
   panel.innerHTML = `
-    <div style="font-weight:700;margin-bottom:4px;">BM JMX Recorder</div>
-    <div id="bm-jmx-recorder-status">Idle</div>
-    <div id="bm-jmx-recorder-count">Requests: 0</div>
+    <div style="font-weight:700;margin-bottom:4px;">Capultura</div>
+    <div id="capultura-status">Idle</div>
+    <div id="capultura-count">Requests: 0</div>
   `
 
   document.documentElement.append(panel)
@@ -55,8 +55,8 @@ function updatePanel(snapshot: RecorderSnapshot): void {
   requestCount = snapshot.requestCount
   showPanel()
 
-  const status = panel?.querySelector<HTMLElement>('#bm-jmx-recorder-status')
-  const count = panel?.querySelector<HTMLElement>('#bm-jmx-recorder-count')
+  const status = panel?.querySelector<HTMLElement>('#capultura-status')
+  const count = panel?.querySelector<HTMLElement>('#capultura-count')
 
   if (status !== null && status !== undefined) {
     status.textContent =

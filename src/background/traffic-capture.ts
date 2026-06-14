@@ -26,7 +26,7 @@ export class TrafficCaptureService {
     ])
     chrome.webRequest.onBeforeSendHeaders.addListener(this.onBeforeSendHeaders, this.filter, [
       'requestHeaders',
-      'blocking',
+      
     ])
     chrome.webRequest.onResponseStarted.addListener(this.onResponseStarted, this.filter, [
       'responseHeaders',

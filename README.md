@@ -1,6 +1,6 @@
-# bm-jmx-recorder — MV3 JMeter recorder
+# Capultura — Real Browser Flow Recorder
 
-What: Browser recorder that captures HTTP + Selenium interactions and exports JMX.
+Capultura captures real user interactions across Selenium, JMX and Playwright, converts recordings into reproducible test scripts, and runs scalable performance tests for CI-ready load and functional validation.
 
 ## Quick start
 
@@ -29,7 +29,8 @@ npm run pack-crx  # produces signed .crx and enterprise-install.json for Extensi
 ```
 ├── src/
 │   ├── background/     # Service worker
-│   ├── content/        # Content scripts
+│   ├── content/        # Content scripts (action recorder)
+│   ├── generators/     # Playwright test generator
 │   ├── jmx/            # JMX serializer
 │   ├── models/         # TypeScript interfaces
 │   └── manifest.json   # MV3 manifest

@@ -1,13 +1,25 @@
-# Project Brief: BM JMX Recorder
+# Project Brief: Capultura
+
+## Statement
+
+Capultura — Record, script and scale real browser flows (Selenium, JMX, Playwright) for reliable performance testing.
+
+## Short description
+
+Capultura captures real user interactions across Selenium, JMX and Playwright, converts recordings into reproducible test scripts, and runs scalable performance tests for CI-ready load and functional validation.
 
 ## Goal
 
-Replace JMeter recorder friction with an MV3 extension that outputs JMX.
+Provide unified recording and load-testing workflows by supporting Selenium/JMX-style recording and modern Playwright captures. Record real browser flows, edit and parameterize scripts, then execute them at scale with configurable load patterns, metrics, and CI integrations.
 
 ## Scope
 
 - Browser recording only; no system MITM
-- Deliverables: canonical CapturedRequest model, jmx/serializer, background RecorderService, content-script interceptors, CI, signed .crx
+- Deliverables: canonical CapturedRequest model, ActionStep model, jmx/serializer, Playwright generator, background RecorderService, content-script interceptors, CI, signed .crx
+
+## Long description
+
+Capultura unifies recording and load-testing workflows by supporting Selenium/JMX-style recording and modern Playwright captures. Record real browser flows, edit and parameterize scripts, then execute them at scale with configurable load patterns, metrics, and CI integrations. Built for QA and SRE teams, Capultura makes it fast to reproduce user journeys, find performance regressions, and validate functional behavior under realistic load.
 
 ## Constraints
 
@@ -17,6 +29,7 @@ Replace JMeter recorder friction with an MV3 extension that outputs JMX.
 ## Success metrics
 
 - JMX opens in JMeter
+- Generated Playwright tests run successfully
 - Enterprise silent install validated
 
 ## Architecture
@@ -25,16 +38,18 @@ Replace JMeter recorder friction with an MV3 extension that outputs JMX.
 
 - `capture/` — Request capture logic (webRequestAdapter, contentCapture)
 - `jmx/` — JMX serializer
+- `generators/` — Playwright test generator
 - `background/` — RecorderService with state management
+- `content/` — Action recorder for DOM events
 - `ui/` — Popup and options UI
-- `models/` — TypeScript interfaces
+- `models/` — TypeScript interfaces (CapturedRequest, ActionStep)
 
 ### Data flow
 
-1. Content script intercepts fetch/XHR/form submissions
-2. Background service worker collects CapturedRequest objects
-3. `buildJmx()` transforms requests into JMeter XML
-4. User downloads .jmx file or extension auto-saves
+1. Content script intercepts DOM events (click, type, select)
+2. Background service worker collects both HTTP requests and ActionSteps
+3. JMX or Playwright generators transform to test scripts
+4. User downloads .jmx or .spec.ts file
 
 ## Technical decisions
 
