@@ -1,5 +1,6 @@
 import type { CapturedRequest, ActionStep } from '../models/captured-request'
 import type { RecorderSnapshot, RecorderStatus } from '../messages'
+import { getCapturedRequestDomains } from '../jmx/domains'
 
 export interface RecorderStorage {
   get(keys: string[]): Promise<Record<string, unknown>>
@@ -101,6 +102,10 @@ export class RecorderState {
 
   getRequests(): CapturedRequest[] {
     return [...this.requests]
+  }
+
+  getDomains(): string[] {
+    return getCapturedRequestDomains(this.requests)
   }
 
   getActions(): ActionStep[] {

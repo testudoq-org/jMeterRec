@@ -39,6 +39,42 @@
         border-radius: 6px;
       }
 
+      fieldset {
+        margin: 0 0 12px;
+        padding: 8px;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+      }
+
+      legend {
+        padding: 0 4px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .domain-list {
+        display: grid;
+        gap: 6px;
+        margin-bottom: 8px;
+      }
+
+      .domain-option {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+      }
+
+      .domain-option input {
+        width: auto;
+        margin: 0;
+      }
+
+      .domain-status {
+        margin-bottom: 8px;
+        font-size: 12px;
+      }
+
       .status {
         margin: 8px 0 12px;
         padding: 8px;
@@ -103,6 +139,16 @@
         <option value="playwright">Playwright</option>
       </select>
       <button id="export" class="secondary">Export</button>
+    </div>
+
+    <div id="jmxOptions" style="display: none">
+      <fieldset>
+        <legend>Domains to include</legend>
+        <div id="jmxDomains" class="domain-list"></div>
+        <div id="jmxDomainStatus" class="domain-status"></div>
+        <div id="jmxDomainError" class="error" aria-live="polite"></div>
+        <button id="exportJmxSelected" class="secondary" disabled>Export selected domains</button>
+      </fieldset>
     </div>
 
     <div id="playwrightOptions" style="display: none">

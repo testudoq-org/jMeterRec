@@ -1,4 +1,5 @@
 import { buildJmx } from '../jmx/serializer'
+import { filterRequestsByDomains } from '../jmx/domains'
 import { buildPlaywrightResponse } from '../generators/playwright'
 import type { BackgroundRequest, BackgroundResponse, RecorderSnapshot } from '../messages'
 import type { CapturedRequest, PlanMeta, PlaywrightStep } from '../models/captured-request'
@@ -70,6 +71,10 @@ export class RecorderService {
     return this.state.getRequests()
   }
 
+  getDomains(): string[] {
+    return this.state.getDomains()
+  }
+
   async handleMessage(message: BackgroundRequest): Promise<BackgroundResponse> {
     try {
       switch (message.type) {
@@ -90,6 +95,8 @@ export class RecorderService {
           return { success: true, snapshot: this.getSnapshot() }
         case 'GET_REQUESTS':
           return { success: true, requests: this.getRequests() }
+        case 'GET_DOMAINS':
+          return { success: true, domains: this.getDomains() }
         case 'CLEAR_REQUESTS':
           await this.clearRequests()
           return { success: true, snapshot: this.getSnapshot() }
@@ -99,7 +106,7 @@ export class RecorderService {
           return { success: true }
         }
         case 'EXPORT_JMX':
-          return this.buildExportResponse()
+          return this.buildJmxExportResponse(message.includedDomains)
         case 'EXPORT_PLAYWRIGHT':
           return this.buildPlaywrightExportResponse(message)
         default:
@@ -114,7 +121,17 @@ export class RecorderService {
     this.state.addAction(message.action)
   }
 
-  private buildExportResponse(): BackgroundResponse {
+  private buildJmxExportResponse(includedDomains: string[]): BackgroundResponse {
+    if (includedDomains.length === 0) {
+      return { success: false, error: 'Select at least one domain before exporting JMX.' }
+    }
+
+    const requests = filterRequestsByDomains(this.state.getRequests(), includedDomains)
+
+    if (requests.length === 0) {
+      return { success: false, error: 'No requests match the selected domains.' }
+    }
+
     const meta: PlanMeta = {
       name: this.state.getSnapshot().planName,
       threadGroup: { threads: 1, rampUp: 1, loops: 1 },
@@ -122,7 +139,7 @@ export class RecorderService {
 
     return {
       success: true,
-      jmx: buildJmx(meta, this.state.getRequests()),
+      jmx: buildJmx(meta, requests),
       filename: `${safeFilename(this.state.getSnapshot().planName)}.jmx`,
     }
   }

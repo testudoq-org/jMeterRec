@@ -2,12 +2,46 @@ import { describe, it, expect } from 'vitest'
 import { buildJmx } from './serializer'
 import type { CapturedRequest, PlanMeta } from '../models/captured-request'
 
-describe('buildJmx', () => {
-  const meta: PlanMeta = {
-    name: 'Test Plan',
-    threadGroup: { threads: 1, rampUp: 1, loops: 1 },
+const meta: PlanMeta = {
+  name: 'Test Plan',
+  threadGroup: { threads: 1, rampUp: 1, loops: 1 },
+}
+
+function samplerCount(jmx: string): number {
+  return (jmx.match(/<HTTPSamplerProxy\b/g) ?? []).length
+}
+
+function samplerStartIndexes(jmx: string): number[] {
+  const indexes: number[] = []
+  let searchFrom = 0
+  let index = jmx.indexOf('<HTTPSamplerProxy', searchFrom)
+
+  while (index !== -1) {
+    indexes.push(index)
+    searchFrom = index + 1
+    index = jmx.indexOf('<HTTPSamplerProxy', searchFrom)
   }
 
+  return indexes
+}
+
+function samplerEndIndex(jmx: string, startIndex: number): number {
+  return jmx.indexOf('</HTTPSamplerProxy>', startIndex)
+}
+
+function everySamplerHasChildHashTree(jmx: string): boolean {
+  const samplerStarts = samplerStartIndexes(jmx)
+
+  return samplerStarts.every((start, index) => {
+    const end = samplerEndIndex(jmx, start)
+    const nextSampler = samplerStarts[index + 1]
+    const childHashTree = jmx.indexOf('<hashTree', end)
+
+    return childHashTree !== -1 && (nextSampler === undefined || childHashTree < nextSampler)
+  })
+}
+
+describe('buildJmx', () => {
   it('generates valid JMX for GET requests', () => {
     const requests: CapturedRequest[] = [
       {
@@ -29,6 +63,57 @@ describe('buildJmx', () => {
     expect(jmx).toContain('example.com')
     expect(jmx).toContain('/api/users')
     expect(jmx).toContain('GET')
+  })
+
+  it('places a child hashTree after each sampler', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://example.com/one',
+        headers: {},
+        queryParams: {},
+      },
+      {
+        id: '2',
+        timestamp: '2024-01-01T00:00:01Z',
+        method: 'GET',
+        url: 'https://example.com/two',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests)
+
+    expect(samplerCount(jmx)).toBe(2)
+    expect(everySamplerHasChildHashTree(jmx)).toBe(true)
+  })
+
+  it('does not place sampler elements next to each other', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://example.com/one',
+        headers: {},
+        queryParams: {},
+      },
+      {
+        id: '2',
+        timestamp: '2024-01-01T00:00:01Z',
+        method: 'GET',
+        url: 'https://example.com/two',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests)
+
+    expect(jmx).not.toMatch(/<\/HTTPSamplerProxy>\s*<HTTPSamplerProxy/)
   })
 
   it('generates valid JMX for POST requests with body', () => {

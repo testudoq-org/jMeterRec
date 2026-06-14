@@ -20,12 +20,14 @@ export type BackgroundRequest =
   | { type: 'GET_REQUESTS' }
   | { type: 'CLEAR_REQUESTS' }
   | { type: 'ADD_ACTION'; action: ActionStep }
-  | { type: 'EXPORT_JMX' }
+  | { type: 'GET_DOMAINS' }
+  | { type: 'EXPORT_JMX'; includedDomains: string[] }
   | { type: 'EXPORT_PLAYWRIGHT'; baseUrl?: string; suiteName?: string; testCaseName?: string }
 
 export type BackgroundResponse =
   | { success: true; snapshot?: RecorderSnapshot; requests?: unknown[] }
   | { success: true; requestCount: number }
+  | { success: true; domains: string[] }
   | { success: true; jmx: string; filename: string }
   | { success: true; playwright: string; filename: string }
   | { success: false; error: string }

@@ -12,8 +12,16 @@ const stop = requireElement<HTMLButtonElement>('stop')
 const exportMode = requireElement<HTMLSelectElement>('exportMode')
 const exportBtn = requireElement<HTMLButtonElement>('export')
 const clear = requireElement<HTMLButtonElement>('clear')
+const jmxOptions = requireElement<HTMLDivElement>('jmxOptions')
+const jmxDomains = requireElement<HTMLDivElement>('jmxDomains')
+const jmxDomainStatus = requireElement<HTMLDivElement>('jmxDomainStatus')
+const jmxDomainError = requireElement<HTMLDivElement>('jmxDomainError')
+const exportJmxSelected = requireElement<HTMLButtonElement>('exportJmxSelected')
 const playwrightOptions = requireElement<HTMLDivElement>('playwrightOptions')
 const baseUrlInput = requireElement<HTMLInputElement>('baseUrl')
+
+let availableDomains: string[] = []
+let selectedDomains = new Set<string>()
 
 let snapshot: RecorderSnapshot = {
   status: 'idle',
@@ -27,7 +35,11 @@ planNameInput.addEventListener('input', () => {
 })
 
 exportMode.addEventListener('change', () => {
+  const isJmx = exportMode.value === 'jmx'
+
+  jmxOptions.style.display = isJmx ? 'block' : 'none'
   playwrightOptions.style.display = exportMode.value === 'playwright' ? 'block' : 'none'
+  clearJmxDomainError()
 })
 
 start.addEventListener('click', () => {
@@ -52,6 +64,10 @@ clear.addEventListener('click', () => {
 
 exportBtn.addEventListener('click', () => {
   void exportRecording()
+})
+
+exportJmxSelected.addEventListener('click', () => {
+  void exportSelectedJmxDomains()
 })
 
 chrome.runtime.onMessage.addListener((message: unknown) => {
@@ -99,10 +115,54 @@ async function exportRecording(): Promise<void> {
     return
   }
 
-  const response = await send({ type: 'EXPORT_JMX' })
+  await prepareJmxExport()
+}
+
+async function prepareJmxExport(): Promise<void> {
+  const response = await send({ type: 'GET_DOMAINS' })
+
+  if (!response.success || !isDomainsResponse(response)) {
+    showError('Unable to load domains for JMX export.')
+    return
+  }
+
+  availableDomains = response.domains
+
+  if (availableDomains.length === 0) {
+    showError('No domains were captured for JMX export.')
+    return
+  }
+
+  const [domain] = availableDomains
+
+  if (domain !== undefined) {
+    await exportJmx([domain])
+  }
+
+  selectedDomains = new Set(availableDomains)
+  renderJmxDomainSelector()
+}
+
+async function exportSelectedJmxDomains(): Promise<void> {
+  clearError()
+  clearJmxDomainError()
+
+  if (selectedDomains.size === 0) {
+    showJmxDomainError('Select at least one domain.')
+    return
+  }
+
+  await exportJmx([...selectedDomains])
+}
+
+async function exportJmx(includedDomains: string[]): Promise<void> {
+  const response = await send({
+    type: 'EXPORT_JMX',
+    includedDomains,
+  })
 
   if (!response.success || !('jmx' in response)) {
-    showError('Export failed.')
+    showError(response.success ? 'Export failed.' : response.error)
     return
   }
 
@@ -145,6 +205,51 @@ function applySnapshot(next: RecorderSnapshot | undefined): void {
   stop.disabled = !next.recording
   exportBtn.disabled = next.requestCount === 0
   clear.disabled = next.requestCount === 0 && !next.recording
+}
+
+function isDomainsResponse(
+  response: BackgroundResponse
+): response is Extract<BackgroundResponse, { success: true; domains: string[] }> {
+  return Array.isArray((response as { domains?: unknown }).domains)
+}
+
+function renderJmxDomainSelector(): void {
+  jmxOptions.style.display = 'block'
+  jmxDomains.replaceChildren()
+
+  for (const domain of availableDomains) {
+    const label = document.createElement('label')
+    const checkbox = document.createElement('input')
+    const name = document.createElement('span')
+
+    label.className = 'domain-option'
+    checkbox.type = 'checkbox'
+    checkbox.value = domain
+    checkbox.checked = selectedDomains.has(domain)
+    checkbox.addEventListener('change', () => {
+      if (checkbox.checked) {
+        selectedDomains.add(domain)
+      } else {
+        selectedDomains.delete(domain)
+      }
+
+      updateJmxDomainSelectionState()
+    })
+    name.textContent = domain
+
+    label.append(checkbox, name)
+    jmxDomains.append(label)
+  }
+
+  updateJmxDomainSelectionState()
+}
+
+function updateJmxDomainSelectionState(): void {
+  const selectedCount = selectedDomains.size
+
+  exportJmxSelected.disabled = selectedCount === 0
+  jmxDomainStatus.textContent = `${selectedCount} of ${availableDomains.length} domains selected`
+  clearJmxDomainError()
 }
 
 function isStateBroadcast(
@@ -215,8 +320,17 @@ function showError(message: string): void {
   error.textContent = message
 }
 
+function showJmxDomainError(message: string): void {
+  jmxDomainError.textContent = message
+}
+
 function clearError(): void {
   error.textContent = ''
+  clearJmxDomainError()
+}
+
+function clearJmxDomainError(): void {
+  jmxDomainError.textContent = ''
 }
 
 function toErrorMessage(err: unknown): string {

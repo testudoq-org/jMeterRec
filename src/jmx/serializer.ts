@@ -1,7 +1,9 @@
 import type { CapturedRequest, PlanMeta } from '../models/captured-request'
 
 export function buildJmx(meta: PlanMeta, requests: CapturedRequest[]): string {
-  const samplers = requests.map((req, idx) => buildSampler(req, idx)).join('\n')
+  const samplers = requests
+    .map((req, idx) => `${buildSampler(req, idx)}\n        <hashTree/>`)
+    .join('\n')
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
