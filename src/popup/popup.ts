@@ -9,8 +9,11 @@ const start = requireElement<HTMLButtonElement>('start')
 const pause = requireElement<HTMLButtonElement>('pause')
 const resume = requireElement<HTMLButtonElement>('resume')
 const stop = requireElement<HTMLButtonElement>('stop')
-const exportJmx = requireElement<HTMLButtonElement>('export')
+const exportMode = requireElement<HTMLSelectElement>('exportMode')
+const exportBtn = requireElement<HTMLButtonElement>('export')
 const clear = requireElement<HTMLButtonElement>('clear')
+const playwrightOptions = requireElement<HTMLDivElement>('playwrightOptions')
+const baseUrlInput = requireElement<HTMLInputElement>('baseUrl')
 
 let snapshot: RecorderSnapshot = {
   status: 'idle',
@@ -21,6 +24,10 @@ let snapshot: RecorderSnapshot = {
 
 planNameInput.addEventListener('input', () => {
   snapshot = { ...snapshot, planName: planNameInput.value }
+})
+
+exportMode.addEventListener('change', () => {
+  playwrightOptions.style.display = exportMode.value === 'playwright' ? 'block' : 'none'
 })
 
 start.addEventListener('click', () => {
@@ -43,7 +50,7 @@ clear.addEventListener('click', () => {
   void send({ type: 'CLEAR_REQUESTS' })
 })
 
-exportJmx.addEventListener('click', () => {
+exportBtn.addEventListener('click', () => {
   void exportRecording()
 })
 
@@ -67,6 +74,30 @@ async function refreshState(): Promise<void> {
 
 async function exportRecording(): Promise<void> {
   clearError()
+
+  if (exportMode.value === 'playwright') {
+    const baseUrl = baseUrlInput.value.trim().length > 0 ? baseUrlInput.value.trim() : undefined
+
+    const response = await send({
+      type: 'EXPORT_PLAYWRIGHT',
+      baseUrl,
+      suiteName: snapshot.planName,
+      testCaseName: `${snapshot.planName} Test`,
+    })
+
+    if (!response.success) {
+      showError('Export failed.')
+      return
+    }
+
+    if (!isPlaywrightResponse(response)) {
+      showError('Export failed.')
+      return
+    }
+
+    download(response.playwright, response.filename)
+    return
+  }
 
   const response = await send({ type: 'EXPORT_JMX' })
 
@@ -112,7 +143,7 @@ function applySnapshot(next: RecorderSnapshot | undefined): void {
   pause.disabled = next.status !== 'recording'
   resume.disabled = next.status !== 'paused'
   stop.disabled = !next.recording
-  exportJmx.disabled = next.requestCount === 0
+  exportBtn.disabled = next.requestCount === 0
   clear.disabled = next.requestCount === 0 && !next.recording
 }
 
@@ -129,6 +160,15 @@ function isStateBroadcast(
 
 function isSnapshotResponse(response: BackgroundResponse): response is ResponseWithSnapshot {
   return 'snapshot' in response
+}
+
+function isPlaywrightResponse(
+  response: BackgroundResponse
+): response is Extract<
+  BackgroundResponse,
+  { success: true; playwright: string; filename: string }
+> {
+  return 'playwright' in response && 'filename' in response
 }
 
 function isBackgroundResponse(response: unknown): response is BackgroundResponse {
@@ -151,7 +191,7 @@ function labelFor(statusValue: RecorderSnapshot['status']): string {
 }
 
 function download(contents: string, filename: string): void {
-  const blob = new Blob([contents], { type: 'application/xml' })
+  const blob = new Blob([contents], { type: 'text/typescript' })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
 

@@ -18,6 +18,22 @@ export interface CapturedRequest {
   responseHeaders?: Record<string, string>
   error?: string
   completedAt?: string
+  transactionKey?: string
+}
+
+export interface ActionStep {
+  type: 'action'
+  command: string
+  target: string
+  value?: string
+  transactionKey?: string
+}
+
+export type HttpStep = CapturedRequest & { stepType?: 'http' }
+export type PlaywrightStep = HttpStep | ActionStep
+
+export function isPlaywrightHttpStep(step: PlaywrightStep): step is HttpStep {
+  return (step as ActionStep).type !== 'action'
 }
 
 export interface PlanMeta {

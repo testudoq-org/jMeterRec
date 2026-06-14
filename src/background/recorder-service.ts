@@ -1,6 +1,7 @@
 import { buildJmx } from '../jmx/serializer'
+import { buildPlaywrightResponse } from '../generators/playwright'
 import type { BackgroundRequest, BackgroundResponse, RecorderSnapshot } from '../messages'
-import type { CapturedRequest, PlanMeta } from '../models/captured-request'
+import type { CapturedRequest, PlanMeta, PlaywrightStep } from '../models/captured-request'
 import { RecorderState } from './recorder-state'
 import { TrafficCaptureService } from './traffic-capture'
 
@@ -92,14 +93,25 @@ export class RecorderService {
         case 'CLEAR_REQUESTS':
           await this.clearRequests()
           return { success: true, snapshot: this.getSnapshot() }
+        case 'ADD_ACTION': {
+          this.addAction(message)
+          await this.state.save()
+          return { success: true }
+        }
         case 'EXPORT_JMX':
           return this.buildExportResponse()
+        case 'EXPORT_PLAYWRIGHT':
+          return this.buildPlaywrightExportResponse(message)
         default:
           return unreachable(message)
       }
     } catch (err) {
       return { success: false, error: toErrorMessage(err) }
     }
+  }
+
+  private addAction(message: Extract<BackgroundRequest, { type: 'ADD_ACTION' }>): void {
+    this.state.addAction(message.action)
   }
 
   private buildExportResponse(): BackgroundResponse {
@@ -112,6 +124,32 @@ export class RecorderService {
       success: true,
       jmx: buildJmx(meta, this.state.getRequests()),
       filename: `${safeFilename(this.state.getSnapshot().planName)}.jmx`,
+    }
+  }
+
+  private buildPlaywrightExportResponse(
+    message: Extract<BackgroundRequest, { type: 'EXPORT_PLAYWRIGHT' }>
+  ): BackgroundResponse {
+    const snapshot = this.state.getSnapshot()
+    const meta = {
+      testCaseName: message.testCaseName ?? snapshot.planName,
+      baseUrl: message.baseUrl,
+    }
+
+    const httpSteps: PlaywrightStep[] = this.state.getRequests().map((req) => ({
+      ...req,
+      stepType: 'http' as const,
+    }))
+
+    const actionSteps: PlaywrightStep[] = this.state.getActions()
+
+    const steps: PlaywrightStep[] = [...httpSteps, ...actionSteps]
+
+    const result = buildPlaywrightResponse(meta, steps)
+    return {
+      success: true,
+      playwright: result.playwright,
+      filename: result.filename,
     }
   }
 

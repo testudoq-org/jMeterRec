@@ -98,7 +98,16 @@
 
     <div class="row">
       <button id="stop" class="danger">Stop</button>
-      <button id="export" class="secondary">Export JMX</button>
+      <select id="exportMode">
+        <option value="jmx">JMX</option>
+        <option value="playwright">Playwright</option>
+      </select>
+      <button id="export" class="secondary">Export</button>
+    </div>
+
+    <div id="playwrightOptions" style="display: none">
+      <label for="baseUrl">Base URL</label>
+      <input id="baseUrl" type="text" placeholder="https://example.com" autocomplete="off" />
     </div>
 
     <div class="row">

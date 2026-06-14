@@ -1,4 +1,4 @@
-import type { CapturedRequest } from '../models/captured-request'
+import type { CapturedRequest, ActionStep } from '../models/captured-request'
 import type { RecorderSnapshot, RecorderStatus } from '../messages'
 
 export interface RecorderStorage {
@@ -9,6 +9,7 @@ export interface RecorderStorage {
 export class RecorderState {
   private status: RecorderStatus = 'idle'
   private requests: CapturedRequest[] = []
+  private actions: ActionStep[] = []
   private planName = 'Untitled Plan'
   private tabId: number | undefined
   private startedAt: string | undefined
@@ -23,6 +24,7 @@ export class RecorderState {
       'status',
       'recording',
       'requests',
+      'actions',
       'planName',
       'tabId',
       'startedAt',
@@ -30,6 +32,7 @@ export class RecorderState {
 
     this.status = this.readStatus(state.status, state.recording)
     this.requests = this.readRequests(state.requests)
+    this.actions = this.readActions(state.actions)
     this.planName =
       typeof state.planName === 'string' && state.planName.length > 0
         ? state.planName
@@ -43,6 +46,7 @@ export class RecorderState {
       status: this.status,
       recording: this.status === 'recording' || this.status === 'paused',
       requests: this.requests,
+      actions: this.actions,
       planName: this.planName,
       tabId: this.tabId,
       startedAt: this.startedAt,
@@ -55,6 +59,7 @@ export class RecorderState {
     this.tabId = tabId
     this.startedAt = new Date().toISOString()
     this.requests = []
+    this.actions = []
   }
 
   stop(): void {
@@ -76,6 +81,7 @@ export class RecorderState {
   reset(): void {
     this.status = 'idle'
     this.requests = []
+    this.actions = []
     this.planName = 'Untitled Plan'
     this.tabId = undefined
     this.startedAt = undefined
@@ -87,8 +93,18 @@ export class RecorderState {
     }
   }
 
+  addAction(action: ActionStep): void {
+    if (this.status === 'recording') {
+      this.actions.push(action)
+    }
+  }
+
   getRequests(): CapturedRequest[] {
     return [...this.requests]
+  }
+
+  getActions(): ActionStep[] {
+    return [...this.actions]
   }
 
   clearRequests(): void {
@@ -130,6 +146,14 @@ export class RecorderState {
     return value.filter(this.isCapturedRequest)
   }
 
+  private readActions(value: unknown): ActionStep[] {
+    if (!Array.isArray(value)) {
+      return []
+    }
+
+    return value.filter(this.isActionStep)
+  }
+
   private isCapturedRequest(value: unknown): value is CapturedRequest {
     if (typeof value !== 'object' || value === null) {
       return false
@@ -145,6 +169,19 @@ export class RecorderState {
       record.headers !== null &&
       typeof record.queryParams === 'object' &&
       record.queryParams !== null
+    )
+  }
+
+  private isActionStep(value: unknown): value is ActionStep {
+    if (typeof value !== 'object' || value === null) {
+      return false
+    }
+
+    const record = value as Record<string, unknown>
+    return (
+      record.type === 'action' &&
+      typeof record.command === 'string' &&
+      typeof record.target === 'string'
     )
   }
 }

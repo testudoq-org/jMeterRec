@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { RecorderState } from './recorder-state'
-import type { CapturedRequest } from '../models/captured-request'
+import type { CapturedRequest, ActionStep } from '../models/captured-request'
 
 class MemoryStorage {
   private values = new Map<string, unknown>()
@@ -102,5 +102,57 @@ describe('RecorderState', () => {
       requestCount: 0,
     })
     expect(set).toHaveBeenCalledWith(expect.objectContaining({ requests: [] }))
+  })
+
+  it('adds action steps while recording', async () => {
+    const storage = new MemoryStorage()
+    const state = new RecorderState(storage)
+
+    await state.load()
+    state.start('Action Plan')
+
+    const action: ActionStep = {
+      type: 'action',
+      command: 'click',
+      target: '#submit-button',
+    }
+
+    state.addAction(action)
+    expect(state.getActions()).toHaveLength(1)
+    expect(state.getActions()[0]).toEqual(action)
+  })
+
+  it('does not add actions while paused or stopped', () => {
+    const storage = new MemoryStorage()
+    const state = new RecorderState(storage)
+
+    const action: ActionStep = {
+      type: 'action',
+      command: 'click',
+      target: '#submit-button',
+    }
+
+    state.addAction(action)
+    expect(state.getActions()).toHaveLength(0)
+
+    state.start('Paused Action Plan')
+    state.pause()
+    state.addAction(action)
+    expect(state.getActions()).toHaveLength(0)
+  })
+
+  it('clears actions on reset', async () => {
+    const storage = new MemoryStorage()
+    const set = vi.fn(storage.set.bind(storage))
+    const state = new RecorderState(storage, set)
+
+    await state.load()
+    state.start('Old Action Plan')
+    state.addAction({ type: 'action', command: 'click', target: '#btn' })
+    state.reset()
+    await state.save()
+
+    expect(state.getActions()).toEqual([])
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ actions: [] }))
   })
 })

@@ -1,3 +1,5 @@
+import type { ActionStep } from './models/captured-request'
+
 export type RecorderStatus = 'idle' | 'recording' | 'paused'
 
 export interface RecorderSnapshot {
@@ -17,12 +19,15 @@ export type BackgroundRequest =
   | { type: 'GET_STATE' }
   | { type: 'GET_REQUESTS' }
   | { type: 'CLEAR_REQUESTS' }
+  | { type: 'ADD_ACTION'; action: ActionStep }
   | { type: 'EXPORT_JMX' }
+  | { type: 'EXPORT_PLAYWRIGHT'; baseUrl?: string; suiteName?: string; testCaseName?: string }
 
 export type BackgroundResponse =
   | { success: true; snapshot?: RecorderSnapshot; requests?: unknown[] }
   | { success: true; requestCount: number }
   | { success: true; jmx: string; filename: string }
+  | { success: true; playwright: string; filename: string }
   | { success: false; error: string }
 
 export type BackgroundBroadcast =

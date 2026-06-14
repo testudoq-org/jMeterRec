@@ -1,5 +1,8 @@
 import type { RecorderSnapshot } from '../messages'
 
+// Import action recorder to enable DOM action capture
+import './action-recorder'
+
 const CONTAINER_ID = 'bm-jmx-recorder-transaction-panel'
 
 type ContentMessage =
