@@ -4,163 +4,114 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Capultura</title>
-    <style>
-      :root {
-        color-scheme: light;
-        font-family: Arial, sans-serif;
-      }
-
-      body {
-        width: 320px;
-        margin: 0;
-        padding: 16px;
-        background: #f8fafc;
-        color: #0f172a;
-      }
-
-      h1 {
-        margin: 0 0 12px;
-        font-size: 18px;
-      }
-
-      label {
-        display: block;
-        margin-bottom: 4px;
-        font-size: 12px;
-        font-weight: 700;
-      }
-
-      input {
-        box-sizing: border-box;
-        width: 100%;
-        margin-bottom: 12px;
-        padding: 8px;
-        border: 1px solid #cbd5e1;
-        border-radius: 6px;
-      }
-
-      fieldset {
-        margin: 0 0 12px;
-        padding: 8px;
-        border: 1px solid #cbd5e1;
-        border-radius: 6px;
-      }
-
-      legend {
-        padding: 0 4px;
-        font-size: 12px;
-        font-weight: 700;
-      }
-
-      .domain-list {
-        display: grid;
-        gap: 6px;
-        margin-bottom: 8px;
-      }
-
-      .domain-option {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        font-size: 12px;
-      }
-
-      .domain-option input {
-        width: auto;
-        margin: 0;
-      }
-
-      .domain-status {
-        margin-bottom: 8px;
-        font-size: 12px;
-      }
-
-      .status {
-        margin: 8px 0 12px;
-        padding: 8px;
-        border-radius: 6px;
-        background: #e2e8f0;
-        font-size: 13px;
-      }
-
-      .row {
-        display: flex;
-        gap: 8px;
-        margin-bottom: 8px;
-      }
-
-      button {
-        flex: 1;
-        padding: 8px;
-        border: 0;
-        border-radius: 6px;
-        background: #2563eb;
-        color: white;
-        cursor: pointer;
-      }
-
-      button.secondary {
-        background: #64748b;
-      }
-
-      button.danger {
-        background: #dc2626;
-      }
-
-      button:disabled {
-        background: #cbd5e1;
-        cursor: not-allowed;
-      }
-
-      .error {
-        color: #dc2626;
-        font-size: 12px;
-      }
-    </style>
+    <link rel="stylesheet" href="./popup.css" />
   </head>
   <body>
     <h1>Capultura</h1>
 
-    <label for="planName">Plan name</label>
-    <input id="planName" type="text" autocomplete="off" />
+    <section class="card" aria-labelledby="recorderTitle">
+      <div class="card-header">
+        <div>
+          <h2 id="recorderTitle" class="sr-only">Recorder controls</h2>
+          <label for="planName">Plan name</label>
+          <input id="planName" type="text" autocomplete="off" />
+          <div id="status" class="status status-idle" aria-live="polite">
+            Loading recorder state…
+          </div>
+          <div id="elapsedTime" class="elapsed" aria-live="polite">Elapsed: 00:00</div>
+        </div>
+      </div>
 
-    <div id="status" class="status">Loading recorder state…</div>
+      <div class="row">
+        <button id="start" type="button">Start</button>
+        <button id="pause" class="secondary" type="button">Pause</button>
+        <button id="resume" class="secondary" type="button">Resume</button>
+      </div>
 
-    <div class="row">
-      <button id="start">Start</button>
-      <button id="pause" class="secondary">Pause</button>
-      <button id="resume" class="secondary">Resume</button>
-    </div>
+      <div class="row">
+        <button id="stop" class="danger" type="button">Stop</button>
+        <label for="exportMode" class="sr-only">Export format</label>
+        <select id="exportMode">
+          <option value="jmx">JMX</option>
+          <option value="playwright">Playwright</option>
+        </select>
+        <button id="export" class="secondary" type="button">Export</button>
+      </div>
 
-    <div class="row">
-      <button id="stop" class="danger">Stop</button>
-      <select id="exportMode">
-        <option value="jmx">JMX</option>
-        <option value="playwright">Playwright</option>
-      </select>
-      <button id="export" class="secondary">Export</button>
-    </div>
+      <div id="jmxOptions" style="display: none">
+        <fieldset>
+          <legend>Domains to include</legend>
+          <div id="jmxDomains" class="domain-list"></div>
+          <div id="jmxDomainStatus" class="domain-status"></div>
+          <div id="jmxDomainError" class="error" aria-live="polite"></div>
+          <button id="exportJmxSelected" class="secondary" disabled type="button">
+            Export selected domains
+          </button>
+        </fieldset>
+      </div>
 
-    <div id="jmxOptions" style="display: none">
-      <fieldset>
-        <legend>Domains to include</legend>
-        <div id="jmxDomains" class="domain-list"></div>
-        <div id="jmxDomainStatus" class="domain-status"></div>
-        <div id="jmxDomainError" class="error" aria-live="polite"></div>
-        <button id="exportJmxSelected" class="secondary" disabled>Export selected domains</button>
-      </fieldset>
-    </div>
+      <div id="playwrightOptions" style="display: none">
+        <label for="baseUrl">Base URL</label>
+        <input id="baseUrl" type="text" placeholder="https://example.com" autocomplete="off" />
+      </div>
 
-    <div id="playwrightOptions" style="display: none">
-      <label for="baseUrl">Base URL</label>
-      <input id="baseUrl" type="text" placeholder="https://example.com" autocomplete="off" />
-    </div>
-
-    <div class="row">
-      <button id="clear" class="secondary">Clear</button>
-    </div>
+      <div class="row">
+        <button id="clear" class="secondary" type="button">Clear</button>
+      </div>
+    </section>
 
     <div id="error" class="error" aria-live="polite"></div>
+
+    <section
+      id="capultura-transaction-panel"
+      class="transaction-panel"
+      aria-labelledby="transactionPanelTitle"
+    >
+      <div class="transaction-panel__header">
+        <div>
+          <h2 id="transactionPanelTitle">Live transactions</h2>
+          <p id="transactionSummary" class="muted">No requests captured yet.</p>
+        </div>
+        <button id="openDetachedInspector" class="secondary" type="button">Detach</button>
+      </div>
+
+      <div class="transaction-filters" role="search" aria-label="Filter transactions">
+        <label for="transactionMethodFilter">Method</label>
+        <select id="transactionMethodFilter">
+          <option value="all">All</option>
+          <option value="GET">GET</option>
+          <option value="POST">POST</option>
+          <option value="PUT">PUT</option>
+          <option value="PATCH">PATCH</option>
+          <option value="DELETE">DELETE</option>
+        </select>
+
+        <label for="transactionStatusFilter">Status</label>
+        <select id="transactionStatusFilter">
+          <option value="all">All</option>
+          <option value="2xx">2xx</option>
+          <option value="3xx">3xx</option>
+          <option value="4xx">4xx</option>
+          <option value="5xx">5xx</option>
+          <option value="error">Error</option>
+        </select>
+
+        <label for="transactionSearch">Search URL</label>
+        <input
+          id="transactionSearch"
+          type="search"
+          autocomplete="off"
+          placeholder="example.com/api"
+        />
+      </div>
+
+      <div
+        id="transactionList"
+        class="transaction-list"
+        role="list"
+        aria-label="Recent HTTP transactions"
+      ></div>
+    </section>
 
     <script type="module" src="./popup.ts"></script>
   </body>
