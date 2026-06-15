@@ -168,14 +168,8 @@ h1::before {
   height: 1.25rem;
   flex: 0 0 1.25rem;
   margin-right: 0.125rem;
-  background: linear-gradient(
-    135deg,
-    var(--color-brand-cyan),
-    var(--color-brand-violet),
-    var(--color-brand-pink)
-  );
-  -webkit-mask: url('icons/master.svg') center / contain no-repeat;
-  mask: url('icons/master.svg') center / contain no-repeat;
+  background: url('../icons/master.svg') center / contain no-repeat;
+
   filter: drop-shadow(0 0 10px var(--color-neon-glow));
   transform-origin: center;
   transition:
