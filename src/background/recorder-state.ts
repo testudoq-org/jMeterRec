@@ -179,11 +179,8 @@ export class RecorderState {
   }
 
   private isActionStep(value: unknown): value is ActionStep {
-    if (typeof value !== 'object' || value === null) {
-      return false
-    }
+    const record = value as { type?: unknown; command?: unknown; target?: unknown }
 
-    const record = value as Record<string, unknown>
     return (
       record.type === 'action' &&
       typeof record.command === 'string' &&

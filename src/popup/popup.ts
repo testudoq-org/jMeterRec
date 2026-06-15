@@ -20,6 +20,10 @@ const defaultTransactionPanelOptions: TransactionPanelOptions = {
   theme: 'light',
 }
 
+const capturedRequestStringFields = ['id', 'timestamp', 'method', 'url'] as const
+const capturedRequestObjectFields = ['headers', 'queryParams'] as const
+const statusBuckets = ['pending', '2xx', '3xx', '4xx', '5xx'] as const
+
 const planNameInput = requireElement<HTMLInputElement>('planName')
 const status = requireElement<HTMLDivElement>('status')
 const elapsedTime = requireElement<HTMLDivElement>('elapsedTime')
@@ -62,6 +66,7 @@ let snapshot: RecorderSnapshot = {
 
 let elapsedTimer: number | null = null
 let detachedWindowId: number | null = null
+let pausedElapsedSeconds = 0
 
 chrome.windows.onRemoved.addListener((windowId) => {
   if (windowId === detachedWindowId) {
@@ -99,7 +104,12 @@ resume.addEventListener('click', () => {
 
 stop.addEventListener('click', () => {
   cleanupTimer()
-  void send({ type: 'STOP_RECORDING' })
+  void send({ type: 'STOP_RECORDING' }).then((response) => {
+    if (response.success) {
+      snapshot = { ...snapshot, status: 'idle', recording: false, startedAt: undefined }
+      applySnapshot(snapshot)
+    }
+  })
 })
 
 clear.addEventListener('click', () => {
@@ -197,37 +207,45 @@ async function loadTransactionPanelOptions(): Promise<void> {
 async function exportRecording(): Promise<void> {
   clearError()
 
-  if (exportMode.value === 'playwright') {
-    const baseUrl = baseUrlInput.value.trim().length > 0 ? baseUrlInput.value.trim() : undefined
-
-    const response = await send({
-      type: 'EXPORT_PLAYWRIGHT',
-      baseUrl,
-      suiteName: snapshot.planName,
-      testCaseName: `${snapshot.planName} Test`,
-    })
-
-    if (!response.success) {
-      showError('Export failed.')
-      return
-    }
-
-    if (!isPlaywrightResponse(response)) {
-      showError('Export failed.')
-      return
-    }
-
-    download(response.playwright, response.filename)
+  if (exportMode.value !== 'playwright') {
+    await prepareJmxExport()
     return
   }
 
-  await prepareJmxExport()
+  await exportPlaywrightRecording()
+}
+
+async function exportPlaywrightRecording(): Promise<void> {
+  const baseUrl = baseUrlInput.value.trim().length > 0 ? baseUrlInput.value.trim() : undefined
+
+  const response = await send({
+    type: 'EXPORT_PLAYWRIGHT',
+    baseUrl,
+    suiteName: snapshot.planName,
+    testCaseName: `${snapshot.planName} Test`,
+  })
+
+  if (!canDownloadPlaywright(response)) {
+    showError('Export failed.')
+    return
+  }
+
+  download(response.playwright, response.filename)
+}
+
+function canDownloadPlaywright(
+  response: BackgroundResponse
+): response is Extract<
+  BackgroundResponse,
+  { success: true; playwright: string; filename: string }
+> {
+  return response.success && isPlaywrightResponse(response)
 }
 
 async function prepareJmxExport(): Promise<void> {
   const response = await send({ type: 'GET_DOMAINS' })
 
-  if (!response.success || !isDomainsResponse(response)) {
+  if (!canLoadDomains(response)) {
     showError('Unable to load domains for JMX export.')
     return
   }
@@ -239,14 +257,15 @@ async function prepareJmxExport(): Promise<void> {
     return
   }
 
-  const [domain] = availableDomains
-
-  if (domain !== undefined) {
-    await exportJmx([domain])
-  }
-
+  await exportJmx([availableDomains[0]!])
   selectedDomains = new Set(availableDomains)
   renderJmxDomainSelector()
+}
+
+function canLoadDomains(
+  response: BackgroundResponse
+): response is Extract<BackgroundResponse, { success: true; domains: string[] }> {
+  return response.success && isDomainsResponse(response)
 }
 
 async function exportSelectedJmxDomains(): Promise<void> {
@@ -267,8 +286,13 @@ async function exportJmx(includedDomains: string[]): Promise<void> {
     includedDomains,
   })
 
-  if (!response.success || !('jmx' in response)) {
-    showError(response.success ? 'Export failed.' : response.error)
+  if (!response.success) {
+    showError(response.error)
+    return
+  }
+
+  if (!('jmx' in response)) {
+    showError('Export failed.')
     return
   }
 
@@ -300,6 +324,23 @@ async function send(message: BackgroundRequest): Promise<BackgroundResponse> {
 function applySnapshot(next: RecorderSnapshot | undefined): void {
   if (next === undefined) {
     return
+  }
+
+  if (next.status === 'recording' && snapshot.status === 'paused') {
+    next = { ...next, startedAt: new Date(Date.now() - pausedElapsedSeconds * 1000).toISOString() }
+    pausedElapsedSeconds = 0
+  }
+
+  if (
+    next.status === 'paused' &&
+    snapshot.status === 'recording' &&
+    snapshot.startedAt !== undefined
+  ) {
+    pausedElapsedSeconds = secondsBetween(snapshot.startedAt, new Date().toISOString())
+  }
+
+  if (next.status === 'idle') {
+    pausedElapsedSeconds = 0
   }
 
   snapshot = next
@@ -352,13 +393,36 @@ function filterTransactions(): CapturedRequest[] {
   const statusFilter = transactionStatusFilter.value
   const search = transactionSearch.value.trim().toLowerCase()
 
-  return transactions.filter((request) => {
-    const matchesMethod = method === 'all' || request.method === method
-    const matchesStatus = statusFilter === 'all' || statusBucket(request) === statusFilter
-    const matchesSearch = search.length === 0 || request.url.toLowerCase().includes(search)
+  return transactions.filter((request) => matchesTransaction(request, method, statusFilter, search))
+}
 
-    return matchesMethod && matchesStatus && matchesSearch
-  })
+function matchesTransaction(
+  request: CapturedRequest,
+  method: string,
+  statusFilter: string,
+  search: string
+): boolean {
+  if (!matchesMethod(request, method)) {
+    return false
+  }
+
+  if (!matchesStatus(request, statusFilter)) {
+    return false
+  }
+
+  return matchesSearch(request, search)
+}
+
+function matchesMethod(request: CapturedRequest, method: string): boolean {
+  return method === 'all' || request.method === method
+}
+
+function matchesStatus(request: CapturedRequest, statusFilter: string): boolean {
+  return statusFilter === 'all' || statusBucket(request) === statusFilter
+}
+
+function matchesSearch(request: CapturedRequest, search: string): boolean {
+  return search.length === 0 || request.url.toLowerCase().includes(search)
 }
 
 function createTransactionRow(request: CapturedRequest): HTMLButtonElement {
@@ -373,38 +437,68 @@ function createTransactionRow(request: CapturedRequest): HTMLButtonElement {
   row.className = 'transaction-row'
   row.setAttribute('aria-expanded', 'false')
   row.setAttribute('aria-controls', detailsId)
-  row.setAttribute(
-    'aria-label',
-    `${request.method} ${shortenUrl(request.url)} ${request.error ? 'error' : (request.statusCode ?? 'pending')}`
-  )
+  row.setAttribute('aria-label', transactionAriaLabel(request))
   row.title = request.url
 
   method.textContent = request.method
-  method.className = `method ${methodClass(request.method)}`
+  method.className = transactionMethodClass(request.method)
 
   url.textContent = shortenUrl(request.url)
   url.className = 'transaction-url'
 
-  requestStatus.textContent = request.error ? 'Error' : statusLabel(request.statusCode)
-  requestStatus.className = `status-badge ${statusClass(request)}`
+  requestStatus.textContent = transactionStatusText(request)
+  requestStatus.className = transactionStatusClass(request)
 
   time.textContent = formatTime(request.timestamp)
   time.className = 'transaction-time'
 
   row.append(method, url, requestStatus, time)
   row.addEventListener('click', () => {
-    const expanded = row.getAttribute('aria-expanded') === 'true'
-
-    row.setAttribute('aria-expanded', String(!expanded))
-
-    if (expanded) {
-      row.replaceChildren(method, url, requestStatus, time)
-    } else {
-      row.replaceChildren(method, url, requestStatus, time, createDetails(request, detailsId))
-    }
+    toggleTransactionDetails(row, request, detailsId, method, url, requestStatus, time)
   })
 
   return row
+}
+
+function toggleTransactionDetails(
+  row: HTMLButtonElement,
+  request: CapturedRequest,
+  detailsId: string,
+  method: HTMLSpanElement,
+  url: HTMLSpanElement,
+  requestStatus: HTMLSpanElement,
+  time: HTMLSpanElement
+): void {
+  const expanded = row.getAttribute('aria-expanded') === 'true'
+
+  row.setAttribute('aria-expanded', String(!expanded))
+
+  if (expanded) {
+    row.replaceChildren(method, url, requestStatus, time)
+    return
+  }
+
+  row.replaceChildren(method, url, requestStatus, time, createDetails(request, detailsId))
+}
+
+function transactionAriaLabel(request: CapturedRequest): string {
+  return `${request.method} ${shortenUrl(request.url)} ${transactionStatusText(request).toLowerCase()}`
+}
+
+function transactionMethodClass(method: string): string {
+  return `method ${methodClass(method)}`
+}
+
+function transactionStatusText(request: CapturedRequest): string {
+  if (request.error) {
+    return 'Error'
+  }
+
+  return statusLabel(request.statusCode)
+}
+
+function transactionStatusClass(request: CapturedRequest): string {
+  return `status-badge ${statusClass(request)}`
 }
 
 function createDetails(request: CapturedRequest, detailsId: string): HTMLPreElement {
@@ -540,22 +634,30 @@ function isRecorderSnapshot(value: unknown): value is RecorderSnapshot {
 }
 
 function isCapturedRequest(value: unknown): value is CapturedRequest {
-  if (typeof value !== 'object' || value === null) {
+  if (!isRecord(value)) {
     return false
   }
 
-  const record = value as Record<string, unknown>
+  if (hasAllStringFields(value, capturedRequestStringFields)) {
+    return hasAllObjectFields(value, capturedRequestObjectFields)
+  }
 
-  return (
-    typeof record.id === 'string' &&
-    typeof record.timestamp === 'string' &&
-    typeof record.method === 'string' &&
-    typeof record.url === 'string' &&
-    typeof record.headers === 'object' &&
-    record.headers !== null &&
-    typeof record.queryParams === 'object' &&
-    record.queryParams !== null
-  )
+  return false
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function hasAllStringFields(record: Record<string, unknown>, fields: readonly string[]): boolean {
+  return fields.every((field) => typeof record[field] === 'string')
+}
+
+function hasAllObjectFields(record: Record<string, unknown>, fields: readonly string[]): boolean {
+  return fields.every((field) => {
+    const value = record[field]
+    return typeof value === 'object' && value !== null
+  })
 }
 
 function normalizeTransactionPanelOptions(
@@ -632,27 +734,9 @@ function statusBucket(request: CapturedRequest): string {
     return 'error'
   }
 
-  if (request.statusCode === undefined) {
-    return 'pending'
-  }
-
-  if (request.statusCode >= 200 && request.statusCode < 300) {
-    return '2xx'
-  }
-
-  if (request.statusCode >= 300 && request.statusCode < 400) {
-    return '3xx'
-  }
-
-  if (request.statusCode >= 400 && request.statusCode < 500) {
-    return '4xx'
-  }
-
-  if (request.statusCode >= 500) {
-    return '5xx'
-  }
-
-  return 'pending'
+  const statusCode = request.statusCode ?? 0
+  const bucketIndex = Math.min(4, Math.max(0, Math.floor((statusCode - 200) / 100)))
+  return statusBuckets[bucketIndex]!
 }
 
 function statusClass(request: CapturedRequest): string {
@@ -731,18 +815,22 @@ function formatElapsed(startedAt: string | undefined): string {
 }
 
 function formatDurationBetween(startedAt: string | undefined, completedAt?: string): string {
-  const start = startedAt === undefined ? Date.now() : new Date(startedAt).getTime()
-  const end = completedAt === undefined ? Date.now() : new Date(completedAt).getTime()
-
-  if (!Number.isFinite(start) || !Number.isFinite(end)) {
-    return 'unknown'
-  }
-
-  const totalSeconds = Math.max(0, Math.floor((end - start) / 1000))
+  const totalSeconds = secondsBetween(startedAt, completedAt)
   const minutes = Math.floor(totalSeconds / 60)
   const seconds = totalSeconds % 60
 
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+}
+
+function secondsBetween(startedAt: string | undefined, completedAt?: string): number {
+  const start = startedAt === undefined ? Date.now() : new Date(startedAt).getTime()
+  const end = completedAt === undefined ? Date.now() : new Date(completedAt).getTime()
+
+  if (!Number.isFinite(start) || !Number.isFinite(end)) {
+    return 0
+  }
+
+  return Math.max(0, Math.floor((end - start) / 1000))
 }
 
 function formatTime(isoTimestamp: string): string {

@@ -109,7 +109,10 @@ saveTransactionPanelOptions.addEventListener('click', () => {
 
 function normalizeOptions(options: StoredOptions): StoredOptions {
   return {
-    defaultPlanName: options.defaultPlanName || defaults.defaultPlanName,
+    defaultPlanName:
+      typeof options.defaultPlanName === 'string'
+        ? options.defaultPlanName
+        : defaults.defaultPlanName,
     threads: positiveNumber(String(options.threads), defaults.threads),
     rampUp: nonNegativeNumber(String(options.rampUp), defaults.rampUp),
     loops: positiveNumber(String(options.loops), defaults.loops),
@@ -141,7 +144,7 @@ function nonNegativeNumber(value: string, fallback: number): number {
 }
 
 function boundedNumber(value: unknown, min: number, max: number, fallback: number): number {
-  const parsed = typeof value === 'number' ? value : Number(value)
+  const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
 
   if (!Number.isFinite(parsed)) {
     return fallback

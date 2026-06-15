@@ -1,38 +1,74 @@
-/// <reference types="vitest" />
-/// <reference types="jsdom" />
+import { JSDOM } from 'jsdom'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { describe, expect, it, vi, beforeEach, afterEach } from "vitest"
+type RuntimeMessage = Record<string, unknown>
 
-// ---- chrome stubs ----
-const createMessageChannel = () => {
-  const listeners = new Set<(message: unknown, sender: chrome.runtime.MessageSender, sendResponse: (response: unknown) => void) => void | boolean>()
-  return {
-    addListener: (cb: typeof listeners extends Set<infer U> ? U : never) => {
-      listeners.add(cb)
-      return () => listeners.delete(cb)
-    },
-    sendMessage: (_message: unknown) => {
-      // Each caller awaits its own promise; this stub is fine for unit-level assertions.
-      return Promise.resolve({ success: true })
-    },
-    _listeners: () => listeners,
-  }
+const storageGetCalls: Array<{ keys: unknown }> = []
+const storageSetCalls: Array<Record<string, unknown>> = []
+const runtimeMessageListeners = new Set<(message: unknown) => void>()
+
+const recordingSnapshot = {
+  status: 'recording',
+  recording: true,
+  planName: 'Untitled Plan',
+  requestCount: 0,
+  startedAt: '2026-01-01T00:00:00.000Z',
 }
 
-const storageGetCalls: Array<{ keys: string[] }> = []
-const storageSetCalls: Array<Record<string, unknown>> = []
+const pausedSnapshot = {
+  ...recordingSnapshot,
+  status: 'paused',
+}
+
+const idleSnapshot = {
+  status: 'idle',
+  recording: false,
+  planName: 'Untitled Plan',
+  requestCount: 0,
+}
 
 const chromeStub = {
   runtime: {
-    sendMessage: vi.fn(),
-    onMessage: { addListener: vi.fn() },
+    sendMessage: vi.fn((message: unknown) => {
+      const record = isRuntimeMessage(message) ? message : {}
+
+      if (record.type === 'START_RECORDING') {
+        broadcastState(recordingSnapshot)
+        return Promise.resolve({ success: true, snapshot: recordingSnapshot })
+      }
+
+      if (record.type === 'PAUSE_RECORDING') {
+        broadcastState(pausedSnapshot)
+        return Promise.resolve({ success: true, snapshot: pausedSnapshot })
+      }
+
+      if (record.type === 'RESUME_RECORDING') {
+        broadcastState(recordingSnapshot)
+        return Promise.resolve({ success: true, snapshot: recordingSnapshot })
+      }
+
+      if (record.type === 'GET_STATE') {
+        return Promise.resolve({ success: true, snapshot: idleSnapshot })
+      }
+
+      if (record.type === 'STOP_RECORDING') {
+        return Promise.resolve({ success: true, requestCount: 0 })
+      }
+
+      return Promise.resolve({ success: true })
+    }),
+    onMessage: {
+      addListener: vi.fn((listener: (message: unknown) => void) => {
+        runtimeMessageListeners.add(listener)
+      }),
+    },
     onSuspend: { addListener: vi.fn() },
     getURL: vi.fn((path: string) => `chrome-extension://test/${path}`),
   },
   storage: {
     local: {
-      get: vi.fn(async (keys: string[]) => {
-        storageGetCalls.push({ keys: Array.isArray(keys) ? [...keys] : [keys] })
+      get: vi.fn(async (keys: unknown) => {
+        storageGetCalls.push({ keys })
         return {}
       }),
       set: vi.fn(async (values: Record<string, unknown>) => {
@@ -47,22 +83,18 @@ const chromeStub = {
   },
 }
 
-vi.stubGlobal("chrome", chromeStub)
+vi.stubGlobal('chrome', chromeStub)
 
-// ---- blink timer worries away: we control setInterval/clearInterval ourselves ----
-const intervalHandlers = new Map<number, () => void>()
-const originalSetInterval = globalThis.setInterval
-const originalClearInterval = globalThis.clearInterval
-
-const fakeSetInterval = (handler: TimerHandler, ms?: number, ..._args: unknown[]) => {
-  const id = (originalSetInterval as unknown as (fn: TimerHandler, ms?: number) => number)(handler, ms)
-  return id
-}
-const fakeClearInterval = (id: number) => {
-  ;(originalClearInterval as unknown as (id: number) => void)(id)
+function isRuntimeMessage(message: unknown): message is RuntimeMessage {
+  return typeof message === 'object' && message !== null
 }
 
-// ---- HTML fixture ----
+function broadcastState(snapshot: unknown): void {
+  for (const listener of runtimeMessageListeners) {
+    listener({ type: 'STATE_CHANGED', snapshot })
+  }
+}
+
 function buildPopupHtml(): string {
   return `<!doctype html>
   <html lang="en">
@@ -97,8 +129,8 @@ function buildPopupHtml(): string {
 }
 
 async function loadPopupModule() {
-  // Reset caches between runs.
   vi.resetModules()
+  runtimeMessageListeners.clear()
   storageGetCalls.length = 0
   storageSetCalls.length = 0
   chromeStub.runtime.sendMessage.mockClear()
@@ -107,113 +139,119 @@ async function loadPopupModule() {
   chromeStub.storage.local.get.mockClear()
   chromeStub.storage.local.set.mockClear()
 
-  vi.stubGlobal("document", new DOMParser().parseFromString(buildPopupHtml(), "text/html"))
+  vi.stubGlobal('document', new JSDOM(buildPopupHtml()).window.document)
 
-  const mod = await import("./popup.ts")
-  // Module top-level attaches listeners; ensure timers are faked afterward too.
-  return mod
+  await import('./popup.ts')
+  await flushRuntimeResponse()
 }
 
-describe("popup timer and state contract", () => {
+async function flushRuntimeResponse(): Promise<void> {
+  await Promise.resolve()
+  await Promise.resolve()
+}
+
+describe('popup timer and state contract', () => {
   beforeEach(() => {
     vi.useFakeTimers()
+    vi.setSystemTime('2026-01-01T00:00:00.000Z')
   })
 
   afterEach(() => {
     vi.useRealTimers()
   })
 
-  it("clicking Start sets elapsed to 00:00 and begins advancing the timer", async () => {
+  it('clicking Start sets elapsed to 00:00 and begins advancing the timer', async () => {
     await loadPopupModule()
-    const elapsedEl = document.getElementById("elapsedTime") as HTMLElement
-    const startBtn = document.getElementById("start") as HTMLButtonElement
-    const pauseBtn = document.getElementById("pause") as HTMLButtonElement
+    const elapsedEl = document.getElementById('elapsedTime') as HTMLElement
+    const startBtn = document.getElementById('start') as HTMLButtonElement
+    const pauseBtn = document.getElementById('pause') as HTMLButtonElement
 
-    expect(elapsedEl.textContent).toBe("Elapsed: 00:00")
+    expect(elapsedEl.textContent).toBe('Elapsed: 00:00')
     expect(startBtn.disabled).toBe(false)
     expect(pauseBtn.disabled).toBe(true)
 
     startBtn.click()
-    // Pause button becomes enabled after START_RECORDING response.
+    await flushRuntimeResponse()
     expect(pauseBtn.disabled).toBe(false)
 
     vi.advanceTimersByTime(1500)
-    expect(elapsedEl.textContent).toBe("Elapsed: 00:01")
+    expect(elapsedEl.textContent).toBe('Elapsed: 00:01')
   })
 
-  it("clicking Pause stops the timer and disables Pause", async () => {
+  it('clicking Pause stops the timer and disables Pause', async () => {
     await loadPopupModule()
 
-    const startBtn = document.getElementById("start") as HTMLButtonElement
-    const pauseBtn = document.getElementById("pause") as HTMLButtonElement
-    const elapsedEl = document.getElementById("elapsedTime") as HTMLElement
+    const startBtn = document.getElementById('start') as HTMLButtonElement
+    const pauseBtn = document.getElementById('pause') as HTMLButtonElement
+    const elapsedEl = document.getElementById('elapsedTime') as HTMLElement
 
     startBtn.click()
+    await flushRuntimeResponse()
     vi.advanceTimersByTime(2000)
-    expect(elapsedEl.textContent).toBe("Elapsed: 00:02")
+    expect(elapsedEl.textContent).toBe('Elapsed: 00:02')
 
     pauseBtn.click()
+    await flushRuntimeResponse()
     expect(pauseBtn.disabled).toBe(true)
 
     vi.advanceTimersByTime(2000)
-    expect(elapsedEl.textContent).toBe("Elapsed: 00:02")
+    expect(elapsedEl.textContent).toBe('Elapsed: 00:02')
   })
 
-  it("clicking Resume restarts the timer from the paused value", async () => {
+  it('clicking Resume restarts the timer from the paused value', async () => {
     await loadPopupModule()
 
-    const startBtn = document.getElementById("start") as HTMLButtonElement
-    const pauseBtn = document.getElementById("pause") as HTMLButtonElement
-    const resumeBtn = document.getElementById("resume") as HTMLButtonElement
-    const elapsedEl = document.getElementById("elapsedTime") as HTMLElement
+    const startBtn = document.getElementById('start') as HTMLButtonElement
+    const pauseBtn = document.getElementById('pause') as HTMLButtonElement
+    const resumeBtn = document.getElementById('resume') as HTMLButtonElement
+    const elapsedEl = document.getElementById('elapsedTime') as HTMLElement
 
     startBtn.click()
+    await flushRuntimeResponse()
     vi.advanceTimersByTime(1000)
     pauseBtn.click()
+    await flushRuntimeResponse()
 
     vi.advanceTimersByTime(2000)
-    expect(elapsedEl.textContent).toBe("Elapsed: 00:01")
+    expect(elapsedEl.textContent).toBe('Elapsed: 00:01')
 
     resumeBtn.click()
+    await flushRuntimeResponse()
     vi.advanceTimersByTime(2000)
-    expect(elapsedEl.textContent).toBe("Elapsed: 00:03")
+    expect(elapsedEl.textContent).toBe('Elapsed: 00:03')
   })
 
-  it("clicking Stop clears the timer, resets elapsed, and leaves only Start enabled", async () => {
+  it('clicking Stop clears the timer, resets elapsed, and leaves only Start enabled', async () => {
     await loadPopupModule()
 
-    const startBtn = document.getElementById("start") as HTMLButtonElement
-    const pauseBtn = document.getElementById("pause") as HTMLButtonElement
-    const resumeBtn = document.getElementById("resume") as HTMLButtonElement
-    const stopBtn = document.getElementById("stop") as HTMLButtonElement
-    const elapsedEl = document.getElementById("elapsedTime") as HTMLElement
+    const startBtn = document.getElementById('start') as HTMLButtonElement
+    const pauseBtn = document.getElementById('pause') as HTMLButtonElement
+    const resumeBtn = document.getElementById('resume') as HTMLButtonElement
+    const stopBtn = document.getElementById('stop') as HTMLButtonElement
+    const elapsedEl = document.getElementById('elapsedTime') as HTMLElement
 
     startBtn.click()
+    await flushRuntimeResponse()
     vi.advanceTimersByTime(2500)
 
     stopBtn.click()
-    expect(elapsedEl.textContent).toBe("Elapsed: 00:00")
+    await flushRuntimeResponse()
+    expect(elapsedEl.textContent).toBe('Elapsed: 00:00')
     expect(startBtn.disabled).toBe(false)
     expect(pauseBtn.disabled).toBe(true)
     expect(resumeBtn.disabled).toBe(true)
     expect(stopBtn.disabled).toBe(true)
 
     vi.advanceTimersByTime(1000)
-    expect(elapsedEl.textContent).toBe("Elapsed: 00:00")
+    expect(elapsedEl.textContent).toBe('Elapsed: 00:00')
   })
 
-  it("does not advance elapsed time while idle even with a stale startedAt timestamp", async () => {
-    // Simulate a broadcast from the background while the popup is open/idle.
+  it('does not advance elapsed time while idle even with a stale startedAt timestamp', async () => {
     await loadPopupModule()
-    const elapsedEl = document.getElementById("elapsedTime") as HTMLElement
-    expect(elapsedEl.textContent).toBe("Elapsed: 00:00")
-
-    // Directly mutate the local snapshot as the runtime listener would.
-    const timeout = setTimeout(() => {}, 10)
+    const elapsedEl = document.getElementById('elapsedTime') as HTMLElement
+    expect(elapsedEl.textContent).toBe('Elapsed: 00:00')
 
     vi.advanceTimersByTime(2000)
-    expect(elapsedEl.textContent).toBe("Elapsed: 00:00")
-
-    clearTimeout(timeout)
+    expect(elapsedEl.textContent).toBe('Elapsed: 00:00')
   })
 })

@@ -6,6 +6,8 @@ import type { CapturedRequest, PlanMeta, PlaywrightStep } from '../models/captur
 import { RecorderState } from './recorder-state'
 import { TrafficCaptureService } from './traffic-capture'
 
+type MessageHandler = (message: BackgroundRequest) => Promise<BackgroundResponse>
+
 export interface RecorderServiceOptions {
   state?: RecorderState
   trafficCapture?: TrafficCaptureService
@@ -14,11 +16,44 @@ export interface RecorderServiceOptions {
 export class RecorderService {
   private readonly state: RecorderState
   private readonly trafficCapture: TrafficCaptureService
+  private readonly handlers: Record<BackgroundRequest['type'], MessageHandler>
   private initialized = false
 
   constructor(options: RecorderServiceOptions = {}) {
     this.state = options.state ?? new RecorderState()
     this.trafficCapture = options.trafficCapture ?? new TrafficCaptureService(this.state)
+    this.handlers = {
+      START_RECORDING: (message) =>
+        this.handleStartRecordingMessage(
+          message as Extract<BackgroundRequest, { type: 'START_RECORDING' }>
+        ),
+      STOP_RECORDING: () => this.handleStopRecordingMessage(),
+      PAUSE_RECORDING: (message) =>
+        this.handlePauseRecordingMessage(
+          message as Extract<BackgroundRequest, { type: 'PAUSE_RECORDING' }>
+        ),
+      RESUME_RECORDING: (message) =>
+        this.handleResumeRecordingMessage(
+          message as Extract<BackgroundRequest, { type: 'RESUME_RECORDING' }>
+        ),
+      GET_STATE: () => this.handleGetStateMessage(),
+      GET_REQUESTS: () => this.handleGetRequestsMessage(),
+      GET_DOMAINS: () => this.handleGetDomainsMessage(),
+      CLEAR_REQUESTS: (message) =>
+        this.handleClearRequestsMessage(
+          message as Extract<BackgroundRequest, { type: 'CLEAR_REQUESTS' }>
+        ),
+      RESET: (message) =>
+        this.handleResetMessage(message as Extract<BackgroundRequest, { type: 'RESET' }>),
+      ADD_ACTION: (message) =>
+        this.handleAddActionMessage(message as Extract<BackgroundRequest, { type: 'ADD_ACTION' }>),
+      EXPORT_JMX: (message) =>
+        this.handleExportJmxMessage(message as Extract<BackgroundRequest, { type: 'EXPORT_JMX' }>),
+      EXPORT_PLAYWRIGHT: (message) =>
+        this.handleExportPlaywrightMessage(
+          message as Extract<BackgroundRequest, { type: 'EXPORT_PLAYWRIGHT' }>
+        ),
+    }
   }
 
   async initialize(): Promise<void> {
@@ -83,47 +118,88 @@ export class RecorderService {
 
   async handleMessage(message: BackgroundRequest): Promise<BackgroundResponse> {
     try {
-      switch (message.type) {
-        case 'START_RECORDING':
-          await this.startRecording(message.planName, message.tabId)
-          return { success: true, snapshot: this.getSnapshot() }
-        case 'STOP_RECORDING': {
-          const requestCount = (await this.stopRecording()).length
-          return { success: true, requestCount }
-        }
-        case 'PAUSE_RECORDING':
-          await this.pauseRecording()
-          return { success: true, snapshot: this.getSnapshot() }
-        case 'RESUME_RECORDING':
-          await this.resumeRecording()
-          return { success: true, snapshot: this.getSnapshot() }
-        case 'GET_STATE':
-          return { success: true, snapshot: this.getSnapshot() }
-        case 'GET_REQUESTS':
-          return { success: true, requests: this.getRequests() }
-        case 'GET_DOMAINS':
-          return { success: true, domains: this.getDomains() }
-        case 'CLEAR_REQUESTS':
-          await this.clearRequests()
-          return { success: true, snapshot: this.getSnapshot() }
-        case 'RESET':
-          await this.reset()
-          return { success: true, snapshot: this.getSnapshot() }
-        case 'ADD_ACTION': {
-          this.addAction(message)
-          await this.state.save()
-          return { success: true }
-        }
-        case 'EXPORT_JMX':
-          return this.buildJmxExportResponse(message.includedDomains)
-        case 'EXPORT_PLAYWRIGHT':
-          return this.buildPlaywrightExportResponse(message)
-        default:
-          return unreachable(message)
+      const handler = this.handlers[message.type]
+
+      if (handler === undefined) {
+        return unreachable(message as never)
       }
+
+      return handler(message)
     } catch (err) {
       return { success: false, error: toErrorMessage(err) }
     }
+  }
+
+  private handleStartRecordingMessage(
+    message: Extract<BackgroundRequest, { type: 'START_RECORDING' }>
+  ): Promise<BackgroundResponse> {
+    return this.startRecording(message.planName, message.tabId).then(() => ({
+      success: true,
+      snapshot: this.getSnapshot(),
+    }))
+  }
+
+  private handleStopRecordingMessage(): Promise<BackgroundResponse> {
+    return this.stopRecording().then((requests) => ({
+      success: true,
+      requestCount: requests.length,
+    }))
+  }
+
+  private handlePauseRecordingMessage(
+    _message: Extract<BackgroundRequest, { type: 'PAUSE_RECORDING' }>
+  ): Promise<BackgroundResponse> {
+    return this.pauseRecording().then(() => ({ success: true, snapshot: this.getSnapshot() }))
+  }
+
+  private handleResumeRecordingMessage(
+    _message: Extract<BackgroundRequest, { type: 'RESUME_RECORDING' }>
+  ): Promise<BackgroundResponse> {
+    return this.resumeRecording().then(() => ({ success: true, snapshot: this.getSnapshot() }))
+  }
+
+  private handleGetStateMessage(): Promise<BackgroundResponse> {
+    return Promise.resolve({ success: true, snapshot: this.getSnapshot() })
+  }
+
+  private handleGetRequestsMessage(): Promise<BackgroundResponse> {
+    return Promise.resolve({ success: true, requests: this.getRequests() })
+  }
+
+  private handleGetDomainsMessage(): Promise<BackgroundResponse> {
+    return Promise.resolve({ success: true, domains: this.getDomains() })
+  }
+
+  private handleClearRequestsMessage(
+    _message: Extract<BackgroundRequest, { type: 'CLEAR_REQUESTS' }>
+  ): Promise<BackgroundResponse> {
+    return this.clearRequests().then(() => ({ success: true, snapshot: this.getSnapshot() }))
+  }
+
+  private handleResetMessage(
+    _message: Extract<BackgroundRequest, { type: 'RESET' }>
+  ): Promise<BackgroundResponse> {
+    return this.reset().then(() => ({ success: true, snapshot: this.getSnapshot() }))
+  }
+
+  private async handleAddActionMessage(
+    message: Extract<BackgroundRequest, { type: 'ADD_ACTION' }>
+  ): Promise<BackgroundResponse> {
+    this.addAction(message)
+    await this.state.save()
+    return { success: true }
+  }
+
+  private handleExportJmxMessage(
+    message: Extract<BackgroundRequest, { type: 'EXPORT_JMX' }>
+  ): Promise<BackgroundResponse> {
+    return Promise.resolve(this.buildJmxExportResponse(message.includedDomains))
+  }
+
+  private handleExportPlaywrightMessage(
+    message: Extract<BackgroundRequest, { type: 'EXPORT_PLAYWRIGHT' }>
+  ): Promise<BackgroundResponse> {
+    return Promise.resolve(this.buildPlaywrightExportResponse(message))
   }
 
   private addAction(message: Extract<BackgroundRequest, { type: 'ADD_ACTION' }>): void {
