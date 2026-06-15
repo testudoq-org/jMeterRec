@@ -57,7 +57,17 @@ let snapshot: RecorderSnapshot = {
   recording: false,
   planName: 'Untitled Plan',
   requestCount: 0,
+  startedAt: undefined,
 }
+
+let elapsedTimer: number | null = null
+let detachedWindowId: number | null = null
+
+chrome.windows.onRemoved.addListener((windowId) => {
+  if (windowId === detachedWindowId) {
+    detachedWindowId = null
+  }
+})
 
 planNameInput.addEventListener('input', () => {
   snapshot = { ...snapshot, planName: planNameInput.value }
@@ -88,11 +98,22 @@ resume.addEventListener('click', () => {
 })
 
 stop.addEventListener('click', () => {
+  cleanupTimer()
   void send({ type: 'STOP_RECORDING' })
 })
 
 clear.addEventListener('click', () => {
-  void send({ type: 'CLEAR_REQUESTS' })
+  void send({ type: 'RESET' }).then((response) => {
+    if (response.success) {
+      if (isSnapshotResponse(response)) {
+        applySnapshot(response.snapshot)
+      }
+      transactions.splice(0, transactions.length)
+      availableDomains = []
+      selectedDomains.clear()
+      renderTransactions()
+    }
+  })
 })
 
 exportBtn.addEventListener('click', () => {
@@ -130,19 +151,19 @@ chrome.runtime.onMessage.addListener((message: unknown) => {
   }
 })
 
-refreshState().catch((err: unknown) => {
+void refreshState().catch((err: unknown) => {
   showError(toErrorMessage(err))
 })
 
-void seedTransactions().catch((err: unknown) => {
-  showError(toErrorMessage(err))
-})
+void loadTransactionPanelOptions()
+  .then(() => seedTransactions())
+  .catch((err: unknown) => {
+    showError(toErrorMessage(err))
+  })
 
-void loadTransactionPanelOptions().catch((err: unknown) => {
-  showError(toErrorMessage(err))
-})
+elapsedTimer = globalThis.setInterval(updateElapsed, 1000)
 
-setInterval(updateElapsed, 1000)
+chrome.runtime.onSuspend.addListener(cleanupTimer)
 
 async function refreshState(): Promise<void> {
   const response = await send({ type: 'GET_STATE' })
@@ -375,7 +396,12 @@ function createTransactionRow(request: CapturedRequest): HTMLButtonElement {
     const expanded = row.getAttribute('aria-expanded') === 'true'
 
     row.setAttribute('aria-expanded', String(!expanded))
-    row.replaceChildren(method, url, requestStatus, time, createDetails(request, detailsId))
+
+    if (expanded) {
+      row.replaceChildren(method, url, requestStatus, time)
+    } else {
+      row.replaceChildren(method, url, requestStatus, time, createDetails(request, detailsId))
+    }
   })
 
   return row
@@ -563,15 +589,27 @@ function openDetachedInspectorWindowIfEnabled(): void {
 }
 
 function openDetachedInspectorWindow(): void {
-  void chrome.windows.create({
-    url: chrome.runtime.getURL('src/popup/popup.html?detached=1'),
-    type: 'popup',
-    width: 420,
-    height: 720,
-    left: window.screenX + 80,
-    top: window.screenY + 80,
-    focused: true,
-  })
+  if (detachedWindowId !== null) {
+    chrome.windows.update(detachedWindowId, { focused: true }).catch(() => {
+      detachedWindowId = null
+      openDetachedInspectorWindow()
+    })
+    return
+  }
+
+  void chrome.windows
+    .create({
+      url: chrome.runtime.getURL('src/popup/popup.html?detached=1'),
+      type: 'popup',
+      width: 420,
+      height: 720,
+      focused: true,
+    })
+    .then((win) => {
+      if (win?.id !== undefined) {
+        detachedWindowId = win.id
+      }
+    })
 }
 
 function labelFor(statusValue: RecorderSnapshot['status']): string {
@@ -634,7 +672,7 @@ function responseBodyFor(request: TransactionRequest): string {
 }
 
 function download(contents: string, filename: string): void {
-  const blob = new Blob([contents], { type: 'text/typescript' })
+  const blob = new Blob([contents], { type: 'text/plain' })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
 
@@ -671,11 +709,24 @@ function clearJmxDomainError(): void {
   jmxDomainError.textContent = ''
 }
 
+function cleanupTimer(): void {
+  if (elapsedTimer !== null) {
+    globalThis.clearInterval(elapsedTimer)
+    elapsedTimer = null
+  }
+}
+
 function updateElapsed(): void {
-  elapsedTime.textContent = formatElapsed(snapshot.startedAt)
+  // Only update elapsed time while actively recording (not paused or idle)
+  if (snapshot.status === 'recording' && snapshot.startedAt !== undefined) {
+    elapsedTime.textContent = formatElapsed(snapshot.startedAt)
+  }
 }
 
 function formatElapsed(startedAt: string | undefined): string {
+  if (startedAt === undefined) {
+    return 'Elapsed: 00:00'
+  }
   return `Elapsed: ${formatDurationBetween(startedAt)}`
 }
 

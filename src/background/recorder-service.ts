@@ -63,6 +63,12 @@ export class RecorderService {
     this.broadcastState()
   }
 
+  async reset(): Promise<void> {
+    this.state.reset()
+    await this.state.save()
+    this.broadcastState()
+  }
+
   getSnapshot(): RecorderSnapshot {
     return this.state.getSnapshot()
   }
@@ -99,6 +105,9 @@ export class RecorderService {
           return { success: true, domains: this.getDomains() }
         case 'CLEAR_REQUESTS':
           await this.clearRequests()
+          return { success: true, snapshot: this.getSnapshot() }
+        case 'RESET':
+          await this.reset()
           return { success: true, snapshot: this.getSnapshot() }
         case 'ADD_ACTION': {
           this.addAction(message)

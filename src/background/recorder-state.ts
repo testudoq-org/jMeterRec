@@ -65,6 +65,7 @@ export class RecorderState {
 
   stop(): void {
     this.status = 'idle'
+    this.startedAt = undefined
   }
 
   pause(): void {
