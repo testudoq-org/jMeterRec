@@ -4,17 +4,20 @@ import type { CapturedRequest } from '../models/captured-request'
 type ResponseWithSnapshot = Extract<BackgroundResponse, { snapshot?: RecorderSnapshot }>
 type TransactionRequest = CapturedRequest & { responseBody?: string }
 type RequestCapturedMessage = { type: 'REQUEST_CAPTURED'; request: TransactionRequest }
+type AppTheme = 'light' | 'dark'
 
 interface TransactionPanelOptions {
   maxTransactions: number
   openDetachedInspector: boolean
   captureResponseBody: boolean
+  theme: AppTheme
 }
 
 const defaultTransactionPanelOptions: TransactionPanelOptions = {
   maxTransactions: 200,
   openDetachedInspector: false,
   captureResponseBody: false,
+  theme: 'light',
 }
 
 const planNameInput = requireElement<HTMLInputElement>('planName')
@@ -41,6 +44,7 @@ const transactionStatusFilter = requireElement<HTMLSelectElement>('transactionSt
 const transactionSearch = requireElement<HTMLInputElement>('transactionSearch')
 const transactionList = requireElement<HTMLDivElement>('transactionList')
 const openDetachedInspector = requireElement<HTMLButtonElement>('openDetachedInspector')
+const themeMode = requireElement<HTMLSelectElement>('themeMode')
 
 let availableDomains: string[] = []
 let selectedDomains = new Set<string>()
@@ -103,6 +107,15 @@ openDetachedInspector.addEventListener('click', () => {
   openDetachedInspectorWindow()
 })
 
+themeMode.addEventListener('change', () => {
+  const theme = normalizeTheme(themeMode.value)
+
+  applyTheme(theme)
+  void chrome.storage.local.set({ theme }).catch((err: unknown) => {
+    showError(toErrorMessage(err))
+  })
+})
+
 transactionMethodFilter.addEventListener('change', renderTransactions)
 transactionStatusFilter.addEventListener('change', renderTransactions)
 transactionSearch.addEventListener('input', renderTransactions)
@@ -154,6 +167,8 @@ async function loadTransactionPanelOptions(): Promise<void> {
     await chrome.storage.local.get<TransactionPanelOptions>(defaultTransactionPanelOptions)
   )
 
+  applyTheme(transactionPanelOptions.theme)
+  themeMode.value = transactionPanelOptions.theme
   trimTransactions()
   renderTransactions()
 }
@@ -529,7 +544,16 @@ function normalizeTransactionPanelOptions(
     ),
     openDetachedInspector: options.openDetachedInspector === true,
     captureResponseBody: options.captureResponseBody === true,
+    theme: normalizeTheme(options.theme),
   }
+}
+
+function applyTheme(theme: AppTheme): void {
+  document.documentElement.dataset.theme = theme
+}
+
+function normalizeTheme(theme: unknown): AppTheme {
+  return theme === 'dark' ? 'dark' : 'light'
 }
 
 function openDetachedInspectorWindowIfEnabled(): void {

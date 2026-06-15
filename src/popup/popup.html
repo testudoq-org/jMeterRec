@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -13,8 +13,19 @@
       <div class="card-header">
         <div>
           <h2 id="recorderTitle" class="sr-only">Recorder controls</h2>
-          <label for="planName">Plan name</label>
-          <input id="planName" type="text" autocomplete="off" />
+          <div class="settings-row">
+            <div class="field">
+              <label for="planName">Plan name</label>
+              <input id="planName" type="text" autocomplete="off" />
+            </div>
+            <div class="field">
+              <label for="themeMode">Theme</label>
+              <select id="themeMode">
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+              </select>
+            </div>
+          </div>
           <div id="status" class="status status-idle" aria-live="polite">
             Loading recorder state…
           </div>

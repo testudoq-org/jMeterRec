@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -9,6 +9,16 @@
   <body>
     <h1>BM JMX Recorder Options</h1>
     <p>These defaults are used when exporting captured HTTP traffic to JMeter JMX.</p>
+
+    <section class="options-section" aria-labelledby="appearanceOptionsTitle">
+      <h2 id="appearanceOptionsTitle">Appearance</h2>
+
+      <label for="themeMode">Theme</label>
+      <select id="themeMode">
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+      </select>
+    </section>
 
     <section class="options-section" aria-labelledby="jmxOptionsTitle">
       <h2 id="jmxOptionsTitle">JMX export defaults</h2>

@@ -4,20 +4,81 @@
 
   --color-background: #f8fafc;
   --color-surface: #ffffff;
+  --color-surface-raised: #ffffff;
   --color-border: #cbd5e1;
   --color-text: #0f172a;
   --color-muted: #475569;
   --color-primary: #2563eb;
   --color-primary-dark: #1d4ed8;
   --color-secondary: #64748b;
+  --color-secondary-dark: #475569;
   --color-danger: #dc2626;
+  --color-danger-dark: #b91c1c;
   --color-disabled: #cbd5e1;
   --color-success: #15803d;
   --color-warning: #b45309;
   --color-error: #dc2626;
+  --color-focus: rgb(37 99 235 / 35%);
+  --color-row-hover: #f1f5f9;
+  --color-code-background: #0f172a;
+  --color-code-text: #e2e8f0;
+  --method-background: #e0f2fe;
+  --method-text: #0369a1;
+  --method-get-background: #dbeafe;
+  --method-get-text: #1d4ed8;
+  --method-post-background: #dcfce7;
+  --method-post-text: #15803d;
+  --method-put-background: #fef3c7;
+  --method-put-text: #b45309;
+  --method-delete-background: #fee2e2;
+  --method-delete-text: #b91c1c;
+  --status-background: #e2e8f0;
+  --status-success-background: rgb(21 128 61 / 14%);
+  --status-warning-background: rgb(180 83 9 / 14%);
+  --status-error-background: rgb(220 38 38 / 12%);
   --radius-sm: 6px;
   --radius-md: 10px;
   --shadow-soft: 0 8px 24px rgb(15 23 42 / 12%);
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --color-background: #0f172a;
+  --color-surface: #111827;
+  --color-surface-raised: #1f2937;
+  --color-border: #334155;
+  --color-text: #e5e7eb;
+  --color-muted: #94a3b8;
+  --color-primary: #60a5fa;
+  --color-primary-dark: #3b82f6;
+  --color-secondary: #64748b;
+  --color-secondary-dark: #475569;
+  --color-danger: #f87171;
+  --color-danger-dark: #dc2626;
+  --color-disabled: #334155;
+  --color-success: #4ade80;
+  --color-warning: #fbbf24;
+  --color-error: #f87171;
+  --color-focus: rgb(96 165 250 / 45%);
+  --color-row-hover: #1f2937;
+  --color-code-background: #020617;
+  --color-code-text: #cbd5e1;
+  --method-background: #0e7490;
+  --method-text: #cffafe;
+  --method-get-background: #1e3a8a;
+  --method-get-text: #bfdbfe;
+  --method-post-background: #14532d;
+  --method-post-text: #bbf7d0;
+  --method-put-background: #713f12;
+  --method-put-text: #fde68a;
+  --method-delete-background: #7f1d1d;
+  --method-delete-text: #fecaca;
+  --status-background: #334155;
+  --status-success-background: rgb(74 222 128 / 18%);
+  --status-warning-background: rgb(251 191 36 / 18%);
+  --status-error-background: rgb(248 113 113 / 18%);
+  --shadow-soft: 0 8px 24px rgb(0 0 0 / 30%);
 }
 
 * {
@@ -110,7 +171,7 @@ button.secondary {
 }
 
 button.secondary:hover:not(:disabled) {
-  background: #475569;
+  background: var(--color-secondary-dark);
 }
 
 button.danger {
@@ -118,7 +179,7 @@ button.danger {
 }
 
 button.danger:hover:not(:disabled) {
-  background: #b91c1c;
+  background: var(--color-danger-dark);
 }
 
 button:disabled {
@@ -130,7 +191,7 @@ button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 .transaction-row:focus-visible {
-  outline: 3px solid rgb(37 99 235 / 35%);
+  outline: 3px solid var(--color-focus);
   outline-offset: 2px;
 }
 
@@ -148,12 +209,22 @@ select:focus-visible,
   margin-bottom: 8px;
 }
 
+.settings-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 110px;
+  gap: 8px;
+}
+
+.field {
+  min-width: 0;
+}
+
 .card {
   margin: 0 0 12px;
   padding: 10px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  background: var(--color-surface);
+  background: var(--color-surface-raised);
   box-shadow: var(--shadow-soft);
 }
 
@@ -161,23 +232,23 @@ select:focus-visible,
   margin: 8px 0 12px;
   padding: 8px;
   border-radius: var(--radius-sm);
-  background: #e2e8f0;
+  background: var(--status-background);
   color: var(--color-muted);
   font-size: 13px;
 }
 
 .status-recording {
-  background: rgb(21 128 61 / 12%);
+  background: var(--status-success-background);
   color: var(--color-success);
 }
 
 .status-paused {
-  background: rgb(180 83 9 / 12%);
+  background: var(--status-warning-background);
   color: var(--color-warning);
 }
 
 .status-idle {
-  background: #e2e8f0;
+  background: var(--status-background);
   color: var(--color-muted);
 }
 
@@ -277,17 +348,17 @@ select:focus-visible,
   padding: 8px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
-  background: #ffffff;
+  background: var(--color-surface-raised);
   color: var(--color-text);
   text-align: left;
 }
 
 .transaction-row:hover {
-  background: #f1f5f9;
+  background: var(--color-row-hover);
 }
 
 .transaction-row[aria-expanded='true'] {
-  border-color: rgb(37 99 235 / 45%);
+  border-color: var(--color-focus);
 }
 
 .method,
@@ -301,29 +372,29 @@ select:focus-visible,
 .method {
   padding: 2px 6px;
   border-radius: 999px;
-  background: #e0f2fe;
-  color: #0369a1;
+  background: var(--method-background);
+  color: var(--method-text);
 }
 
 .method-get {
-  background: #dbeafe;
-  color: #1d4ed8;
+  background: var(--method-get-background);
+  color: var(--method-get-text);
 }
 
 .method-post {
-  background: #dcfce7;
-  color: #15803d;
+  background: var(--method-post-background);
+  color: var(--method-post-text);
 }
 
 .method-put,
 .method-patch {
-  background: #fef3c7;
-  color: #b45309;
+  background: var(--method-put-background);
+  color: var(--method-put-text);
 }
 
 .method-delete {
-  background: #fee2e2;
-  color: #b91c1c;
+  background: var(--method-delete-background);
+  color: var(--method-delete-text);
 }
 
 .transaction-url {
@@ -336,28 +407,28 @@ select:focus-visible,
 .status-badge {
   padding: 2px 6px;
   border-radius: 999px;
-  background: #e2e8f0;
+  background: var(--status-background);
   color: var(--color-muted);
 }
 
 .status-success {
-  background: rgb(21 128 61 / 14%);
+  background: var(--status-success-background);
   color: var(--color-success);
 }
 
 .status-warning {
-  background: rgb(180 83 9 / 14%);
+  background: var(--status-warning-background);
   color: var(--color-warning);
 }
 
 .status-error,
 .status-pending {
-  background: rgb(220 38 38 / 12%);
+  background: var(--status-error-background);
   color: var(--color-error);
 }
 
 .status-neutral {
-  background: #e2e8f0;
+  background: var(--status-background);
   color: var(--color-muted);
 }
 
@@ -372,8 +443,8 @@ select:focus-visible,
   padding: 8px;
   overflow: auto;
   border-radius: var(--radius-sm);
-  background: #0f172a;
-  color: #e2e8f0;
+  background: var(--color-code-background);
+  color: var(--color-code-text);
   font:
     11px/1.4 ui-monospace,
     SFMono-Regular,
