@@ -13,7 +13,7 @@ Copy to `specs/NNN-feature-name.md`. Fill in every section before writing a sing
 spec/NNN-feature-name
 ```
 
-Cut from `main` before starting.
+Cut from `master` before starting.
 
 ## Context
 
@@ -66,12 +66,17 @@ What the user sees and can do. No implementation detail.
 
 ## Definition of Done
 
-* [ ] Branch cut from `main`
+* [ ] Branch cut from `master`
+* [ ] Relevant upstream specs reviewed or updated
 * [ ] Playwright scenarios written and failing
 * [ ] Unit tests written and failing
 * [ ] Implementation complete
-* [ ] All tests passing
+* [ ] `npm test` passes
+* [ ] `npm run typecheck` passes
+* [ ] `npm run lint` passes
+* [ ] `npm run build` passes
+* [ ] `npm run test:e2e` passes when required by the spec
 * [ ] CRAP gate green (no function above 30)
 * [ ] DRY gate green
-* [ ] `memory-bank/progress.md` updated
-* [ ] PR raised against `main`
+* [ ] No stale branch/process references remain in updated Markdown
+* [ ] PR raised against `master`

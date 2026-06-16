@@ -39,7 +39,7 @@ npm run build  # production bundle
 - Source in `src/`, reference legacy code in `src-ori/`
 - Specifications are in `specs/`
 - CI guidance and project instructions are in `.github/instructions`
-- Manual browser regression is still required before merge for UX/UI-sensitive changes
+- Operational hardening roadmap is tracked in `specs/005-operational-hardening-roadmap.md`
 
 ## Enterprise packaging
 

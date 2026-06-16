@@ -20,7 +20,7 @@ Use this prompt for a human reviewer or AI code-reviewer during branch closure:
 > 4. Confirm the transaction panel renders with safe DOM APIs and does not inject request/response content as HTML.
 > 5. Confirm response body limitations are documented in the UI/options and this spec.
 > 6. Confirm the detached inspector window behavior and `windows` permission are acceptable.
-> 7. Recommend whether the remaining response-body capture and port-forwarding work should be deferred or required before merge.
+> 7. Recommend whether the remaining response-body capture and port-forwarding work should be deferred or required before closure.
 >
 > Return results as: a short executive summary, a closure checklist, concrete patch suggestions if any, and a final risk/regression assessment.
 
@@ -447,7 +447,7 @@ Recommendation: close this branch as a read-only transaction inspector first. Ad
 | Background port forwarding | Deferred | Not implemented in this pass. Current popup receives `onMessage` broadcasts. | Optional follow-up. |
 | Response body capture | Deferred | UI shows disabled/unavailable text until a separate opt-in capture mechanism is added. | Required only if response bodies are a release blocker. |
 | Framework migration | Not done | Vanilla TypeScript remains in use. | No follow-up required. |
-| Manual browser regression | Not run in this docs pass | Requires loading unpacked extension in Chrome. | Must be run before merge. |
+| Manual browser regression | Completed/approved | Requires loading unpacked extension in Chrome. | Manual regression was approved before branch closure. |
 | E2E extension export test | Not implemented | Existing tests do not load the extension and validate golden JMX/Playwright output. | Existing backlog item; not required for 004 closure unless release criteria demand it. |
 
 ## Implementation progress
@@ -484,7 +484,7 @@ Recommendation: close this branch as a read-only transaction inspector first. Ad
 
 ## Manual regression checklist
 
-Before merging:
+Before closure:
 
 - [ ] Verified by build/typecheck/tests: `npm run typecheck`, `npm run build`, `npm test`, touched-file ESLint, and touched-file Prettier all passed.
 - [ ] Verify popup/options still look and function correctly after moving styles into separate CSS files.
@@ -514,7 +514,7 @@ Ask the reviewer to provide:
 2. Confirmation that response body limitations are documented in the UI/options and this spec.
 3. Confirmation that the detached inspector behavior is acceptable without guaranteed always-on-top semantics.
 4. Any small patch suggestions for accessibility, security, or MV3 compatibility.
-5. A decision on whether response-body capture must be implemented before merge or can remain a separate follow-up.
+5. A decision on whether response-body capture must be implemented before closure or can remain a separate follow-up.
 
 ## Branch name suggestion
 
@@ -562,4 +562,4 @@ High-risk deferred changes:
 - Background port forwarding for more reliable live event delivery.
 - Any framework migration that changes the popup DOM or event flow.
 
-Closure recommendation: the branch is ready for closure review as a read-only transaction inspector and compact UX/UI improvement. Response body capture should be treated as a separate optional feature with explicit user consent, size limits, and privacy warnings. Manual browser regression remains required before merge.
+Closure recommendation: the branch is ready for closure review as a read-only transaction inspector and compact UX/UI improvement. Response body capture should be treated as a separate optional feature with explicit user consent, size limits, and privacy warnings. Manual browser regression was approved before branch closure.

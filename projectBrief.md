@@ -22,7 +22,7 @@ Provide unified recording and load-testing workflows by supporting JMX-style rec
 
 Capultura unifies recording and load-testing workflows by supporting JMX-style recording and modern Playwright captures. Record real browser flows, edit and parameterize scripts, then execute them at scale with configurable load patterns, metrics, and CI integrations. Built for QA and SRE teams, Capultura makes it fast to reproduce user journeys, find performance regressions, and validate functional behavior under realistic load.
 
-The current branch adds a read-only transaction inspector that displays recently captured HTTP requests in the popup, seeds from persisted requests, updates from existing recording broadcasts, and exposes compact filters/details. It does not implement guaranteed response body capture.
+The 004 UX/UI work added a read-only transaction inspector that displays recently captured HTTP requests in the popup, seeds from persisted requests, updates from existing recording broadcasts, and exposes compact filters/details. It does not implement guaranteed response body capture.
 
 ## Constraints
 
@@ -73,7 +73,7 @@ The current branch adds a read-only transaction inspector that displays recently
 
 ## Open risks
 
-- Response body capture remains out of scope for the current UX/UI branch
+- Response body capture remains out of scope for the operational hardening roadmap unless a separate privacy-reviewed spec is approved
 - Service-worker termination can still lose in-flight webRequest fragments
 - JMX serializer covers basic HTTP sampler output but not all JMeter managers, timers, extractors, or assertions
 - Golden E2E extension export tests are still pending

@@ -4,7 +4,7 @@ This project is dual-licensed; you may choose either the MIT License OR the Crea
 
 MIT License
 
-Copyright (c) 2026 [Your Name or Organization]
+Copyright (c) 2026 Capultura contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -40,6 +40,5 @@ Full license text: https://creativecommons.org/licenses/by-nc/4.0/
 
 Notes:
 
-Replace [Your Name or Organization] with the copyright holder.
 Use MIT for software/code and CC BY-NC 4.0 for documentation/content if you want clearer separation; both are provided here as choices.
 If you include third-party code (e.g., SideeX), comply with its license and include any required attributions.
