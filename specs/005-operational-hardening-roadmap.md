@@ -27,6 +27,19 @@ Relevant evidence:
 - `specs/002-codebase-analysis.md` identifies content body fallback, mid-flight request persistence, response body capture, background port forwarding, basic JMX coverage, options metadata, E2E coverage, and CRX packaging as areas still needing improvement (`specs/002-codebase-analysis.md:528-538`).
 - `specs/XXX-backlog-ideas.md` tracks golden E2E, in-flight persistence, request-body fallback, JMX manager/extractor coverage, CRX packaging, and response body capture as backlog items (`specs/XXX-backlog-ideas.md:17-46`).
 
+## Progress
+
+As of 2026-06-16 14:22 +12:00:
+
+| Phase | Status | Evidence |
+|---|---|---|
+| P0 — Clean stale docs/process notes | Completed | Committed on `master` as `3a5559b feat: update branching instructions, license, and README for operational hardening roadmap`. |
+| P1 — Build golden E2E coverage | Not started | Next implementation phase. |
+| P2 — Harden in-flight request persistence | Not started | Backlog item remains. |
+| P3 — Improve request-body fidelity | Not started | Backlog item remains. |
+| P4 — Improve JMX fidelity and wire options | Not started | Backlog item remains. |
+| P5 — Response body capture spec | Not started | Must remain separate and privacy-reviewed. |
+
 ## Scope
 
 ## **In scope:**
@@ -47,18 +60,17 @@ Relevant evidence:
 - Non-browser traffic capture.
 - Default response body capture.
 - `chrome.debugger`-based capture unless a separate response-body spec explicitly requires it.
-- CRX packaging as areas still needing improvement (`specs/002-codebase-analysis.md:528-538`).
 
 ## Priority roadmap
 
-| Priority | Workstream                            | Goal                                                                                                      | Why it matters                                                                       |   Risk |
-| -------: | ------------------------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | -----: |
-|       P0 | Clean stale docs/process notes        | Remove stale branch, merge, manual-regression, and template/process guidance                              | Prevents future contributors from following outdated instructions                    |    Low |
-|       P1 | Build golden E2E coverage             | Load the real extension, record a synthetic flow, export JMX/Playwright, and compare golden artifacts     | Converts manual confidence into repeatable release confidence                        | Medium |
-|       P2 | Harden in-flight request persistence  | Persist pending `webRequest` fragments so MV3 service-worker termination cannot lose requests             | Protects the core recording guarantee                                                | Medium |
-|       P3 | Improve request-body fidelity         | Add typed content-script fallback for fetch/XHR/form bodies where `webRequest.requestBody` is incomplete  | Restores part of the fidelity lost when SideeX was removed                           | Medium |
-|       P4 | Improve JMX fidelity and wire options | Use saved plan name, threads, ramp-up, and loops; add common JMeter elements                              | Makes JMX output more useful and closer to the project success metric                | Medium |
-|       P5 | Response body capture                 | Add only as a separate opt-in feature with privacy warnings, size limits, redaction/truncation, and tests | Response bodies can contain secrets and are not reliably available from `webRequest` |   High |
+| Priority | Workstream                            | Status      | Goal                                                                                                      | Why it matters                                                                       |   Risk |
+| -------: | ------------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | -----: |
+|       P0 | Clean stale docs/process notes        | Completed   | Remove stale branch, merge, manual-regression, and template/process guidance                              | Prevents future contributors from following outdated instructions                    |    Low |
+|       P1 | Build golden E2E coverage             | Not started | Load the real extension, record a synthetic flow, export JMX/Playwright, and compare golden artifacts     | Converts manual confidence into repeatable release confidence                        | Medium |
+|       P2 | Harden in-flight request persistence  | Not started | Persist pending `webRequest` fragments so MV3 service-worker termination cannot lose requests             | Protects the core recording guarantee                                                | Medium |
+|       P3 | Improve request-body fidelity         | Not started | Add typed content-script fallback for fetch/XHR/form bodies where `webRequest.requestBody` is incomplete  | Restores part of the fidelity lost when SideeX was removed                           | Medium |
+|       P4 | Improve JMX fidelity and wire options | Not started | Use saved plan name, threads, ramp-up, and loops; add common JMeter elements                              | Makes JMX output more useful and closer to the project success metric                | Medium |
+|       P5 | Response body capture                 | Not started | Add only as a separate opt-in feature with privacy warnings, size limits, redaction/truncation, and tests | Response bodies can contain secrets and are not reliably available from `webRequest` |   High |
 
 ## Domain objects
 
@@ -309,10 +321,11 @@ P5 requires new UI only in a separate response-body capture spec:
 
 ## Implementation plan
 
-### Phase 0 — Clean stale docs/process notes
+### Phase 0 — Clean stale docs/process notes — Completed
 
 Priority: P0
 Risk: Low
+Committed: `3a5559b feat: update branching instructions, license, and README for operational hardening roadmap`
 
 Tasks:
 
@@ -324,9 +337,9 @@ Tasks:
 
 Definition of done:
 
-- No Markdown references imply the 004 branch is still open.
-- Branching guidance matches actual project practice.
-- Template guidance does not reference missing workflow files.
+- [x] No Markdown references imply the 004 branch is still open.
+- [x] Branching guidance matches actual project practice.
+- [x] Template guidance does not reference missing workflow files.
 
 ### Phase 1 — Build golden E2E coverage
 
@@ -444,8 +457,8 @@ Definition of done:
 
 ## Definition of Done
 
-- [ ] Branch cut from `master`.
-- [ ] P0 stale docs/process notes are cleaned.
+- [x] Branch cut from `master`.
+- [x] P0 stale docs/process notes are cleaned.
 - [ ] Golden E2E test harness is added or a concrete implementation branch is planned from this spec.
 - [ ] In-flight request persistence design is implemented or scheduled as a follow-up spec.
 - [ ] Request-body fallback design is implemented or scheduled as a follow-up spec.
@@ -460,4 +473,4 @@ Definition of done:
 
 ## Final recommendation
 
-Start with P0 and P1. Cleaning stale docs is quick and prevents future confusion. Golden E2E coverage is the highest-leverage engineering task because it creates a safety net for every later hardening item. After that, tackle P2 and P3 because they protect the core recording guarantee. P4 improves JMX usefulness. P5 should remain a separate privacy-reviewed feature, not part of the general hardening branch.
+P0 is complete and committed on `master`. The next logical phase is P1: build golden E2E coverage. Cleaning stale docs is complete, and golden E2E coverage is the highest-leverage engineering task because it creates a safety net for every later hardening item. After that, tackle P2 and P3 because they protect the core recording guarantee. P4 improves JMX usefulness. P5 should remain a separate privacy-reviewed feature, not part of the general hardening branch.
