@@ -1,28 +1,42 @@
-import type { CapturedRequest } from '../models/captured-request'
+import type { PendingRequest } from '../models/pending-web-request'
 
-export interface PendingRequest extends CapturedRequest {
-  startedAtMs: number
-}
+export type { PendingRequest } from '../models/pending-web-request'
 
 export function createPendingRequest(
   details: chrome.webRequest.OnBeforeRequestDetails
 ): PendingRequest {
-  const url = parseUrl(details.url)
-
   return {
-    id: createRequestId(details.tabId, details.requestId),
-    timestamp: new Date(details.timeStamp).toISOString(),
+    ...createBaseRequest(details),
     method: details.method,
-    url: details.url,
-    path: url?.path,
-    headers: {},
-    queryParams: url?.queryParams ?? {},
     body: decodeRequestBody(details.requestBody),
     contentType: undefined,
-    tabId: details.tabId,
-    frameId: details.frameId,
-    type: details.type,
-    initiator: details.initiator,
+    startedAtMs: details.timeStamp,
+  }
+}
+
+export function createCompletedRequest(
+  details: chrome.webRequest.OnCompletedDetails
+): PendingRequest {
+  return {
+    ...createBaseRequest(details),
+    method: 'GET',
+    contentType: undefined,
+    statusCode: details.statusCode,
+    responseHeaders: headersToRecord(details.responseHeaders),
+    completedAt: new Date(details.timeStamp).toISOString(),
+    startedAtMs: details.timeStamp,
+  }
+}
+
+export function createErrorRequest(
+  details: chrome.webRequest.OnErrorOccurredDetails
+): PendingRequest {
+  return {
+    ...createBaseRequest(details),
+    method: 'GET',
+    contentType: undefined,
+    error: details.error,
+    completedAt: new Date(details.timeStamp).toISOString(),
     startedAtMs: details.timeStamp,
   }
 }
@@ -111,6 +125,36 @@ function decodeHeader(value: ArrayBuffer | undefined): string {
 
 function decodeBytes(bytes: ArrayBuffer): string {
   return new TextDecoder('utf-8', { fatal: false }).decode(bytes)
+}
+
+type BasePendingRequest = Omit<PendingRequest, 'method'>
+
+type BaseRequestDetails = {
+  requestId: string
+  tabId: number
+  timeStamp: number
+  url: string
+  frameId?: number
+  type?: string
+  initiator?: string
+}
+
+function createBaseRequest(details: BaseRequestDetails): BasePendingRequest {
+  const url = parseUrl(details.url)
+
+  return {
+    id: createRequestId(details.tabId, details.requestId),
+    timestamp: new Date(details.timeStamp).toISOString(),
+    url: details.url,
+    path: url?.path,
+    headers: {},
+    queryParams: url?.queryParams ?? {},
+    tabId: details.tabId,
+    frameId: details.frameId,
+    type: details.type,
+    initiator: details.initiator,
+    startedAtMs: details.timeStamp,
+  }
 }
 
 function parseUrl(

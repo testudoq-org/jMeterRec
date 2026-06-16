@@ -1,6 +1,10 @@
 import type { RecorderState } from './recorder-state'
+import { PendingWebRequestStore } from './pending-web-request-store'
 import {
   createPendingRequest,
+  createCompletedRequest,
+  createErrorRequest,
+  createRequestId,
   markRequestError,
   mergeBeforeSendHeaders,
   mergeCompleted,
@@ -10,15 +14,28 @@ import {
 import type { BackgroundBroadcast } from '../messages'
 
 export class TrafficCaptureService {
-  private readonly pending = new Map<string, PendingRequest>()
+  private pending = new Map<string, PendingRequest>()
+  private readonly finalizing = new Set<string>()
   private readonly filter: chrome.webRequest.RequestFilter = { urls: ['<all_urls>'] }
   private listenersRegistered = false
 
-  constructor(private readonly state: RecorderState) {}
+  constructor(
+    private readonly state: RecorderState,
+    private readonly pendingStore = new PendingWebRequestStore()
+  ) {}
 
-  start(): void {
+  async start(
+    recoveredFragments: Record<string, PendingRequest> = {},
+    keepRecoveredFragments = true
+  ): Promise<void> {
     if (this.listenersRegistered) {
       return
+    }
+
+    this.pending = new Map(Object.entries(keepRecoveredFragments ? recoveredFragments : {}))
+
+    if (!keepRecoveredFragments && Object.keys(recoveredFragments).length > 0) {
+      await this.pendingStore.clear()
     }
 
     chrome.webRequest.onBeforeRequest.addListener(this.onBeforeRequest, this.filter, [
@@ -36,12 +53,20 @@ export class TrafficCaptureService {
     this.listenersRegistered = true
   }
 
+  async clearPending(): Promise<void> {
+    this.pending.clear()
+    await this.pendingStore.clear()
+  }
+
   private readonly onBeforeRequest = (details: chrome.webRequest.OnBeforeRequestDetails) => {
     if (!this.isCapturing()) {
       return undefined
     }
 
-    this.pending.set(details.requestId, createPendingRequest(details))
+    this.runSafely(
+      this.persistPending(createPendingRequest(details)),
+      'Unable to persist pending request.'
+    )
     return undefined
   }
 
@@ -52,9 +77,7 @@ export class TrafficCaptureService {
       return undefined
     }
 
-    const pending = this.pending.get(details.requestId) ?? createPendingRequest(details)
-    mergeBeforeSendHeaders(pending, details)
-    this.pending.set(details.requestId, pending)
+    this.runSafely(this.handleBeforeSendHeaders(details), 'Unable to persist request headers.')
     return undefined
   }
 
@@ -63,37 +86,119 @@ export class TrafficCaptureService {
       return
     }
 
-    const pending = this.pending.get(details.requestId) ?? createPendingRequest(details)
-    mergeResponseStarted(pending, details)
-    this.pending.set(details.requestId, pending)
+    this.runSafely(this.handleResponseStarted(details), 'Unable to persist response start.')
   }
 
   private readonly onCompleted = (details: chrome.webRequest.OnCompletedDetails) => {
-    const pending = this.pending.get(details.requestId)
-
-    if (pending === undefined || !this.isCapturing()) {
-      return
-    }
-
-    mergeCompleted(pending, details)
-    this.pending.delete(details.requestId)
-    void this.state.addRequest(pending)
-    void this.state.save()
-    this.broadcast({ type: 'REQUEST_CAPTURED', request: pending })
+    this.runSafely(this.handleCompleted(details), 'Unable to finalize completed request.')
   }
 
   private readonly onErrorOccurred = (details: chrome.webRequest.OnErrorOccurredDetails) => {
-    const pending = this.pending.get(details.requestId)
+    this.runSafely(this.handleErrorOccurred(details), 'Unable to finalize failed request.')
+  }
 
-    if (pending === undefined || !this.isCapturing()) {
+  private async handleBeforeSendHeaders(
+    details: chrome.webRequest.OnBeforeSendHeadersDetails
+  ): Promise<void> {
+    const id = createRequestId(details.tabId, details.requestId)
+    const pending = (await this.loadPending(id)) ?? createPendingRequest(details)
+
+    mergeBeforeSendHeaders(pending, details)
+    await this.persistPending(pending)
+  }
+
+  private async handleResponseStarted(
+    details: chrome.webRequest.OnResponseStartedDetails
+  ): Promise<void> {
+    const id = createRequestId(details.tabId, details.requestId)
+    const pending = (await this.loadPending(id)) ?? createPendingRequest(details)
+
+    mergeResponseStarted(pending, details)
+    await this.persistPending(pending)
+  }
+
+  private async handleCompleted(details: chrome.webRequest.OnCompletedDetails): Promise<void> {
+    const id = createRequestId(details.tabId, details.requestId)
+
+    if (this.finalizing.has(id)) {
       return
     }
 
-    markRequestError(pending, details)
-    this.pending.delete(details.requestId)
-    void this.state.addRequest(pending)
-    void this.state.save()
-    this.broadcast({ type: 'REQUEST_CAPTURED', request: pending })
+    this.finalizing.add(id)
+
+    if (!this.isCapturing()) {
+      return
+    }
+
+    try {
+      const pending = await this.loadPending(id)
+      const request = pending ?? createCompletedRequest(details)
+      if (pending !== undefined) {
+        mergeCompleted(request, details)
+      }
+
+      await this.removePending(id)
+      this.addCompletedRequest(request)
+    } finally {
+      this.finalizing.delete(id)
+    }
+  }
+
+  private async handleErrorOccurred(
+    details: chrome.webRequest.OnErrorOccurredDetails
+  ): Promise<void> {
+    const id = createRequestId(details.tabId, details.requestId)
+
+    if (this.finalizing.has(id)) {
+      return
+    }
+
+    this.finalizing.add(id)
+
+    if (!this.isCapturing()) {
+      return
+    }
+
+    try {
+      const pending = await this.loadPending(id)
+      const request = pending ?? createErrorRequest(details)
+      if (pending !== undefined) {
+        markRequestError(request, details)
+      }
+
+      await this.removePending(id)
+      this.addCompletedRequest(request)
+    } finally {
+      this.finalizing.delete(id)
+    }
+  }
+
+  private async loadPending(id: string): Promise<PendingRequest | undefined> {
+    return this.pending.get(id) ?? (await this.pendingStore.loadFragment(id))
+  }
+
+  private async persistPending(pending: PendingRequest): Promise<void> {
+    this.pending.set(pending.id, pending)
+    await this.pendingStore.upsert(pending)
+  }
+
+  private async removePending(id: string): Promise<void> {
+    this.pending.delete(id)
+    await this.pendingStore.remove(id)
+  }
+
+  private addCompletedRequest(request: PendingRequest): void {
+    this.state.addRequest(request)
+    this.state.save().catch((err: unknown) => {
+      console.warn('Unable to save completed request.', err)
+    })
+    this.broadcast({ type: 'REQUEST_CAPTURED', request })
+  }
+
+  private runSafely(operation: Promise<void>, message: string): void {
+    operation.catch((err: unknown) => {
+      console.warn(message, err)
+    })
   }
 
   private isCapturing(): boolean {

@@ -3,6 +3,7 @@ import { filterRequestsByDomains } from '../jmx/domains'
 import { buildPlaywrightResponse } from '../generators/playwright'
 import { safeFilename } from '../utils/filename'
 import type { BackgroundRequest, BackgroundResponse, RecorderSnapshot } from '../messages'
+import { PendingWebRequestStore } from './pending-web-request-store'
 import type { CapturedRequest, PlanMeta, PlaywrightStep } from '../models/captured-request'
 import { RecorderState } from './recorder-state'
 import { TrafficCaptureService } from './traffic-capture'
@@ -18,17 +19,20 @@ type ContentRecorderMessage =
 export interface RecorderServiceOptions {
   state?: RecorderState
   trafficCapture?: TrafficCaptureService
+  pendingStore?: PendingWebRequestStore
 }
 
 export class RecorderService {
   private readonly state: RecorderState
   private readonly trafficCapture: TrafficCaptureService
   private readonly handlers: Record<BackgroundRequest['type'], MessageHandler>
+  private pendingStore: PendingWebRequestStore | undefined
   private initialized = false
 
   constructor(options: RecorderServiceOptions = {}) {
     this.state = options.state ?? new RecorderState()
     this.trafficCapture = options.trafficCapture ?? new TrafficCaptureService(this.state)
+    this.pendingStore = options.pendingStore
     this.handlers = {
       START_RECORDING: (message) =>
         this.handleStartRecordingMessage(
@@ -69,11 +73,14 @@ export class RecorderService {
     }
 
     await this.state.load()
-    this.trafficCapture.start()
+    const pendingStore = this.getPendingStore()
+    const pendingFragments = await pendingStore.load()
+    await this.trafficCapture.start(pendingFragments, this.state.isCapturing())
     this.initialized = true
   }
 
   async startRecording(planName: string, tabId?: number): Promise<void> {
+    await this.getPendingStore().clear()
     this.state.start(planName, tabId)
     await this.state.save()
     this.broadcastState()
@@ -84,6 +91,7 @@ export class RecorderService {
     const requests = this.state.getRequests()
     this.state.stop()
     await this.state.save()
+    await this.getPendingStore().clear()
     this.broadcastState()
     this.broadcastRecorderMessage({ type: 'STOP_RECORDING' })
     return requests
@@ -106,12 +114,14 @@ export class RecorderService {
   async clearRequests(): Promise<void> {
     this.state.clearRequests()
     await this.state.save()
+    await this.getPendingStore().clear()
     this.broadcastState()
   }
 
   async reset(): Promise<void> {
     this.state.reset()
     await this.state.save()
+    await this.getPendingStore().clear()
     this.broadcastState()
     this.broadcastRecorderMessage({ type: 'RESET' })
   }
@@ -126,6 +136,14 @@ export class RecorderService {
 
   getDomains(): string[] {
     return this.state.getDomains()
+  }
+
+  private getPendingStore(): PendingWebRequestStore {
+    if (this.pendingStore === undefined) {
+      this.pendingStore = new PendingWebRequestStore()
+    }
+
+    return this.pendingStore
   }
 
   async handleMessage(message: BackgroundRequest): Promise<BackgroundResponse> {

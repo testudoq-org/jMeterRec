@@ -48,7 +48,8 @@ const createMockState = (): RecorderState => {
 
 const createMockTrafficCapture = (): TrafficCaptureService => {
   return {
-    start: vi.fn(),
+    start: vi.fn(async () => undefined),
+    clearPending: vi.fn(async () => undefined),
   } as unknown as TrafficCaptureService
 }
 
