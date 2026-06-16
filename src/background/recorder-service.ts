@@ -1,12 +1,19 @@
 import { buildJmx } from '../jmx/serializer'
 import { filterRequestsByDomains } from '../jmx/domains'
 import { buildPlaywrightResponse } from '../generators/playwright'
+import { safeFilename } from '../utils/filename'
 import type { BackgroundRequest, BackgroundResponse, RecorderSnapshot } from '../messages'
 import type { CapturedRequest, PlanMeta, PlaywrightStep } from '../models/captured-request'
 import { RecorderState } from './recorder-state'
 import { TrafficCaptureService } from './traffic-capture'
 
 type MessageHandler = (message: BackgroundRequest) => Promise<BackgroundResponse>
+type ContentRecorderMessage =
+  | { type: 'START_RECORDING' }
+  | { type: 'STOP_RECORDING' }
+  | { type: 'PAUSE_RECORDING' }
+  | { type: 'RESUME_RECORDING' }
+  | { type: 'RESET' }
 
 export interface RecorderServiceOptions {
   state?: RecorderState
@@ -70,6 +77,7 @@ export class RecorderService {
     this.state.start(planName, tabId)
     await this.state.save()
     this.broadcastState()
+    this.broadcastRecorderMessage({ type: 'START_RECORDING' })
   }
 
   async stopRecording(): Promise<CapturedRequest[]> {
@@ -77,6 +85,7 @@ export class RecorderService {
     this.state.stop()
     await this.state.save()
     this.broadcastState()
+    this.broadcastRecorderMessage({ type: 'STOP_RECORDING' })
     return requests
   }
 
@@ -84,12 +93,14 @@ export class RecorderService {
     this.state.pause()
     await this.state.save()
     this.broadcastState()
+    this.broadcastRecorderMessage({ type: 'PAUSE_RECORDING' })
   }
 
   async resumeRecording(): Promise<void> {
     this.state.resume()
     await this.state.save()
     this.broadcastState()
+    this.broadcastRecorderMessage({ type: 'RESUME_RECORDING' })
   }
 
   async clearRequests(): Promise<void> {
@@ -102,6 +113,7 @@ export class RecorderService {
     this.state.reset()
     await this.state.save()
     this.broadcastState()
+    this.broadcastRecorderMessage({ type: 'RESET' })
   }
 
   getSnapshot(): RecorderSnapshot {
@@ -255,19 +267,63 @@ export class RecorderService {
     }
   }
 
-  private broadcastState(): void {
-    chrome.runtime
-      .sendMessage({ type: 'STATE_CHANGED', snapshot: this.state.getSnapshot() })
+  private broadcastRecorderMessage(message: ContentRecorderMessage): void {
+    if (typeof chrome === 'undefined' || chrome.tabs === undefined) {
+      return
+    }
+
+    void chrome.tabs
+      .query({})
+      .then((tabs) => {
+        for (const tab of tabs) {
+          if (tab.id === undefined) {
+            continue
+          }
+
+          chrome.tabs.sendMessage(tab.id, message).catch((err: unknown) => {
+            console.warn('Unable to broadcast recorder message to tab.', err)
+          })
+        }
+      })
       .catch((err: unknown) => {
-        console.warn('Unable to broadcast recorder state.', err)
+        console.warn('Unable to query tabs for recorder broadcast.', err)
       })
   }
-}
 
-function safeFilename(value: string): string {
-  const filename = value.trim().replace(/[^a-z0-9._-]+/gi, '-')
+  private broadcastState(): void {
+    const snapshot = this.state.getSnapshot()
 
-  return filename.length > 0 ? filename : 'Untitled-Plan'
+    chrome.runtime.sendMessage({ type: 'STATE_CHANGED', snapshot }).catch((err: unknown) => {
+      console.warn('Unable to broadcast recorder state.', err)
+    })
+
+    this.broadcastStateToTabs(snapshot)
+  }
+
+  private broadcastStateToTabs(snapshot: RecorderSnapshot): void {
+    if (typeof chrome === 'undefined' || chrome.tabs === undefined) {
+      return
+    }
+
+    void chrome.tabs
+      .query({})
+      .then((tabs) => {
+        for (const tab of tabs) {
+          if (tab.id === undefined) {
+            continue
+          }
+
+          chrome.tabs
+            .sendMessage(tab.id, { type: 'STATE_CHANGED', snapshot })
+            .catch((err: unknown) => {
+              console.warn('Unable to broadcast recorder state to tab.', err)
+            })
+        }
+      })
+      .catch((err: unknown) => {
+        console.warn('Unable to query tabs for state broadcast.', err)
+      })
+  }
 }
 
 function toErrorMessage(err: unknown): string {

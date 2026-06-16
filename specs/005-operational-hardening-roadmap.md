@@ -29,12 +29,12 @@ Relevant evidence:
 
 ## Progress
 
-As of 2026-06-16 14:22 +12:00:
+As of 2026-06-16 15:30 +12:00:
 
 | Phase | Status | Evidence |
 |---|---|---|
 | P0 — Clean stale docs/process notes | Completed | Committed on `master` as `3a5559b feat: update branching instructions, license, and README for operational hardening roadmap`. |
-| P1 — Build golden E2E coverage | Not started | Next implementation phase. |
+| P1 — Build golden E2E coverage | Completed | Added extension E2E harness, deterministic fixture server/page, golden JMX/Playwright artifacts, and action-recording state broadcasts. Verified with Vitest, Playwright E2E, `dry4js`, and `crap4js` (max numeric CRAP 12.0, below 20). |
 | P2 — Harden in-flight request persistence | Not started | Backlog item remains. |
 | P3 — Improve request-body fidelity | Not started | Backlog item remains. |
 | P4 — Improve JMX fidelity and wire options | Not started | Backlog item remains. |
@@ -66,7 +66,7 @@ As of 2026-06-16 14:22 +12:00:
 | Priority | Workstream                            | Status      | Goal                                                                                                      | Why it matters                                                                       |   Risk |
 | -------: | ------------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | -----: |
 |       P0 | Clean stale docs/process notes        | Completed   | Remove stale branch, merge, manual-regression, and template/process guidance                              | Prevents future contributors from following outdated instructions                    |    Low |
-|       P1 | Build golden E2E coverage             | Not started | Load the real extension, record a synthetic flow, export JMX/Playwright, and compare golden artifacts     | Converts manual confidence into repeatable release confidence                        | Medium |
+|       P1 | Build golden E2E coverage             | Completed   | Load the real extension, record a synthetic flow, export JMX/Playwright, and compare golden artifacts     | Converts manual confidence into repeatable release confidence                        | Medium |
 |       P2 | Harden in-flight request persistence  | Not started | Persist pending `webRequest` fragments so MV3 service-worker termination cannot lose requests             | Protects the core recording guarantee                                                | Medium |
 |       P3 | Improve request-body fidelity         | Not started | Add typed content-script fallback for fetch/XHR/form bodies where `webRequest.requestBody` is incomplete  | Restores part of the fidelity lost when SideeX was removed                           | Medium |
 |       P4 | Improve JMX fidelity and wire options | Not started | Use saved plan name, threads, ramp-up, and loops; add common JMeter elements                              | Makes JMX output more useful and closer to the project success metric                | Medium |
@@ -82,7 +82,7 @@ As of 2026-06-16 14:22 +12:00:
 | `PlanMeta`               | Exists for JMX thread-group settings.                               | Use saved options when exporting JMX.                                                                                                |
 | `JmxSampler`             | Basic sampler model exists.                                         | Extend serializer coverage for common JMeter elements where required.                                                                |
 | `ActionStep`             | Exists for browser action recording.                                | Include in E2E scenarios when validating combined Playwright output.                                                                 |
-| `GoldenExportArtifact`   | Not yet implemented.                                                | Store deterministic golden JMX and Playwright outputs for E2E comparison.                                                            |
+| `GoldenExportArtifact`   | Deterministic golden JMX and Playwright artifacts now exist under `tests/fixtures/golden/`. | Compare future extension recording/export output against those fixtures.                                      |
 
 ## Repository / API changes
 
@@ -108,9 +108,15 @@ Expected changes:
 
 Expected files:
 
-- `tests/e2e/`
-- `tests/fixtures/`
-- `src/test/` helpers if needed
+- `tests/e2e/spec-005-golden-extension.spec.ts`
+- `tests/fixtures/golden-page.html`
+- `tests/fixtures/golden/`
+- `playwright.config.ts`
+- `scripts/e2e-server.mjs`
+- `src/background/recorder-service.ts`
+- `src/content/action-recorder.ts`
+- `src/content/index.ts`
+- `src/utils/filename.ts`
 - CI workflow only if required to run the new E2E job
 
 Expected changes:
@@ -121,8 +127,9 @@ Expected changes:
 - Generate HTTP traffic and browser actions.
 - Export JMX.
 - Export Playwright.
-- Compare outputs with golden files.
+- Compare normalized outputs with golden files while stripping volatile browser headers.
 - Keep fixtures sanitized and deterministic.
+- Broadcast recorder state/action-control messages to content scripts so future pages can record DOM actions.
 
 ### P2 — Harden in-flight request persistence
 
@@ -341,10 +348,11 @@ Definition of done:
 - [x] Branching guidance matches actual project practice.
 - [x] Template guidance does not reference missing workflow files.
 
-### Phase 1 — Build golden E2E coverage
+### Phase 1 — Build golden E2E coverage — Completed
 
 Priority: P1
 Risk: Medium
+Implemented: 2026-06-16
 
 Tasks:
 
@@ -357,9 +365,9 @@ Tasks:
 
 Definition of done:
 
-- `npm run test:e2e` or the documented E2E command loads the extension and validates generated artifacts.
-- Golden JMX and Playwright fixtures are deterministic and sanitized.
-- Unit tests still pass.
+- [x] `npm run test:e2e` or the documented E2E command loads the extension and validates generated artifacts.
+- [x] Golden JMX and Playwright fixtures are deterministic and sanitized.
+- [x] Unit tests still pass.
 
 ### Phase 2 — Harden in-flight request persistence
 
@@ -459,7 +467,7 @@ Definition of done:
 
 - [x] Branch cut from `master`.
 - [x] P0 stale docs/process notes are cleaned.
-- [ ] Golden E2E test harness is added or a concrete implementation branch is planned from this spec.
+- [x] Golden E2E test harness is added or a concrete implementation branch is planned from this spec.
 - [ ] In-flight request persistence design is implemented or scheduled as a follow-up spec.
 - [ ] Request-body fallback design is implemented or scheduled as a follow-up spec.
 - [ ] JMX options metadata work is implemented or scheduled as a follow-up spec.
@@ -473,4 +481,4 @@ Definition of done:
 
 ## Final recommendation
 
-P0 is complete and committed on `master`. The next logical phase is P1: build golden E2E coverage. Cleaning stale docs is complete, and golden E2E coverage is the highest-leverage engineering task because it creates a safety net for every later hardening item. After that, tackle P2 and P3 because they protect the core recording guarantee. P4 improves JMX usefulness. P5 should remain a separate privacy-reviewed feature, not part of the general hardening branch.
+P0 and P1 are complete. The next logical phase is P2: harden in-flight request persistence across MV3 service-worker termination. Golden E2E coverage now creates a safety net for every later hardening item. After P2, tackle P3 because request-body fallback protects the core recording guarantee. P4 improves JMX usefulness. P5 should remain a separate privacy-reviewed feature, not part of the general hardening branch.

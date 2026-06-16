@@ -1,7 +1,7 @@
 import type { RecorderSnapshot } from '../messages'
 
 // Import action recorder to enable DOM action capture
-import './action-recorder'
+import { actionRecorder } from './action-recorder'
 
 const CONTAINER_ID = 'capultura-transaction-panel'
 
@@ -107,6 +107,7 @@ chrome.runtime.onMessage.addListener((message: unknown) => {
       removePanel()
       break
     case 'STATE_CHANGED':
+      actionRecorder.applySnapshot(message.snapshot)
       updatePanel(message.snapshot)
       break
     case 'REQUEST_CAPTURED':
@@ -124,6 +125,7 @@ chrome.runtime
   .sendMessage({ type: 'GET_STATE' })
   .then((response: unknown) => {
     if (isStateResponse(response) && response.success && response.snapshot?.recording) {
+      actionRecorder.applySnapshot(response.snapshot)
       updatePanel(response.snapshot)
     }
   })
