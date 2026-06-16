@@ -2,10 +2,18 @@
 
 ## Current Status
 
-**PARTIALLY IMPLEMENTED.** Phase 2 functionality has been added. The extension now:
+**IMPLEMENTED WITH FOLLOW-UPS.** The extension now:
 - Exports HTTP traffic to Playwright format (Path A)
-- Captures browser actions (clicks, form input) via content script (Path B - partial)
+- Captures browser actions (clicks, form input) via content script (Path B)
 - Combines both HTTP requests and actions in generated test output
+- Exposes the Playwright export mode from the compact popup UI
+- Supports an optional base URL for Playwright exports
+
+Remaining follow-ups are tracked in `specs/XXX-backlog-ideas.md` and are not blockers for the Playwright export path itself:
+- Frame context tracking
+- Additional action commands such as select and more complete wait handling
+- E2E tests for action recording and generated Playwright output
+- Documentation for generated test format
 
 ## Implemented Components
 
@@ -26,7 +34,7 @@
 
 ### Supporting Components
 - ✅ `PlaywrightLocatorBuilder` class (src/generators/playwright-locator.ts)
-- ✅ Unit tests for all new functionality (39 tests passing)
+- ✅ Unit tests for all new functionality (61 tests passing across the current suite)
 
 ---
 
@@ -38,9 +46,9 @@ The extension now generates Playwright test scripts (`.spec.ts` files) from reco
 
 Export HTTP traffic to Playwright's `page.route()` API to mock/modify HTTP requests. This complements the existing JMX export.
 
-### Path B: Full Browser Interaction Recording (Partially Implemented)
+### Path B: Full Browser Interaction Recording (Implemented with follow-ups)
 
-Browser action recording for clicks, typing, and form submissions is active. Generated tests combine page interactions with HTTP request mocks.
+Browser action recording for clicks, typing, and form submissions is active. Generated tests combine page interactions with HTTP request mocks. Frame context tracking and additional action coverage remain follow-ups.
 
 ---
 
@@ -135,9 +143,10 @@ src/
 - Action steps → `page.goto()`, `page.fill()`, `page.click()` calls
 
 ### Task 4 — Popup UI Integration ✅
-- Export mode selector with JMX/Playwright options
+- Export mode selector with JMX/Playwright options in the compact popup layout
 - Base URL input field for Playwright exports
 - Conditional display of playwrightOptions div
+- Related UX/UI details are documented in `specs/004-improve-ux-ui-implementation.md`
 
 ### Task 5 — Action Recording (Phase 2) ✅
 - Content script captures click, change, submit events
@@ -157,7 +166,7 @@ src/
 
 ## Testing
 
-All tests passing (39 total):
+Current unit suite: 61 tests passing.
 
 | File | Tests | Coverage |
 |------|-------|----------|
@@ -168,6 +177,8 @@ All tests passing (39 total):
 | action-recorder.test.ts | 6 | SelectorBuilder, createActionStep |
 | traffic-normalizer.test.ts | 6 | Request normalization |
 | serializer.test.ts | 6 | JMX generation |
+| popup.test.ts | 6 | Popup timer/state behavior |
+| options.test.ts | 5 | Options normalization |
 
 ---
 

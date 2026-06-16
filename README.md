@@ -1,6 +1,29 @@
 # Capultura — Real Browser Flow Recorder
 
-Capultura captures real user interactions across Selenium, JMX and Playwright, converts recordings into reproducible test scripts, and runs scalable performance tests for CI-ready load and functional validation.
+Capultura captures real browser flows, converts recordings into reproducible JMX and Playwright test scripts, and runs scalable performance tests for CI-ready load and functional validation.
+
+## Current status
+
+The current implementation is a Manifest V3 Chrome extension focused on browser HTTP traffic capture, JMX export, Playwright export, and a compact UX/UI pass for the popup/options pages.
+
+Implemented in the current branch:
+
+- HTTP traffic capture through `chrome.webRequest`
+- JMX export with domain selection
+- Playwright `.spec.ts` export with optional base URL
+- Browser action recording for clicks, typing, and form submissions
+- Popup transaction inspector with method/status/search filters
+- Detached inspector window using `chrome.windows.create`
+- Shared popup/options theme setting
+- Unit tests for serializer, recorder state, traffic normalizer, action recording, Playwright generation, popup state, and options normalization
+
+Deferred follow-ups:
+
+- Guaranteed response body capture
+- Background port forwarding for transaction events
+- Mid-flight request persistence across service-worker termination
+- Golden E2E extension export tests
+- Full CRX packaging validation in the intended packaging environment
 
 ## Quick start
 
@@ -14,9 +37,9 @@ npm run build  # production bundle
 
 - TypeScript strict mode enforced
 - Source in `src/`, reference legacy code in `src-ori/`
-- Keep `memory-bank/` for design artifacts
-- Instructions are in .github\instructions
-- Specifications are in the specs/
+- Specifications are in `specs/`
+- CI guidance and project instructions are in `.github/instructions`
+- Manual browser regression is still required before merge for UX/UI-sensitive changes
 
 ## Enterprise packaging
 
@@ -33,6 +56,8 @@ npm run pack-crx  # produces signed .crx and enterprise-install.json for Extensi
 │   ├── generators/     # Playwright test generator
 │   ├── jmx/            # JMX serializer
 │   ├── models/         # TypeScript interfaces
+│   ├── popup/          # Extension action popup
+│   ├── options/        # Extension options page
 │   └── manifest.json   # MV3 manifest
 ├── tests/
 │   ├── unit/           # Vitest unit tests
