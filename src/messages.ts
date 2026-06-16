@@ -19,6 +19,7 @@ export type BackgroundRequest =
   | { type: 'GET_STATE' }
   | { type: 'GET_REQUESTS' }
   | { type: 'CLEAR_REQUESTS' }
+  | { type: 'RESET' }
   | { type: 'ADD_ACTION'; action: ActionStep }
   | { type: 'GET_DOMAINS' }
   | { type: 'EXPORT_JMX'; includedDomains: string[] }

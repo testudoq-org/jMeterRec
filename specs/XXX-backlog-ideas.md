@@ -3,15 +3,28 @@
 You now have an MV3 extension port focused on browser HTTP traffic capture and local JMX export without SideeX/Selenium in the initial phase. The next work is to harden request-body fidelity, persist in-flight webRequest state, wire options into export metadata, and add golden E2E coverage.
 
 > **From the brief:** **Recommendation: TypeScript MV3 Chrome extension, deployed via enterprise Chrome policy.**
-> **Current status:** HTTP/JMX-only SideeX-free port implemented in the working tree.
+> **Current status:** HTTP/JMX + Playwright MV3 SideeX-free port implemented in the working tree, with 004 UX/UI transaction inspector completed.
 
 ---
 
 ### Backlog — newest first
 
+- [x] **004 UX/UI transaction inspector and detached window** — Add compact popup/options styling, transaction panel, filters, bounded live queue, theme persistence, and detached inspector window.
+  - Status: implemented in `004-improve-ux-ui-implementation`
+  - Depends on: stable popup/options IDs and existing `REQUEST_CAPTURED` / `GET_REQUESTS` APIs
+  - Related spec: `specs/004-improve-ux-ui-implementation.md`
+  - Remaining follow-ups: response body capture and optional background port forwarding
+- [~] **Typed response body capture for transaction inspector** — Add explicit opt-in capture for page-origin response bodies with privacy warnings, size limits, and tests.
+  - Status: proposed
+  - Depends on: 004 UX/UI transaction inspector landing
+  - Related spec: `specs/004-improve-ux-ui-implementation.md`
+- [~] **Background port forwarding for transaction panel** — Add a `transaction-panel` runtime port so popup and detached inspector instances receive live `STATE_CHANGED` and `REQUEST_CAPTURED` events more reliably.
+  - Status: proposed
+  - Depends on: stable broadcast message contract
+  - Related spec: `specs/004-improve-ux-ui-implementation.md`
 - [~] **Typed content body fallback after SideeX removal** — Add a small proprietary content-script adapter for fetch/XHR/form bodies where `chrome.webRequest.requestBody` is incomplete.
   - Status: proposed
-  - Depends on: HTTP/JMX-only port landing
+  - Depends on: HTTP/JMX + Playwright port landing
   - Related spec: SideeX dependency investigation
 - [~] **Persist in-flight webRequest state** — Store pending request fragments so service-worker termination cannot lose requests between `onBeforeRequest` and `onCompleted`.
   - Status: proposed
@@ -31,9 +44,10 @@ You now have an MV3 extension port focused on browser HTTP traffic capture and l
 - [~] **CRX packaging validation** — Run `npm run pack-crx` in the intended packaging environment and fix placeholder/path handling.
   - Status: proposed
   - Depends on: Chrome/openssl availability
-- [x] **HTTP/JMX-only MV3 SideeX-free port** — Remove SideeX manifest entries, replace capture with `webRequest`, add typed background state, popup/options pages, and local JMX export.
+- [x] **HTTP/JMX + Playwright MV3 SideeX-free port** — Remove SideeX manifest entries, replace capture with `webRequest`, add typed background state, popup/options pages, local JMX export, Playwright export, and transaction inspector UI.
   - Status: implemented in working tree
   - Depends on: SideeX analysis
+  - Related spec: `specs/004-improve-ux-ui-implementation.md`
 
 ### Quick comparison (decision table)
 
@@ -116,7 +130,7 @@ You now have an MV3 extension port focused on browser HTTP traffic capture and l
 #### 5. Performance and memory
 
 - [~] Batch streaming to `chrome.storage.local` - not yet implemented
-- [~] Ring buffer for live UI preview - not yet implemented
+- [x] Ring buffer for live UI preview - bounded transaction queue implemented in popup; background in-flight persistence remains pending.
 
 ---
 

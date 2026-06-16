@@ -1,70 +1,64 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>BM JMX Recorder Options</title>
-    <style>
-      body {
-        max-width: 720px;
-        margin: 32px auto;
-        padding: 0 16px;
-        font-family: Arial, sans-serif;
-        color: #0f172a;
-      }
-
-      h1 {
-        margin-top: 0;
-      }
-
-      label {
-        display: block;
-        margin: 16px 0 6px;
-        font-weight: 700;
-      }
-
-      input {
-        width: 100%;
-        max-width: 320px;
-        padding: 8px;
-        border: 1px solid #cbd5e1;
-        border-radius: 6px;
-      }
-
-      button {
-        margin-top: 20px;
-        padding: 10px 16px;
-        border: 0;
-        border-radius: 6px;
-        background: #2563eb;
-        color: white;
-        cursor: pointer;
-      }
-
-      #saved {
-        margin-top: 12px;
-        color: #15803d;
-      }
-    </style>
+    <title>Capultura Options</title>
+    <link rel="stylesheet" href="./options.css" />
   </head>
   <body>
-    <h1>BM JMX Recorder Options</h1>
+    <h1>Capultura Options</h1>
     <p>These defaults are used when exporting captured HTTP traffic to JMeter JMX.</p>
 
-    <label for="defaultPlanName">Default plan name</label>
-    <input id="defaultPlanName" type="text" />
+    <section class="options-section" aria-labelledby="appearanceOptionsTitle">
+      <h2 id="appearanceOptionsTitle">Appearance</h2>
 
-    <label for="threads">Threads</label>
-    <input id="threads" type="number" min="1" />
+      <label for="themeMode">Theme</label>
+      <select id="themeMode">
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+      </select>
+    </section>
 
-    <label for="rampUp">Ramp-up seconds</label>
-    <input id="rampUp" type="number" min="0" />
+    <section class="options-section" aria-labelledby="jmxOptionsTitle">
+      <h2 id="jmxOptionsTitle">JMX export defaults</h2>
 
-    <label for="loops">Loop count</label>
-    <input id="loops" type="number" min="1" />
+      <label for="defaultPlanName">Default plan name</label>
+      <input id="defaultPlanName" type="text" />
 
-    <button id="save">Save options</button>
-    <div id="saved" aria-live="polite"></div>
+      <label for="threads">Threads</label>
+      <input id="threads" type="number" min="1" />
+
+      <label for="rampUp">Ramp-up seconds</label>
+      <input id="rampUp" type="number" min="0" />
+
+      <label for="loops">Loop count</label>
+      <input id="loops" type="number" min="1" />
+
+      <button id="save" type="button">Save options</button>
+      <div id="saved" aria-live="polite"></div>
+    </section>
+
+    <section class="options-section" aria-labelledby="transactionPanelOptionsTitle">
+      <h2 id="transactionPanelOptionsTitle">Transaction panel</h2>
+      <p>Controls how the popup displays recently captured HTTP requests.</p>
+
+      <label for="maxTransactions">Maximum transactions shown in popup</label>
+      <input id="maxTransactions" type="number" min="20" max="500" step="20" />
+
+      <label class="checkbox-row">
+        <input id="openDetachedInspector" type="checkbox" />
+        <span>Open detached inspector window when recording starts</span>
+      </label>
+
+      <label class="checkbox-row">
+        <input id="captureResponseBody" type="checkbox" />
+        <span>Capture response bodies when available. This can expose sensitive data.</span>
+      </label>
+
+      <button id="saveTransactionPanelOptions" type="button">Save transaction panel options</button>
+      <div id="transactionPanelSaved" aria-live="polite"></div>
+    </section>
 
     <script type="module" src="./options.ts"></script>
   </body>

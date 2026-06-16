@@ -30,8 +30,7 @@ Target outcome of the eventual port:
   dependency).
 - No open-source runtime libraries in the deployed extension artefact. Build-time
   tooling (tsc, esbuild) is acceptable. Runtime dependencies must be justified.
-- The `webRequest` permission with blocking must be preserved via enterprise policy
-  deployment.
+- The `webRequest` permission is used for passive browser traffic capture. `webRequestBlocking` is not required by the current implementation and should only be reintroduced if a future feature must modify requests.
 
 Known facts already established — treat these as ground truth:
 
@@ -511,26 +510,29 @@ Native browser equivalents are sufficient for most locator work: `document.query
 
 SideeX should be treated as a later-stage optional module, not as part of the initial HTTP/JMX delivery contract. A separate follow-up spec should define the SideeX module boundary, retained file list, typed message adapter, and acceptance criteria before any Selenium recording or replay work begins.
 
-## Port implementation status after code port
+## Port implementation status after code port and UX/UI branch
 
-The current working tree now contains an HTTP/JMX-only MV3 port that matches the initial-phase SideeX removal recommendation.
+The current working tree contains an HTTP/JMX + Playwright MV3 port with a completed UX/UI transaction-inspector pass. The active manifest no longer declares SideeX/Selenium entries and does not declare `webRequestBlocking`, `scripting`, `debugger`, or `sidePanel`.
 
-### Implemented from this analysis
+### Implemented from this analysis and follow-up branches
 
-- SideeX/Selenium manifest entries are no longer declared in the ported manifest. The active MV3 manifest declares only the service worker, one proprietary content script, popup, options page, storage, `webRequest`, `webRequestBlocking`, `activeTab`, and `<all_urls>` host permissions (`src/manifest.json:1-28`).
-- The background entry point is a small service-worker bootstrap that delegates to `RecorderService` and handles typed runtime messages (`src/background/index.ts:1-23`).
-- Recording state is persisted to `chrome.storage.local` through `RecorderState`, including status, plan name, tab ID, start time, and captured requests (`src/background/recorder-state.ts:9-113`).
-- HTTP capture is implemented with `chrome.webRequest` rather than SideeX. The capture service registers `onBeforeRequest`, `onBeforeSendHeaders`, `onResponseStarted`, `onCompleted`, and `onErrorOccurred` listeners and normalizes requests into the canonical model (`src/background/traffic-capture.ts:19-109`, `src/background/traffic-normalizer.ts:7-61`).
-- JMX export is local and client-side. `RecorderService` builds a JMX response from captured requests (`src/background/recorder-service.ts:72-115`), and `buildJmx()` emits `TestPlan`, `ThreadGroup`, `HTTPSamplerProxy`, `HeaderManager`, and raw request-body CDATA (`src/jmx/serializer.ts:3-37`, `src/jmx/serializer.ts:39-73`).
-- Popup and options pages were added as vanilla TypeScript MV3 extension pages (`src/popup/popup.ts:1-184`, `src/options/options.ts:1-76`).
-- The port keeps the enterprise deployment posture from the analysis: no runtime open-source dependencies, local JMX generation, and `webRequestBlocking` preserved for enterprise policy deployment (`src/manifest.json:6-7`).
+- SideeX/Selenium manifest entries are no longer declared in the ported manifest. The active MV3 manifest declares the service worker, one proprietary content script, popup, options page, storage, `webRequest`, `activeTab`, `windows`, and `<all_urls>` host permissions (`src/manifest.json`).
+- The background entry point is a small service-worker bootstrap that delegates to `RecorderService` and handles typed runtime messages (`src/background/index.ts`).
+- Recording state is persisted to `chrome.storage.local` through `RecorderState`, including status, plan name, tab ID, start time, captured requests, and action steps (`src/background/recorder-state.ts`).
+- HTTP capture is implemented with `chrome.webRequest` rather than SideeX. The capture service registers `onBeforeRequest`, `onBeforeSendHeaders`, `onResponseStarted`, `onCompleted`, and `onErrorOccurred` listeners and normalizes requests into the canonical model (`src/background/traffic-capture.ts`, `src/background/traffic-normalizer.ts`).
+- JMX export is local and client-side. `RecorderService` builds a JMX response from captured requests, and `buildJmx()` emits `TestPlan`, `ThreadGroup`, `HTTPSamplerProxy`, `HeaderManager`, and raw request-body CDATA (`src/background/recorder-service.ts`, `src/jmx/serializer.ts`).
+- Playwright export is implemented through `EXPORT_PLAYWRIGHT`, combining HTTP requests and recorded action steps (`src/messages.ts`, `src/generators/playwright.ts`, `src/generators/playwright-locator.ts`).
+- Popup and options pages are vanilla TypeScript MV3 extension pages. The UX/UI branch moved styles into `popup.css` and `options.css`, added a compact popup layout, added a transaction inspector, added transaction options, added theme persistence, and added a detached inspector window (`specs/004-improve-ux-ui-implementation.md`).
+- The port keeps the enterprise deployment posture from the analysis: no runtime open-source dependencies, local JMX/Playwright generation, and a force-installable CRX packaging path.
 
 ### Areas still needing improvement
 
 1. **Content body fallback was removed with SideeX.** The port now relies on `webRequest.requestBody`; a later spec should add a typed content-script fallback for fetch/XHR/form edge cases where browser request-body capture is incomplete.
 2. **Mid-flight request persistence is not complete.** Pending `webRequest` records live in memory and can be lost if the service worker terminates between `onBeforeRequest` and `onCompleted`.
-3. **JMX coverage is basic.** The serializer covers HTTP samplers, headers, methods, paths, protocols, and raw bodies, but not CookieManager, CacheManager, timers, extractors, assertions, transaction controllers, or sampler grouping.
-4. **Options are saved but not used for export metadata.** The options page stores threads/ramp-up/loops/plan defaults, but export still uses fixed thread-group defaults from `RecorderService`.
-5. **Popup/options build layout is awkward.** Vite emits popup/options HTML under `dist/src/...`; the manifest works, but a cleaner dist layout or wrapper HTML should be introduced.
-6. **E2E coverage is still placeholder-level.** The Playwright test passes but does not load the extension and validate a real golden JMX export.
-7. **CRX packaging script still needs validation.** The pack script is present, but it should be run in the intended packaging environment and reviewed for the placeholder CRX path.
+3. **Response body capture is not implemented.** The transaction inspector can show request bodies, response headers, status, timestamps, and duration, but Chrome `webRequest` does not reliably expose response bodies for all traffic.
+4. **Background port forwarding is optional/deferred.** The popup currently receives `REQUEST_CAPTURED` runtime broadcasts and seeds from `GET_REQUESTS`; a port bridge can be added later for more reliable live updates.
+5. **JMX coverage is basic.** The serializer covers HTTP samplers, headers, methods, paths, protocols, and raw bodies, but not CookieManager, CacheManager, timers, extractors, assertions, transaction controllers, or sampler grouping.
+6. **Options are saved but not used for export metadata.** The options page stores threads/ramp-up/loops/plan defaults, but export still uses fixed thread-group defaults from `RecorderService`.
+7. **Popup/options build layout is awkward.** Vite emits popup/options HTML under `dist/src/...`; the manifest works, but a cleaner dist layout or wrapper HTML should be introduced.
+8. **E2E coverage is still placeholder-level.** The Playwright test passes but does not load the extension and validate a real golden JMX/Playwright export.
+9. **CRX packaging script still needs validation.** The pack script is present, but it should be run in the intended packaging environment and reviewed for the placeholder CRX path.
