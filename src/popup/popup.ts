@@ -1,3 +1,4 @@
+import { JmxOptionsStore } from '../options/jmx-options'
 import type { BackgroundRequest, BackgroundResponse, RecorderSnapshot } from '../messages'
 import type { CapturedRequest } from '../models/captured-request'
 
@@ -171,6 +172,10 @@ void loadTransactionPanelOptions()
     showError(toErrorMessage(err))
   })
 
+void loadJmxOptions().catch((err: unknown) => {
+  showError(toErrorMessage(err))
+})
+
 elapsedTimer = globalThis.setInterval(updateElapsed, 1000)
 
 chrome.runtime.onSuspend.addListener(cleanupTimer)
@@ -202,6 +207,14 @@ async function loadTransactionPanelOptions(): Promise<void> {
   themeMode.value = transactionPanelOptions.theme
   trimTransactions()
   renderTransactions()
+}
+
+async function loadJmxOptions(): Promise<void> {
+  const options = await new JmxOptionsStore().load()
+
+  if (planNameInput.value.trim().length === 0) {
+    planNameInput.value = options.name
+  }
 }
 
 async function exportRecording(): Promise<void> {

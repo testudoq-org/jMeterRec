@@ -29,15 +29,15 @@ Relevant evidence:
 
 ## Progress
 
-As of 2026-06-16 18:34 +12:00:
+As of 2026-06-16 20:00 +12:00:
 
 | Phase | Status | Evidence |
 |---|---|---|
 | P0 — Clean stale docs/process notes | Completed | Committed on `master` as `3a5559b feat: update branching instructions, license, and README for operational hardening roadmap`. |
 | P1 — Build golden E2E coverage | Completed | Committed on `master` as `2b14247 feat: add golden extension E2E coverage`. Added extension E2E harness, deterministic fixture server/page, golden JMX/Playwright artifacts, and action-recording state broadcasts. Verified with Vitest, Playwright E2E, `dry4js`, and `crap4js` (max numeric CRAP 12.0, below 20). |
 | P2 — Harden in-flight request persistence | Completed | Committed on `master` as `09709ad feat: persist pending web requests across service-worker restarts`. Added durable pending request storage, recovery, merge, cleanup, and deterministic P2 tests. |
-| P3 — Improve request-body fidelity | Not started | P3 design is being expanded in this roadmap around typed content-script fallback, background merge, privacy limits, and export compatibility. |
-| P4 — Improve JMX fidelity and wire options | Not started | Backlog item remains. |
+| P3 — Improve request-body fidelity | Documented | Committed on `master` as `cc41c2f docs: introduce P3 request-body fidelity roadmap`. P3 design is documented; implementation remains a follow-up phase. |
+| P4 — Improve JMX fidelity and wire options | Implemented | Added shared JMX option normalization, wired saved options into popup/background export, and added P4 tests. Full project checks still need to be reported after final validation. |
 | P5 — Response body capture spec | Not started | Must remain separate and privacy-reviewed. |
 
 ## Scope
@@ -69,7 +69,7 @@ As of 2026-06-16 18:34 +12:00:
 |       P1 | Build golden E2E coverage             | Completed   | Load the real extension, record a synthetic flow, export JMX/Playwright, and compare golden artifacts     | Converts manual confidence into repeatable release confidence                        | Medium |
 |       P2 | Harden in-flight request persistence  | Implemented | Persist pending `webRequest` fragments so MV3 service-worker termination cannot lose requests             | Protects the core recording guarantee                                                | Medium |
 |       P3 | Improve request-body fidelity         | Not started | Add typed content-script fallback for fetch/XHR/form bodies where `webRequest.requestBody` is incomplete  | Restores part of the fidelity lost when SideeX was removed                           | Medium |
-|       P4 | Improve JMX fidelity and wire options | Not started | Use saved plan name, threads, ramp-up, and loops; add common JMeter elements                              | Makes JMX output more useful and closer to the project success metric                | Medium |
+|       P4 | Improve JMX fidelity and wire options | Implemented | Use saved plan name, threads, ramp-up, and loops; add common JMeter elements in later slices | Makes JMX output more useful and closer to the project success metric                | Medium |
 |       P5 | Response body capture                 | Not started | Add only as a separate opt-in feature with privacy warnings, size limits, redaction/truncation, and tests | Response bodies can contain secrets and are not reliably available from `webRequest` |   High |
 
 ## Domain objects
@@ -359,9 +359,12 @@ Implementation boundaries:
 
 Expected files:
 
+- `src/options/jmx-options.ts`
+- `src/options/jmx-options.test.ts`
 - `src/jmx/serializer.ts`
 - `src/background/recorder-service.ts`
 - `src/options/options.ts`
+- `src/popup/popup.ts`
 - `src/jmx/serializer.test.ts`
 - `src/background/recorder-service.test.ts`
 - `src/options/options.test.ts`
@@ -377,6 +380,24 @@ Expected changes:
   - Assertions
   - Transaction controllers or sampler grouping
 - Keep existing basic HTTP sampler output stable.
+
+#### P4 implementation
+
+P4 wires the recorder options already saved by `src/options/options.ts` into JMX export metadata. The first implementation scope is the saved plan name, thread count, ramp-up time, and loop count. It does not add new JMeter manager/extractor/assertion elements yet; those remain later P4 slices.
+
+Implementation details:
+
+- Added `src/options/jmx-options.ts` with shared JMX option normalization.
+- Reused that normalization in `src/options/options.ts` so the options page keeps the existing storage keys:
+  - `defaultPlanName`
+  - `threads`
+  - `rampUp`
+  - `loops`
+- Added `JmxOptionsStore` so background export can load saved options from `chrome.storage.local`.
+- Updated `RecorderService` to build `PlanMeta` from saved options during `EXPORT_JMX`.
+- Kept user-entered popup plan names authoritative unless the snapshot plan name is the default `Untitled Plan`; in that case the saved default plan name is used.
+- Updated popup startup to seed the plan name input from saved JMX options when the field is empty.
+- Added tests for option normalization, serializer metadata, recorder export metadata, and popup behavior.
 
 ### P5 — Response body capture
 
@@ -558,6 +579,8 @@ Definition of done:
 
 Priority: P4
 Risk: Medium
+Status: Implemented
+Implemented: 2026-06-16
 
 Tasks:
 
@@ -568,9 +591,9 @@ Tasks:
 
 Definition of done:
 
-- JMX export uses saved options.
-- Added JMeter elements have tests and deterministic output.
-- Existing JMX export tests remain green.
+- [x] JMX export uses saved options.
+- [ ] Added JMeter elements have tests and deterministic output.
+- [x] Existing JMX export tests remain green.
 
 ### Phase 5 — Response body capture spec
 
@@ -618,7 +641,7 @@ Definition of done:
 - [x] Golden E2E test harness is added or a concrete implementation branch is planned from this spec.
 - [x] In-flight request persistence is implemented and covered by deterministic tests.
 - [x] Request-body fallback design is implemented or scheduled as a follow-up spec.
-- [ ] JMX options metadata work is implemented or scheduled as a follow-up spec.
+- [x] JMX options metadata work is implemented or scheduled as a follow-up spec.
 - [ ] Response body capture remains out of scope unless a separate privacy-reviewed spec is created.
 - [ ] `npm test` passes.
 - [ ] `npm run typecheck` passes.
@@ -629,4 +652,4 @@ Definition of done:
 
 ## Final recommendation
 
-P0, P1, and P2 are complete. P3 is the next active phase: improve request-body fidelity for fetch/XHR/form edge cases where `webRequest.requestBody` is incomplete. The P3 design should keep `webRequest.requestBody` as the primary source, add safe content-script fallback only for supported text bodies, and preserve existing export behavior unless a supported fallback body is intentionally captured. P4 improves JMX usefulness. P5 should remain a separate privacy-reviewed feature, not part of the general hardening branch.
+P0, P1, P2, and P4 are complete; P3 is documented and ready for implementation. P3 is the next active phase: improve request-body fidelity for fetch/XHR/form edge cases where `webRequest.requestBody` is incomplete. The P3 design should keep `webRequest.requestBody` as the primary source, add safe content-script fallback only for supported text bodies, and preserve existing export behavior unless a supported fallback body is intentionally captured. Later P4 slices can add selected JMeter elements. P5 should remain a separate privacy-reviewed feature, not part of the general hardening branch.

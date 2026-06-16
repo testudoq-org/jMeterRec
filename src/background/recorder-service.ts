@@ -1,6 +1,8 @@
 import { buildJmx } from '../jmx/serializer'
 import { filterRequestsByDomains } from '../jmx/domains'
 import { buildPlaywrightResponse } from '../generators/playwright'
+import { JmxOptionsStore } from '../options/jmx-options'
+import type { JmxOptions } from '../options/jmx-options'
 import { safeFilename } from '../utils/filename'
 import type { BackgroundRequest, BackgroundResponse, RecorderSnapshot } from '../messages'
 import { PendingWebRequestStore } from './pending-web-request-store'
@@ -20,6 +22,7 @@ export interface RecorderServiceOptions {
   state?: RecorderState
   trafficCapture?: TrafficCaptureService
   pendingStore?: PendingWebRequestStore
+  jmxOptionsStore?: JmxOptionsStore
 }
 
 export class RecorderService {
@@ -27,12 +30,14 @@ export class RecorderService {
   private readonly trafficCapture: TrafficCaptureService
   private readonly handlers: Record<BackgroundRequest['type'], MessageHandler>
   private pendingStore: PendingWebRequestStore | undefined
+  private jmxOptionsStore: JmxOptionsStore | undefined
   private initialized = false
 
   constructor(options: RecorderServiceOptions = {}) {
     this.state = options.state ?? new RecorderState()
     this.trafficCapture = options.trafficCapture ?? new TrafficCaptureService(this.state)
     this.pendingStore = options.pendingStore
+    this.jmxOptionsStore = options.jmxOptionsStore
     this.handlers = {
       START_RECORDING: (message) =>
         this.handleStartRecordingMessage(
@@ -146,6 +151,20 @@ export class RecorderService {
     return this.pendingStore
   }
 
+  private getJmxOptionsStore(): JmxOptionsStore {
+    if (this.jmxOptionsStore === undefined) {
+      this.jmxOptionsStore = new JmxOptionsStore()
+    }
+
+    return this.jmxOptionsStore
+  }
+
+  private planNameForExport(options: JmxOptions): string {
+    const snapshotPlanName = this.state.getSnapshot().planName
+
+    return snapshotPlanName === 'Untitled Plan' ? options.name : snapshotPlanName
+  }
+
   async handleMessage(message: BackgroundRequest): Promise<BackgroundResponse> {
     try {
       const handler = this.handlers[message.type]
@@ -223,7 +242,7 @@ export class RecorderService {
   private handleExportJmxMessage(
     message: Extract<BackgroundRequest, { type: 'EXPORT_JMX' }>
   ): Promise<BackgroundResponse> {
-    return Promise.resolve(this.buildJmxExportResponse(message.includedDomains))
+    return this.buildJmxExportResponse(message.includedDomains)
   }
 
   private handleExportPlaywrightMessage(
@@ -236,7 +255,7 @@ export class RecorderService {
     this.state.addAction(message.action)
   }
 
-  private buildJmxExportResponse(includedDomains: string[]): BackgroundResponse {
+  private async buildJmxExportResponse(includedDomains: string[]): Promise<BackgroundResponse> {
     if (includedDomains.length === 0) {
       return { success: false, error: 'Select at least one domain before exporting JMX.' }
     }
@@ -247,15 +266,20 @@ export class RecorderService {
       return { success: false, error: 'No requests match the selected domains.' }
     }
 
+    const options = await this.getJmxOptionsStore().load()
     const meta: PlanMeta = {
-      name: this.state.getSnapshot().planName,
-      threadGroup: { threads: 1, rampUp: 1, loops: 1 },
+      name: this.planNameForExport(options),
+      threadGroup: {
+        threads: options.threads,
+        rampUp: options.rampUp,
+        loops: options.loops,
+      },
     }
 
     return {
       success: true,
       jmx: buildJmx(meta, requests),
-      filename: `${safeFilename(this.state.getSnapshot().planName)}.jmx`,
+      filename: `${safeFilename(meta.name)}.jmx`,
     }
   }
 
