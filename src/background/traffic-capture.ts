@@ -26,15 +26,15 @@ export class TrafficCaptureService {
 
   async start(
     recoveredFragments: Record<string, PendingRequest> = {},
-    keepRecoveredFragments = true
+    recoveryMode = true
   ): Promise<void> {
     if (this.listenersRegistered) {
       return
     }
 
-    this.pending = new Map(Object.entries(keepRecoveredFragments ? recoveredFragments : {}))
+    this.pending = new Map(Object.entries(recoveryMode ? recoveredFragments : {}))
 
-    if (!keepRecoveredFragments && Object.keys(recoveredFragments).length > 0) {
+    if (!recoveryMode && Object.keys(recoveredFragments).length > 0) {
       await this.pendingStore.clear()
     }
 
@@ -56,6 +56,10 @@ export class TrafficCaptureService {
   async clearPending(): Promise<void> {
     this.pending.clear()
     await this.pendingStore.clear()
+  }
+
+  getPendingRequests(): PendingRequest[] {
+    return Array.from(this.pending.values())
   }
 
   private readonly onBeforeRequest = (details: chrome.webRequest.OnBeforeRequestDetails) => {

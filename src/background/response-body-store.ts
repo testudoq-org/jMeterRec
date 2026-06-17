@@ -81,7 +81,7 @@ export class ResponseBodyStore {
     return this.setter({ [this.key]: payload })
   }
 
-  private trim(next: Map<string, RecordedResponseBody>, now: number): void {
+  private trim(next: Map<string, RecordedResponseBody>, _now: number): void {
     if (next.size <= this.maxEntries) {
       return
     }
@@ -111,7 +111,7 @@ export class ResponseBodyStore {
       return false
     }
 
-    return Object.values(value).every(this.isRecordedResponseBody)
+    return Object.values(value).every((entry: unknown) => this.isRecordedResponseBody(entry))
   }
 
   private isRecordedResponseBody(value: unknown): value is RecordedResponseBody {
@@ -120,10 +120,7 @@ export class ResponseBodyStore {
     }
 
     const record = value as Record<string, unknown>
-    return (
-      this.isResponseBodyPayload(record.payload) &&
-      typeof record.insertedAt === 'number'
-    )
+    return this.isResponseBodyPayload(record.payload) && typeof record.insertedAt === 'number'
   }
 
   private isResponseBodyPayload(value: unknown): value is ResponseBodyPayload {

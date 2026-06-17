@@ -1,7 +1,6 @@
 import type { RecorderSnapshot } from '../messages'
-
-// Import action recorder to enable DOM action capture
 import { actionRecorder } from './action-recorder'
+import { responseBodyCapture } from './response-body-capture'
 
 const CONTAINER_ID = 'capultura-transaction-panel'
 
@@ -109,6 +108,7 @@ chrome.runtime.onMessage.addListener((message: unknown) => {
     case 'STATE_CHANGED':
       actionRecorder.applySnapshot(message.snapshot)
       updatePanel(message.snapshot)
+      applyResponseBodyCaptureState(message.snapshot)
       break
     case 'REQUEST_CAPTURED':
       updatePanel({
@@ -127,6 +127,7 @@ chrome.runtime
     if (isStateResponse(response) && response.success && response.snapshot?.recording) {
       actionRecorder.applySnapshot(response.snapshot)
       updatePanel(response.snapshot)
+      applyResponseBodyCaptureState(response.snapshot)
     }
   })
   .catch((err: unknown) => {
@@ -142,4 +143,20 @@ function isStateResponse(
     'success' in response &&
     typeof (response as Record<string, unknown>).success === 'boolean'
   )
+}
+
+async function applyResponseBodyCaptureState(snapshot: RecorderSnapshot): Promise<void> {
+  const enabled = snapshot.status === 'recording' || snapshot.status === 'paused'
+
+  if (!enabled) {
+    responseBodyCapture.setEnabled(false)
+    return
+  }
+
+  try {
+    const stored = await chrome.storage.local.get({ captureResponseBody: false })
+    responseBodyCapture.setEnabled(stored.captureResponseBody === true)
+  } catch {
+    responseBodyCapture.setEnabled(false)
+  }
 }

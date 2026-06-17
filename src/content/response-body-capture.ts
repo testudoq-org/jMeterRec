@@ -1,10 +1,7 @@
 import { RESPONSE_BODY_CAPTURED, type ResponseBodyPayload } from '../messages'
-import { createResponseBodyCapture, type CapturedResponseBody } from '../utils/response-body'
+import { createResponseBodyCapture } from '../utils/response-body'
 
-const FORBIDDEN_RESPONSE_CONTENT_TYPES = [
-  /text\/html/i,
-  /application\/xhtml\+xml/i,
-]
+const FORBIDDEN_RESPONSE_CONTENT_TYPES = [/text\/html/i, /application\/xhtml\+xml/i]
 
 type FetchListener = (response: Response, request: Request) => Promise<void>
 
@@ -19,7 +16,6 @@ class ResponseBodyCapture {
     this.xhrHandler = this.createXhrHandler()
   }
 
-  /** Opt-in toggle; applies wrappers only while enabled. */
   setEnabled(enabled: boolean): void {
     if (this.enabled === enabled) {
       return
@@ -78,7 +74,10 @@ class ResponseBodyCapture {
     const nativeSend = XMLHttpRequest.prototype.send.bind(XMLHttpRequest.prototype)
     const handler = this.xhrHandler
 
-    XMLHttpRequest.prototype.send = function (this: XMLHttpRequest, body?: Document | BodyInit | null) {
+    XMLHttpRequest.prototype.send = function (
+      this: XMLHttpRequest,
+      body: Document | XMLHttpRequestBodyInit | null | undefined
+    ) {
       if (handler !== undefined) {
         this.addEventListener('load', handler, { once: true })
       }
@@ -89,10 +88,7 @@ class ResponseBodyCapture {
 
   private unwrapXhr(): void {
     try {
-      const descriptor = Object.getOwnPropertyDescriptor(
-        XMLHttpRequest.prototype,
-        'send'
-      )
+      const descriptor = Object.getOwnPropertyDescriptor(XMLHttpRequest.prototype, 'send')
       const original = descriptor?.value
 
       if (typeof original === 'function' && original !== this.xhrHandler) {
@@ -149,16 +145,14 @@ class ResponseBodyCapture {
   }
 
   private createXhrHandler(): (this: XMLHttpRequest, ev: Event) => void {
-    const self = this
-
     return function (this: XMLHttpRequest, _ev: Event): void {
-      const url = self.resolveUrl(this.responseURL)
-      const method = self.readMethod(this)
+      const url = responseBodyCapture.resolveUrl(this.responseURL)
+      const method = responseBodyCapture.readMethod(this)
       const status = this.status
       const contentType = this.getResponseHeader('content-type') ?? undefined
 
-      if (self.isForbiddenContentType(contentType)) {
-        self.send({
+      if (responseBodyCapture.isForbiddenContentType(contentType)) {
+        responseBodyCapture.send({
           url,
           method,
           status,
@@ -171,8 +165,8 @@ class ResponseBodyCapture {
 
       try {
         const text = typeof this.responseText === 'string' ? this.responseText : ''
-        const captured = self.capture.capture(text, contentType)
-        self.send({
+        const captured = responseBodyCapture.capture.capture(text, contentType)
+        responseBodyCapture.send({
           url,
           method,
           status,
@@ -185,7 +179,7 @@ class ResponseBodyCapture {
           capturedAtMs: captured.capturedAtMs,
         })
       } catch (err) {
-        self.send({
+        responseBodyCapture.send({
           url,
           method,
           status,
@@ -195,15 +189,26 @@ class ResponseBodyCapture {
     }
   }
 
-  private dispatch(
-    payload: Omit<ResponseBodyPayload, 'tabId' | 'frameId' | 'requestId' | 'responseHeaders' | 'capturedAtMs' | 'truncated' | 'redacted' | 'size'> &
-      Partial<Pick<ResponseBodyPayload, 'truncated' | 'redacted' | 'size' | 'capturedAtMs'>>
-  ): void {
+  private dispatch(payload: {
+    url: string
+    method: string
+    status?: number
+    contentType?: string
+    body?: string
+    error?: string
+    truncated?: boolean
+    redacted?: boolean
+    size?: number
+    capturedAtMs?: number
+  }): void {
     if (!this.enabled) {
       return
     }
 
-    const captured = payload.body !== undefined ? this.capture.capture(payload.body, payload.contentType) : undefined
+    const captured =
+      payload.body !== undefined
+        ? this.capture.capture(payload.body, payload.contentType)
+        : undefined
     const body = captured?.body
     const size = captured?.size ?? 0
     const capturedAtMs = captured?.capturedAtMs ?? Date.now()
@@ -237,10 +242,18 @@ class ResponseBodyCapture {
     }
   }
 
-  private send(
-    payload: Omit<ResponseBodyPayload, 'tabId' | 'frameId' | 'requestId' | 'responseHeaders' | 'capturedAtMs' | 'truncated' | 'redacted' | 'size'> &
-      Partial<Pick<ResponseBodyPayload, 'truncated' | 'redacted' | 'size' | 'capturedAtMs'>>
-  ): void {
+  private send(payload: {
+    url: string
+    method: string
+    status?: number
+    contentType?: string
+    body?: string
+    error?: string
+    truncated?: boolean
+    redacted?: boolean
+    size?: number
+    capturedAtMs?: number
+  }): void {
     this.dispatch(payload)
   }
 
@@ -258,7 +271,7 @@ class ResponseBodyCapture {
 
   private readTabId(): number {
     try {
-      return (window as unknown as { chrome?: { tabs?: { TAB_ID?: number } } }).chrome?.tabs?.TAB_ID ?? 0
+      return (window as { chrome?: { tabs?: { TAB_ID?: number } } }).chrome?.tabs?.TAB_ID ?? 0
     } catch {
       return 0
     }

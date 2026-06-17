@@ -45,6 +45,10 @@ const saveTransactionPanelOptions = requireElement<HTMLButtonElement>('saveTrans
 const transactionPanelSaved = requireElement<HTMLDivElement>('transactionPanelSaved')
 const themeMode = requireElement<HTMLSelectElement>('themeMode')
 
+captureResponseBody.addEventListener('change', () => {
+  updateCaptureWarning(captureResponseBody.checked)
+})
+
 chrome.storage.local
   .get<StoredOptions>(defaults)
   .then((options: StoredOptions) => {
@@ -59,6 +63,7 @@ chrome.storage.local
     captureResponseBody.checked = normalizedOptions.captureResponseBody
     themeMode.value = normalizedOptions.theme
     applyTheme(normalizedOptions.theme)
+    updateCaptureWarning(normalizedOptions.captureResponseBody)
   })
   .catch((err: unknown) => {
     saved.textContent = `Unable to load options: ${toErrorMessage(err)}`
@@ -136,6 +141,15 @@ function applyTheme(theme: AppTheme): void {
 
 function normalizeTheme(theme: unknown): AppTheme {
   return theme === 'dark' ? 'dark' : 'light'
+}
+
+function updateCaptureWarning(enabled: boolean): void {
+  const el = document.getElementById('captureResponseBodyWarning')
+  if (el === null) {
+    return
+  }
+
+  el.style.display = enabled ? 'block' : 'none'
 }
 
 function boundedNumber(value: unknown, min: number, max: number, fallback: number): number {

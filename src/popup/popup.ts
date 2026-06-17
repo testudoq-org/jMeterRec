@@ -270,9 +270,9 @@ async function prepareJmxExport(): Promise<void> {
     return
   }
 
-  await exportJmx([availableDomains[0]!])
   selectedDomains = new Set(availableDomains)
   renderJmxDomainSelector()
+  await exportJmx(availableDomains)
 }
 
 function canLoadDomains(
@@ -765,7 +765,7 @@ function responseBodyFor(request: TransactionRequest): string {
     return 'Response body capture disabled'
   }
 
-  return request.responseBody ?? 'Unavailable from webRequest'
+  return request.responseBody ?? 'Unavailable from webRequest (enable capture in options)'
 }
 
 function download(contents: string, filename: string): void {

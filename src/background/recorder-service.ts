@@ -6,6 +6,9 @@ import type { JmxOptions } from '../options/jmx-options'
 import { safeFilename } from '../utils/filename'
 import type { BackgroundRequest, BackgroundResponse, RecorderSnapshot } from '../messages'
 import { PendingWebRequestStore } from './pending-web-request-store'
+import { ResponseBodyMatchingService } from './response-body-matching-service'
+import { applyCapturedResponseBody } from './traffic-normalizer'
+import type { PendingRequest } from './traffic-normalizer'
 import type { CapturedRequest, PlanMeta, PlaywrightStep } from '../models/captured-request'
 import { RecorderState } from './recorder-state'
 import { TrafficCaptureService } from './traffic-capture'
@@ -31,6 +34,7 @@ export class RecorderService {
   private readonly handlers: Record<BackgroundRequest['type'], MessageHandler>
   private pendingStore: PendingWebRequestStore | undefined
   private jmxOptionsStore: JmxOptionsStore | undefined
+  private responseBodyMatchingService = new ResponseBodyMatchingService()
   private initialized = false
 
   constructor(options: RecorderServiceOptions = {}) {
@@ -68,6 +72,10 @@ export class RecorderService {
       EXPORT_PLAYWRIGHT: (message) =>
         this.handleExportPlaywrightMessage(
           message as Extract<BackgroundRequest, { type: 'EXPORT_PLAYWRIGHT' }>
+        ),
+      RESPONSE_BODY_CAPTURED: (message) =>
+        this.handleResponseBodyCapturedMessage(
+          message as Extract<BackgroundRequest, { type: 'RESPONSE_BODY_CAPTURED' }>
         ),
     }
   }
@@ -249,6 +257,44 @@ export class RecorderService {
     message: Extract<BackgroundRequest, { type: 'EXPORT_PLAYWRIGHT' }>
   ): Promise<BackgroundResponse> {
     return Promise.resolve(this.buildPlaywrightExportResponse(message))
+  }
+
+  private async handleResponseBodyCapturedMessage(
+    message: Extract<BackgroundRequest, { type: 'RESPONSE_BODY_CAPTURED' }>
+  ): Promise<BackgroundResponse> {
+    const payload = message.payload
+    const pending = this.trafficCapture.getPendingRequests()
+    const completed = this.state.getRequests()
+    const match = this.responseBodyMatchingService.findMatch(payload, pending, completed)
+
+    if (match === undefined) {
+      return { success: true }
+    }
+
+    const target = this.findRequestById(match.requestId, pending, completed)
+
+    if (target === undefined) {
+      return { success: true }
+    }
+
+    applyCapturedResponseBody(target, payload)
+
+    if (!match.pending) {
+      this.state.save().catch(() => undefined)
+    }
+
+    return { success: true }
+  }
+
+  private findRequestById(
+    requestId: string,
+    pending: PendingRequest[],
+    completed: CapturedRequest[]
+  ): PendingRequest | CapturedRequest | undefined {
+    return (
+      pending.find((item) => item.id === requestId) ??
+      completed.find((item) => item.id === requestId)
+    )
   }
 
   private addAction(message: Extract<BackgroundRequest, { type: 'ADD_ACTION' }>): void {

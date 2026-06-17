@@ -24,6 +24,7 @@ export type BackgroundRequest =
   | { type: 'GET_DOMAINS' }
   | { type: 'EXPORT_JMX'; includedDomains: string[] }
   | { type: 'EXPORT_PLAYWRIGHT'; baseUrl?: string; suiteName?: string; testCaseName?: string }
+  | { type: 'RESPONSE_BODY_CAPTURED'; payload: ResponseBodyPayload }
 
 export type BackgroundResponse =
   | { success: true; snapshot?: RecorderSnapshot; requests?: unknown[] }

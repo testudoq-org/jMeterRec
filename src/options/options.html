@@ -55,6 +55,11 @@
         <input id="captureResponseBody" type="checkbox" />
         <span>Capture response bodies when available. This can expose sensitive data.</span>
       </label>
+      <div id="captureResponseBodyWarning" class="warning" style="display: none">
+        <strong>Privacy notice:</strong> Response body capture records data received by the browser.
+        This may include secrets or personal information. Only enable if you understand the risks.
+        Data stays local and is not sent to remote endpoints.
+      </div>
 
       <button id="saveTransactionPanelOptions" type="button">Save transaction panel options</button>
       <div id="transactionPanelSaved" aria-live="polite"></div>

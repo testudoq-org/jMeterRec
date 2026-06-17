@@ -1,4 +1,5 @@
-import type { CapturedRequest, PendingRequest } from '../models/pending-web-request'
+import type { PendingRequest } from '../models/pending-web-request'
+import type { CapturedRequest } from '../models/captured-request'
 import type { ResponseBodyPayload } from '../messages'
 
 export type { PendingRequest } from '../models/pending-web-request'
@@ -75,7 +76,10 @@ export function markRequestError(
   pending.completedAt = new Date(details.timeStamp).toISOString()
 }
 
-export function applyCapturedResponseBody(request: PendingRequest, payload: ResponseBodyPayload): void {
+export function applyCapturedResponseBody(
+  request: PendingRequest | CapturedRequest,
+  payload: ResponseBodyPayload
+): void {
   if (request.responseBody !== undefined) {
     return
   }
