@@ -1,3 +1,4 @@
+import type { RecorderSnapshot } from '../messages'
 import type { ActionStep } from '../models/captured-request'
 
 export class SelectorBuilder {
@@ -56,6 +57,7 @@ type RecorderMessageType =
   | 'PAUSE_RECORDING'
   | 'RESUME_RECORDING'
   | 'OPEN_RECORDING'
+  | 'STATE_CHANGED'
   | 'REQUEST_CAPTURED'
 
 const recorderMessageTypes = new Set<RecorderMessageType>([
@@ -64,11 +66,13 @@ const recorderMessageTypes = new Set<RecorderMessageType>([
   'PAUSE_RECORDING',
   'RESUME_RECORDING',
   'OPEN_RECORDING',
+  'STATE_CHANGED',
   'REQUEST_CAPTURED',
 ])
 
 interface RecorderMessage {
   type: RecorderMessageType
+  snapshot?: RecorderSnapshot
   transactionKey?: string
   request?: { transactionKey?: string }
 }
@@ -83,6 +87,18 @@ export class ActionRecorder {
     if (isExtensionContext()) {
       this.setupMessageListener()
     }
+  }
+
+  applySnapshot(snapshot: RecorderSnapshot): void {
+    this.recording = snapshot.recording
+    this.currentTransactionKey = undefined
+
+    if (this.recording) {
+      this.attachListeners()
+      return
+    }
+
+    this.detachListeners()
   }
 
   private setupMessageListener(): void {
@@ -120,6 +136,11 @@ export class ActionRecorder {
         this.currentTransactionKey = message.transactionKey
         this.attachListeners()
       },
+      STATE_CHANGED: () => {
+        if (message.snapshot !== undefined) {
+          this.applySnapshot(message.snapshot)
+        }
+      },
       REQUEST_CAPTURED: () => {
         this.currentTransactionKey = message.request?.transactionKey
       },
@@ -138,6 +159,10 @@ export class ActionRecorder {
   }
 
   private attachListeners(): void {
+    if (this.actionHandlers.size > 0) {
+      return
+    }
+
     this.attachListener('click', this.handleClick)
     this.attachListener('change', this.handleChange)
     this.attachListener('submit', this.handleSubmit)
@@ -236,8 +261,4 @@ function isValueElement(
   )
 }
 
-// Initialize the action recorder when loaded (only in extension context)
-if (isExtensionContext()) {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-  new ActionRecorder()
-}
+export const actionRecorder = new ActionRecorder()

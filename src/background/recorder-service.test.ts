@@ -3,6 +3,8 @@ import { RecorderService } from './recorder-service'
 import type { RecorderState } from './recorder-state'
 import type { TrafficCaptureService } from './traffic-capture'
 import type { ActionStep, CapturedRequest } from '../models/captured-request'
+import type { JmxOptionsStore } from '../options/jmx-options'
+import { DEFAULT_JMX_OPTIONS } from '../options/jmx-options'
 
 const createMockState = (): RecorderState => {
   const actions: ActionStep[] = []
@@ -48,8 +50,15 @@ const createMockState = (): RecorderState => {
 
 const createMockTrafficCapture = (): TrafficCaptureService => {
   return {
-    start: vi.fn(),
+    start: vi.fn(async () => undefined),
+    clearPending: vi.fn(async () => undefined),
   } as unknown as TrafficCaptureService
+}
+
+const createMockJmxOptionsStore = (options = DEFAULT_JMX_OPTIONS): JmxOptionsStore => {
+  return {
+    load: vi.fn(async () => ({ ...options })),
+  } as unknown as JmxOptionsStore
 }
 
 function request(id: string, url: string): CapturedRequest {
@@ -69,6 +78,7 @@ describe('RecorderService', () => {
     const service = new RecorderService({
       state: mockState,
       trafficCapture: createMockTrafficCapture(),
+      jmxOptionsStore: createMockJmxOptionsStore(),
     })
 
     const actionStep: ActionStep = {
@@ -92,6 +102,7 @@ describe('RecorderService', () => {
     const service = new RecorderService({
       state: mockState,
       trafficCapture: createMockTrafficCapture(),
+      jmxOptionsStore: createMockJmxOptionsStore(),
     })
 
     const response = await service.handleMessage({ type: 'GET_DOMAINS' })
@@ -118,6 +129,7 @@ describe('RecorderService', () => {
     const service = new RecorderService({
       state: mockState,
       trafficCapture: createMockTrafficCapture(),
+      jmxOptionsStore: createMockJmxOptionsStore(),
     })
 
     const response = await service.handleMessage({
@@ -141,11 +153,53 @@ describe('RecorderService', () => {
     expect(response.jmx).not.toContain('www.google.com')
   })
 
+  it('uses saved JMX options for export metadata', async () => {
+    const mockState = createMockState()
+    const requests = [request('example', 'https://example.com/api')]
+
+    mockState.getRequests = vi.fn(() => [...requests])
+    mockState.getSnapshot = vi.fn(() => ({
+      status: 'idle' as const,
+      recording: false,
+      planName: 'Untitled Plan',
+      requestCount: requests.length,
+    }))
+
+    const service = new RecorderService({
+      state: mockState,
+      trafficCapture: createMockTrafficCapture(),
+      jmxOptionsStore: createMockJmxOptionsStore({
+        name: 'Saved Load Plan',
+        threads: 4,
+        rampUp: 5,
+        loops: 6,
+      }),
+    })
+
+    const response = await service.handleMessage({
+      type: 'EXPORT_JMX',
+      includedDomains: ['example.com'],
+    })
+
+    expect(response.success).toBe(true)
+
+    if (!response.success || !('jmx' in response)) {
+      throw new Error('Expected successful JMX export response')
+    }
+
+    expect(response.filename).toBe('Saved-Load-Plan.jmx')
+    expect(response.jmx).toContain('testname="Saved Load Plan"')
+    expect(response.jmx).toContain('<stringProp name="ThreadGroup.num_threads">4</stringProp>')
+    expect(response.jmx).toContain('<stringProp name="ThreadGroup.ramp_time">5</stringProp>')
+    expect(response.jmx).toContain('<stringProp name="LoopController.loops">6</stringProp>')
+  })
+
   it('rejects JMX export when no domains are selected', async () => {
     const mockState = createMockState()
     const service = new RecorderService({
       state: mockState,
       trafficCapture: createMockTrafficCapture(),
+      jmxOptionsStore: createMockJmxOptionsStore(),
     })
 
     const response = await service.handleMessage({

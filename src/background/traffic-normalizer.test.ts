@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { CapturedRequest } from '../models/captured-request'
 import {
+  createCompletedRequest,
+  createErrorRequest,
   createPendingRequest,
   mergeBeforeSendHeaders,
   mergeCompleted,
@@ -25,6 +27,31 @@ function beforeRequest(overrides: Partial<chrome.webRequest.OnBeforeRequestDetai
 
 function headers(name: string, value: string): chrome.webRequest.HttpHeader[] {
   return [{ name, value }]
+}
+
+function completed(overrides: Partial<chrome.webRequest.OnCompletedDetails> = {}) {
+  return {
+    fromCache: false,
+    requestId: 'r-1',
+    statusCode: 200,
+    statusLine: 'HTTP/1.1 200 OK',
+    tabId: 10,
+    timeStamp: 1_700_000_000_200,
+    url: 'https://api.example.com/submit?tenant=acme',
+    responseHeaders: headers('content-type', 'application/json'),
+    ...overrides,
+  } as chrome.webRequest.OnCompletedDetails
+}
+
+function errorOccurred(overrides: Partial<chrome.webRequest.OnErrorOccurredDetails> = {}) {
+  return {
+    error: 'net::ERR_FAILED',
+    requestId: 'r-1',
+    tabId: 10,
+    timeStamp: 1_700_000_000_200,
+    url: 'https://api.example.com/submit?tenant=acme',
+    ...overrides,
+  } as chrome.webRequest.OnErrorOccurredDetails
 }
 
 describe('traffic-normalizer', () => {
@@ -93,5 +120,33 @@ describe('traffic-normalizer', () => {
 
     expect(request.path).toBeUndefined()
     expect(request.statusCode).toBe(200)
+  })
+
+  it('creates a minimal completed request when only completion details are available', () => {
+    const request = createCompletedRequest(completed())
+
+    expect(request).toEqual(
+      expect.objectContaining({
+        id: '10-r-1',
+        method: 'GET',
+        url: 'https://api.example.com/submit?tenant=acme',
+        statusCode: 200,
+        responseHeaders: { 'content-type': 'application/json' },
+        completedAt: '2023-11-14T22:13:20.200Z',
+      })
+    )
+  })
+
+  it('creates a minimal failed request when only error details are available', () => {
+    const request = createErrorRequest(errorOccurred())
+
+    expect(request).toEqual(
+      expect.objectContaining({
+        id: '10-r-1',
+        method: 'GET',
+        error: 'net::ERR_FAILED',
+        completedAt: '2023-11-14T22:13:20.200Z',
+      })
+    )
   })
 })

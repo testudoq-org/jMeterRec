@@ -24,6 +24,7 @@ export type BackgroundRequest =
   | { type: 'GET_DOMAINS' }
   | { type: 'EXPORT_JMX'; includedDomains: string[] }
   | { type: 'EXPORT_PLAYWRIGHT'; baseUrl?: string; suiteName?: string; testCaseName?: string }
+  | { type: 'RESPONSE_BODY_CAPTURED'; payload: ResponseBodyPayload }
 
 export type BackgroundResponse =
   | { success: true; snapshot?: RecorderSnapshot; requests?: unknown[] }
@@ -36,3 +37,29 @@ export type BackgroundResponse =
 export type BackgroundBroadcast =
   | { type: 'STATE_CHANGED'; snapshot: RecorderSnapshot }
   | { type: 'REQUEST_CAPTURED'; request: unknown }
+  | { type: 'RESPONSE_BODY_CAPTURED'; payload: ResponseBodyPayload }
+
+export interface ResponseBodyPayload {
+  requestId: string
+  tabId: number
+  frameId: number
+  url: string
+  method: string
+  status?: number
+  requestHeaders?: Record<string, string>
+  responseHeaders?: Record<string, string>
+  body?: string
+  error?: string
+  truncated: boolean
+  redacted: boolean
+  size: number
+  capturedAtMs: number
+  contentType?: string
+}
+
+export const RESPONSE_BODY_CAPTURED = 'RESPONSE_BODY_CAPTURED' as const
+
+export interface ResponseBodyCapturedMessage {
+  type: typeof RESPONSE_BODY_CAPTURED
+  payload: ResponseBodyPayload
+}

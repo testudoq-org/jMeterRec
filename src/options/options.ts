@@ -1,3 +1,5 @@
+import { DEFAULT_JMX_OPTIONS, normalizeJmxOptions } from './jmx-options'
+
 interface RecorderOptions {
   defaultPlanName: string
   threads: number
@@ -20,10 +22,10 @@ interface AppearanceOptions {
 type StoredOptions = RecorderOptions & TransactionPanelOptions & AppearanceOptions
 
 const defaults: StoredOptions = {
-  defaultPlanName: 'Untitled Plan',
-  threads: 1,
-  rampUp: 1,
-  loops: 1,
+  defaultPlanName: DEFAULT_JMX_OPTIONS.name,
+  threads: DEFAULT_JMX_OPTIONS.threads,
+  rampUp: DEFAULT_JMX_OPTIONS.rampUp,
+  loops: DEFAULT_JMX_OPTIONS.loops,
   maxTransactions: 200,
   openDetachedInspector: false,
   captureResponseBody: false,
@@ -43,6 +45,10 @@ const saveTransactionPanelOptions = requireElement<HTMLButtonElement>('saveTrans
 const transactionPanelSaved = requireElement<HTMLDivElement>('transactionPanelSaved')
 const themeMode = requireElement<HTMLSelectElement>('themeMode')
 
+captureResponseBody.addEventListener('change', () => {
+  updateCaptureWarning(captureResponseBody.checked)
+})
+
 chrome.storage.local
   .get<StoredOptions>(defaults)
   .then((options: StoredOptions) => {
@@ -57,17 +63,24 @@ chrome.storage.local
     captureResponseBody.checked = normalizedOptions.captureResponseBody
     themeMode.value = normalizedOptions.theme
     applyTheme(normalizedOptions.theme)
+    updateCaptureWarning(normalizedOptions.captureResponseBody)
   })
   .catch((err: unknown) => {
     saved.textContent = `Unable to load options: ${toErrorMessage(err)}`
   })
 
 save.addEventListener('click', () => {
+  const normalizedJmxOptions = normalizeJmxOptions({
+    defaultPlanName: defaultPlanName.value.trim(),
+    threads: threads.value,
+    rampUp: rampUp.value,
+    loops: loops.value,
+  })
   const options: RecorderOptions & AppearanceOptions = {
-    defaultPlanName: defaultPlanName.value.trim() || defaults.defaultPlanName,
-    threads: positiveNumber(threads.value, defaults.threads),
-    rampUp: nonNegativeNumber(rampUp.value, defaults.rampUp),
-    loops: positiveNumber(loops.value, defaults.loops),
+    defaultPlanName: normalizedJmxOptions.name,
+    threads: normalizedJmxOptions.threads,
+    rampUp: normalizedJmxOptions.rampUp,
+    loops: normalizedJmxOptions.loops,
     theme: normalizeTheme(themeMode.value),
   }
 
@@ -108,14 +121,13 @@ saveTransactionPanelOptions.addEventListener('click', () => {
 })
 
 function normalizeOptions(options: StoredOptions): StoredOptions {
+  const jmxOptions = normalizeJmxOptions(options)
+
   return {
-    defaultPlanName:
-      typeof options.defaultPlanName === 'string'
-        ? options.defaultPlanName
-        : defaults.defaultPlanName,
-    threads: positiveNumber(String(options.threads), defaults.threads),
-    rampUp: nonNegativeNumber(String(options.rampUp), defaults.rampUp),
-    loops: positiveNumber(String(options.loops), defaults.loops),
+    defaultPlanName: jmxOptions.name,
+    threads: jmxOptions.threads,
+    rampUp: jmxOptions.rampUp,
+    loops: jmxOptions.loops,
     maxTransactions: boundedNumber(options.maxTransactions, 20, 500, defaults.maxTransactions),
     openDetachedInspector: options.openDetachedInspector === true,
     captureResponseBody: options.captureResponseBody === true,
@@ -131,16 +143,13 @@ function normalizeTheme(theme: unknown): AppTheme {
   return theme === 'dark' ? 'dark' : 'light'
 }
 
-function positiveNumber(value: string, fallback: number): number {
-  const parsed = Number(value)
+function updateCaptureWarning(enabled: boolean): void {
+  const el = document.getElementById('captureResponseBodyWarning')
+  if (el === null) {
+    return
+  }
 
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
-}
-
-function nonNegativeNumber(value: string, fallback: number): number {
-  const parsed = Number(value)
-
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback
+  el.style.display = enabled ? 'block' : 'none'
 }
 
 function boundedNumber(value: unknown, min: number, max: number, fallback: number): number {

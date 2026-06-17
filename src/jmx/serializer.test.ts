@@ -154,6 +154,32 @@ describe('buildJmx', () => {
     expect(jmx).not.toContain('&lt;script&gt;')
   })
 
+  it('uses saved plan name and thread group values', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '5',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(
+      {
+        name: 'Saved Plan',
+        threadGroup: { threads: 4, rampUp: 5, loops: 6 },
+      },
+      requests
+    )
+
+    expect(jmx).toContain('testname="Saved Plan"')
+    expect(jmx).toContain('<stringProp name="LoopController.loops">6</stringProp>')
+    expect(jmx).toContain('<stringProp name="ThreadGroup.num_threads">4</stringProp>')
+    expect(jmx).toContain('<stringProp name="ThreadGroup.ramp_time">5</stringProp>')
+  })
+
   it('handles missing optional fields gracefully', () => {
     const requests: CapturedRequest[] = [
       {

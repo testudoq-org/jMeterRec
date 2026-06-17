@@ -1,27 +1,47 @@
 import { buildJmx } from '../jmx/serializer'
 import { filterRequestsByDomains } from '../jmx/domains'
 import { buildPlaywrightResponse } from '../generators/playwright'
+import { JmxOptionsStore } from '../options/jmx-options'
+import type { JmxOptions } from '../options/jmx-options'
+import { safeFilename } from '../utils/filename'
 import type { BackgroundRequest, BackgroundResponse, RecorderSnapshot } from '../messages'
+import { PendingWebRequestStore } from './pending-web-request-store'
+import { ResponseBodyMatchingService } from './response-body-matching-service'
+import { applyCapturedResponseBody } from './traffic-normalizer'
+import type { PendingRequest } from './traffic-normalizer'
 import type { CapturedRequest, PlanMeta, PlaywrightStep } from '../models/captured-request'
 import { RecorderState } from './recorder-state'
 import { TrafficCaptureService } from './traffic-capture'
 
 type MessageHandler = (message: BackgroundRequest) => Promise<BackgroundResponse>
+type ContentRecorderMessage =
+  | { type: 'START_RECORDING' }
+  | { type: 'STOP_RECORDING' }
+  | { type: 'PAUSE_RECORDING' }
+  | { type: 'RESUME_RECORDING' }
+  | { type: 'RESET' }
 
 export interface RecorderServiceOptions {
   state?: RecorderState
   trafficCapture?: TrafficCaptureService
+  pendingStore?: PendingWebRequestStore
+  jmxOptionsStore?: JmxOptionsStore
 }
 
 export class RecorderService {
   private readonly state: RecorderState
   private readonly trafficCapture: TrafficCaptureService
   private readonly handlers: Record<BackgroundRequest['type'], MessageHandler>
+  private pendingStore: PendingWebRequestStore | undefined
+  private jmxOptionsStore: JmxOptionsStore | undefined
+  private responseBodyMatchingService = new ResponseBodyMatchingService()
   private initialized = false
 
   constructor(options: RecorderServiceOptions = {}) {
     this.state = options.state ?? new RecorderState()
     this.trafficCapture = options.trafficCapture ?? new TrafficCaptureService(this.state)
+    this.pendingStore = options.pendingStore
+    this.jmxOptionsStore = options.jmxOptionsStore
     this.handlers = {
       START_RECORDING: (message) =>
         this.handleStartRecordingMessage(
@@ -53,6 +73,10 @@ export class RecorderService {
         this.handleExportPlaywrightMessage(
           message as Extract<BackgroundRequest, { type: 'EXPORT_PLAYWRIGHT' }>
         ),
+      RESPONSE_BODY_CAPTURED: (message) =>
+        this.handleResponseBodyCapturedMessage(
+          message as Extract<BackgroundRequest, { type: 'RESPONSE_BODY_CAPTURED' }>
+        ),
     }
   }
 
@@ -62,21 +86,27 @@ export class RecorderService {
     }
 
     await this.state.load()
-    this.trafficCapture.start()
+    const pendingStore = this.getPendingStore()
+    const pendingFragments = await pendingStore.load()
+    await this.trafficCapture.start(pendingFragments, this.state.isCapturing())
     this.initialized = true
   }
 
   async startRecording(planName: string, tabId?: number): Promise<void> {
+    await this.getPendingStore().clear()
     this.state.start(planName, tabId)
     await this.state.save()
     this.broadcastState()
+    this.broadcastRecorderMessage({ type: 'START_RECORDING' })
   }
 
   async stopRecording(): Promise<CapturedRequest[]> {
     const requests = this.state.getRequests()
     this.state.stop()
     await this.state.save()
+    await this.getPendingStore().clear()
     this.broadcastState()
+    this.broadcastRecorderMessage({ type: 'STOP_RECORDING' })
     return requests
   }
 
@@ -84,24 +114,29 @@ export class RecorderService {
     this.state.pause()
     await this.state.save()
     this.broadcastState()
+    this.broadcastRecorderMessage({ type: 'PAUSE_RECORDING' })
   }
 
   async resumeRecording(): Promise<void> {
     this.state.resume()
     await this.state.save()
     this.broadcastState()
+    this.broadcastRecorderMessage({ type: 'RESUME_RECORDING' })
   }
 
   async clearRequests(): Promise<void> {
     this.state.clearRequests()
     await this.state.save()
+    await this.getPendingStore().clear()
     this.broadcastState()
   }
 
   async reset(): Promise<void> {
     this.state.reset()
     await this.state.save()
+    await this.getPendingStore().clear()
     this.broadcastState()
+    this.broadcastRecorderMessage({ type: 'RESET' })
   }
 
   getSnapshot(): RecorderSnapshot {
@@ -114,6 +149,28 @@ export class RecorderService {
 
   getDomains(): string[] {
     return this.state.getDomains()
+  }
+
+  private getPendingStore(): PendingWebRequestStore {
+    if (this.pendingStore === undefined) {
+      this.pendingStore = new PendingWebRequestStore()
+    }
+
+    return this.pendingStore
+  }
+
+  private getJmxOptionsStore(): JmxOptionsStore {
+    if (this.jmxOptionsStore === undefined) {
+      this.jmxOptionsStore = new JmxOptionsStore()
+    }
+
+    return this.jmxOptionsStore
+  }
+
+  private planNameForExport(options: JmxOptions): string {
+    const snapshotPlanName = this.state.getSnapshot().planName
+
+    return snapshotPlanName === 'Untitled Plan' ? options.name : snapshotPlanName
   }
 
   async handleMessage(message: BackgroundRequest): Promise<BackgroundResponse> {
@@ -193,7 +250,7 @@ export class RecorderService {
   private handleExportJmxMessage(
     message: Extract<BackgroundRequest, { type: 'EXPORT_JMX' }>
   ): Promise<BackgroundResponse> {
-    return Promise.resolve(this.buildJmxExportResponse(message.includedDomains))
+    return this.buildJmxExportResponse(message.includedDomains)
   }
 
   private handleExportPlaywrightMessage(
@@ -202,11 +259,49 @@ export class RecorderService {
     return Promise.resolve(this.buildPlaywrightExportResponse(message))
   }
 
+  private async handleResponseBodyCapturedMessage(
+    message: Extract<BackgroundRequest, { type: 'RESPONSE_BODY_CAPTURED' }>
+  ): Promise<BackgroundResponse> {
+    const payload = message.payload
+    const pending = this.trafficCapture.getPendingRequests()
+    const completed = this.state.getRequests()
+    const match = this.responseBodyMatchingService.findMatch(payload, pending, completed)
+
+    if (match === undefined) {
+      return { success: true }
+    }
+
+    const target = this.findRequestById(match.requestId, pending, completed)
+
+    if (target === undefined) {
+      return { success: true }
+    }
+
+    applyCapturedResponseBody(target, payload)
+
+    if (!match.pending) {
+      this.state.save().catch(() => undefined)
+    }
+
+    return { success: true }
+  }
+
+  private findRequestById(
+    requestId: string,
+    pending: PendingRequest[],
+    completed: CapturedRequest[]
+  ): PendingRequest | CapturedRequest | undefined {
+    return (
+      pending.find((item) => item.id === requestId) ??
+      completed.find((item) => item.id === requestId)
+    )
+  }
+
   private addAction(message: Extract<BackgroundRequest, { type: 'ADD_ACTION' }>): void {
     this.state.addAction(message.action)
   }
 
-  private buildJmxExportResponse(includedDomains: string[]): BackgroundResponse {
+  private async buildJmxExportResponse(includedDomains: string[]): Promise<BackgroundResponse> {
     if (includedDomains.length === 0) {
       return { success: false, error: 'Select at least one domain before exporting JMX.' }
     }
@@ -217,15 +312,20 @@ export class RecorderService {
       return { success: false, error: 'No requests match the selected domains.' }
     }
 
+    const options = await this.getJmxOptionsStore().load()
     const meta: PlanMeta = {
-      name: this.state.getSnapshot().planName,
-      threadGroup: { threads: 1, rampUp: 1, loops: 1 },
+      name: this.planNameForExport(options),
+      threadGroup: {
+        threads: options.threads,
+        rampUp: options.rampUp,
+        loops: options.loops,
+      },
     }
 
     return {
       success: true,
       jmx: buildJmx(meta, requests),
-      filename: `${safeFilename(this.state.getSnapshot().planName)}.jmx`,
+      filename: `${safeFilename(meta.name)}.jmx`,
     }
   }
 
@@ -255,19 +355,63 @@ export class RecorderService {
     }
   }
 
-  private broadcastState(): void {
-    chrome.runtime
-      .sendMessage({ type: 'STATE_CHANGED', snapshot: this.state.getSnapshot() })
+  private broadcastRecorderMessage(message: ContentRecorderMessage): void {
+    if (typeof chrome === 'undefined' || chrome.tabs === undefined) {
+      return
+    }
+
+    void chrome.tabs
+      .query({})
+      .then((tabs) => {
+        for (const tab of tabs) {
+          if (tab.id === undefined) {
+            continue
+          }
+
+          chrome.tabs.sendMessage(tab.id, message).catch((err: unknown) => {
+            console.warn('Unable to broadcast recorder message to tab.', err)
+          })
+        }
+      })
       .catch((err: unknown) => {
-        console.warn('Unable to broadcast recorder state.', err)
+        console.warn('Unable to query tabs for recorder broadcast.', err)
       })
   }
-}
 
-function safeFilename(value: string): string {
-  const filename = value.trim().replace(/[^a-z0-9._-]+/gi, '-')
+  private broadcastState(): void {
+    const snapshot = this.state.getSnapshot()
 
-  return filename.length > 0 ? filename : 'Untitled-Plan'
+    chrome.runtime.sendMessage({ type: 'STATE_CHANGED', snapshot }).catch((err: unknown) => {
+      console.warn('Unable to broadcast recorder state.', err)
+    })
+
+    this.broadcastStateToTabs(snapshot)
+  }
+
+  private broadcastStateToTabs(snapshot: RecorderSnapshot): void {
+    if (typeof chrome === 'undefined' || chrome.tabs === undefined) {
+      return
+    }
+
+    void chrome.tabs
+      .query({})
+      .then((tabs) => {
+        for (const tab of tabs) {
+          if (tab.id === undefined) {
+            continue
+          }
+
+          chrome.tabs
+            .sendMessage(tab.id, { type: 'STATE_CHANGED', snapshot })
+            .catch((err: unknown) => {
+              console.warn('Unable to broadcast recorder state to tab.', err)
+            })
+        }
+      })
+      .catch((err: unknown) => {
+        console.warn('Unable to query tabs for state broadcast.', err)
+      })
+  }
 }
 
 function toErrorMessage(err: unknown): string {
