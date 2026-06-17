@@ -1,4 +1,5 @@
-import type { PendingRequest } from '../models/pending-web-request'
+import type { CapturedRequest, PendingRequest } from '../models/pending-web-request'
+import type { ResponseBodyPayload } from '../messages'
 
 export type { PendingRequest } from '../models/pending-web-request'
 
@@ -72,6 +73,55 @@ export function markRequestError(
 ): void {
   pending.error = details.error
   pending.completedAt = new Date(details.timeStamp).toISOString()
+}
+
+export function applyCapturedResponseBody(request: PendingRequest, payload: ResponseBodyPayload): void {
+  if (request.responseBody !== undefined) {
+    return
+  }
+
+  if (payload.body === undefined && payload.error === undefined) {
+    return
+  }
+
+  if (payload.redacted) {
+    request.responseBody = '[REDACTED]'
+    request.responseBodyRedacted = true
+    request.responseBodySize = payload.size
+    return
+  }
+
+  if (payload.error !== undefined && payload.body === undefined) {
+    request.responseBody = undefined
+    request.responseBodyTruncated = false
+    request.responseBodyRedacted = false
+    request.responseBodySize = 0
+    request.responseBodyCapturedAt = new Date(payload.capturedAtMs).toISOString()
+    return
+  }
+
+  request.responseBody = payload.body
+  request.responseBodyTruncated = payload.truncated
+  request.responseBodyRedacted = false
+  request.responseBodySize = payload.size
+  request.responseBodyCapturedAt = new Date(payload.capturedAtMs).toISOString()
+  request.responseBodyContentType = payload.contentType
+}
+
+export function isResponseBodyCandidate(request: PendingRequest): boolean {
+  const method = request.method.toUpperCase()
+
+  return (
+    (method === 'GET' ||
+      method === 'POST' ||
+      method === 'PUT' ||
+      method === 'PATCH' ||
+      method === 'DELETE') &&
+    typeof request.statusCode === 'number' &&
+    request.statusCode >= 200 &&
+    request.statusCode < 400 &&
+    (!request.responseBodyTruncated || request.responseBody !== undefined)
+  )
 }
 
 export function createRequestId(tabId: number, requestId: string): string {
