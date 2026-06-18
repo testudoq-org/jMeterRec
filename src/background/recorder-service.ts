@@ -3,6 +3,7 @@ import { filterRequestsByDomains } from '../jmx/domains'
 import { buildPlaywrightResponse } from '../generators/playwright'
 import { JmxOptionsStore } from '../options/jmx-options'
 import type { JmxOptions } from '../options/jmx-options'
+import { normalizeBackendUploadConfig } from '../options/backend-upload-options'
 import { safeFilename } from '../utils/filename'
 import type { BackgroundRequest, BackgroundResponse, RecorderSnapshot } from '../messages'
 import { PendingWebRequestStore } from './pending-web-request-store'
@@ -12,6 +13,7 @@ import type { PendingRequest } from './traffic-normalizer'
 import type { CapturedRequest, PlanMeta, PlaywrightStep } from '../models/captured-request'
 import { RecorderState } from './recorder-state'
 import { TrafficCaptureService } from './traffic-capture'
+import { BackendUploadService } from './backend-upload-service'
 
 type MessageHandler = (message: BackgroundRequest) => Promise<BackgroundResponse>
 type ContentRecorderMessage =
@@ -69,6 +71,8 @@ export class RecorderService {
         this.handleAddActionMessage(message as Extract<BackgroundRequest, { type: 'ADD_ACTION' }>),
       EXPORT_JMX: (message) =>
         this.handleExportJmxMessage(message as Extract<BackgroundRequest, { type: 'EXPORT_JMX' }>),
+      UPLOAD_JMX: (message) =>
+        this.handleUploadJmxMessage(message as Extract<BackgroundRequest, { type: 'UPLOAD_JMX' }>),
       EXPORT_PLAYWRIGHT: (message) =>
         this.handleExportPlaywrightMessage(
           message as Extract<BackgroundRequest, { type: 'EXPORT_PLAYWRIGHT' }>
@@ -251,6 +255,22 @@ export class RecorderService {
     message: Extract<BackgroundRequest, { type: 'EXPORT_JMX' }>
   ): Promise<BackgroundResponse> {
     return this.buildJmxExportResponse(message.includedDomains)
+  }
+
+  private handleUploadJmxMessage(
+    message: Extract<BackgroundRequest, { type: 'UPLOAD_JMX' }>
+  ): Promise<BackgroundResponse> {
+    const config = normalizeBackendUploadConfig({
+      enabled: true,
+      converterUrl: message.payload.converterUrl,
+      authToken: message.payload.authToken,
+      timeoutMs: message.payload.timeoutMs,
+      includeDomains: message.payload.includedDomains,
+      exportFilename: message.payload.exportFilename,
+    })
+
+    const uploadService = new BackendUploadService()
+    return uploadService.uploadAndDownload(config, this.state.getRequests())
   }
 
   private handleExportPlaywrightMessage(

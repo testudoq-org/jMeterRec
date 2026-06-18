@@ -58,11 +58,57 @@
       <div id="captureResponseBodyWarning" class="warning" style="display: none">
         <strong>Privacy notice:</strong> Response body capture records data received by the browser.
         This may include secrets or personal information. Only enable if you understand the risks.
-        Data stays local and is not sent to remote endpoints.
+        By default, data stays local. If backend converter upload is enabled, captured data is sent
+        to that remote endpoint.
       </div>
 
       <button id="saveTransactionPanelOptions" type="button">Save transaction panel options</button>
       <div id="transactionPanelSaved" aria-live="polite"></div>
+    </section>
+
+    <section
+      class="options-section"
+      aria-labelledby="backendUploadOptionsTitle"
+      style="display: none"
+    >
+      <h2 id="backendUploadOptionsTitle">Backend converter</h2>
+      <p class="muted">
+        Optionally upload captured requests to a backend converter and download the generated JMX.
+        Leave disabled to use the built-in offline exporter.
+      </p>
+
+      <label class="checkbox-row">
+        <input id="backendUploadEnabled" type="checkbox" />
+        <span>Upload to backend converter</span>
+      </label>
+
+      <div id="backendUploadFields" class="backend-upload-fields">
+        <label for="backendUploadConverterUrl">Converter URL</label>
+        <input
+          id="backendUploadConverterUrl"
+          type="url"
+          placeholder="https://converter.example.com/api/v1/upload"
+          autocomplete="off"
+        />
+        <div id="backendUploadUrlError" class="error" aria-live="polite"></div>
+
+        <label for="backendUploadAuthToken">Auth token</label>
+        <input
+          id="backendUploadAuthToken"
+          type="text"
+          placeholder="Optional bearer token"
+          autocomplete="off"
+        />
+        <p class="muted">Token is stored in plain text. Treat as a local-only credential.</p>
+
+        <label for="backendUploadTimeout">Timeout (ms)</label>
+        <input id="backendUploadTimeout" type="number" min="5000" max="300000" step="1000" />
+      </div>
+
+      <button id="saveBackendUploadOptions" type="button" disabled>
+        Future enhancement - Disabled
+      </button>
+      <div id="backendUploadSaved" aria-live="polite"></div>
     </section>
 
     <script type="module" src="./options.ts"></script>
