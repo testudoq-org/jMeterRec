@@ -1,3 +1,4 @@
+import { isHostForbidden } from './forbidden-domains'
 import type { RecorderState } from './recorder-state'
 import { PendingWebRequestStore } from './pending-web-request-store'
 import {
@@ -67,6 +68,10 @@ export class TrafficCaptureService {
       return undefined
     }
 
+    if (this.isForbiddenUrl(details.url)) {
+      return undefined
+    }
+
     this.runSafely(
       this.persistPending(createPendingRequest(details)),
       'Unable to persist pending request.'
@@ -81,6 +86,10 @@ export class TrafficCaptureService {
       return undefined
     }
 
+    if (this.isForbiddenUrl(details.url)) {
+      return undefined
+    }
+
     this.runSafely(this.handleBeforeSendHeaders(details), 'Unable to persist request headers.')
     return undefined
   }
@@ -90,14 +99,26 @@ export class TrafficCaptureService {
       return
     }
 
+    if (this.isForbiddenUrl(details.url)) {
+      return
+    }
+
     this.runSafely(this.handleResponseStarted(details), 'Unable to persist response start.')
   }
 
   private readonly onCompleted = (details: chrome.webRequest.OnCompletedDetails) => {
+    if (this.isForbiddenUrl(details.url)) {
+      return
+    }
+
     this.runSafely(this.handleCompleted(details), 'Unable to finalize completed request.')
   }
 
   private readonly onErrorOccurred = (details: chrome.webRequest.OnErrorOccurredDetails) => {
+    if (this.isForbiddenUrl(details.url)) {
+      return
+    }
+
     this.runSafely(this.handleErrorOccurred(details), 'Unable to finalize failed request.')
   }
 
@@ -192,6 +213,10 @@ export class TrafficCaptureService {
   }
 
   private addCompletedRequest(request: PendingRequest): void {
+    if (this.isForbiddenUrl(request.url)) {
+      return
+    }
+
     this.state.addRequest(request)
     this.state.save().catch((err: unknown) => {
       console.warn('Unable to save completed request.', err)
@@ -207,6 +232,10 @@ export class TrafficCaptureService {
 
   private isCapturing(): boolean {
     return this.state.isCapturing()
+  }
+
+  private isForbiddenUrl(url: string): boolean {
+    return isHostForbidden(url)
   }
 
   private broadcast(message: BackgroundBroadcast): void {

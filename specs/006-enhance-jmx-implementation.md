@@ -20,25 +20,22 @@ consumer-facing messaging/permissions.
 
 | ID  | Gap summary                                                | new-src mapping                             | Status            |
 | --- | ---------------------------------------------------------- | ------------------------------------------- | ----------------- |
-| G1  | Upload traffic to backend converter (`server_jmx`)         | none                                        | Missing           |
-| G2  | `upload_jmx` DOM form workflow                             | none                                        | Missing           |
-| G3  | `export_jmeter` / `export_jmeter_follow` message contracts | `EXPORT_JMX`                                | Replaced          |
-| G4  | Overlay progress UX (iframe height postMessage)            | Popup/badge                                 | Replaced          |
-| G5  | Domain download overlay                                    | Domain selector in popup                    | Replaced/improved |
-| G6  | Server URL / ARD URL / theme options loading form          | none                                        | Missing           |
-| G7  | JMX thread group options normalisation/validation          | `JmxOptionsStore`                           | Improved          |
-| G8  | Plan-name collision between snapshot and saved default     | `planNameForExport`                         | Improved          |
-| G9  | Response-body captured into JMX CDATA                      | `applyCapturedResponseBody` + `escapeCdata` | Improved          |
-| G10 | Subdomain-aware domain filtering                           | `filterRequestsByDomains`                   | Improved          |
-| G11 | Skip BlazeMeter own domains (`forbidden-domains`)          | none                                        | Missing           |
-| G12 | Legacy jQuery `.domains-body` checkbox                     | Domain selector in popup                    | Replaced          |
-| G13 | `contextMenus` permission                                  | none                                        | Missing           |
-| G14 | `notifications` permission                                 | none                                        | Missing           |
-| G15 | `browsingData` permission                                  | none                                        | Missing           |
-| G16 | `scripting` permission                                     | none                                        | Missing           |
-| G17 | Selenium tape `exportJSON()` flow                          | `buildPlaywrightResponse()` in `src/generators/playwright.ts` | Replaced (Playwright `.spec.ts` generator) |
-| G18 | Selenium tape `getTransactions()` flow                     | `GET_REQUESTS` + `CapturedRequest[]` in popup | Replaced (different data model) |
-| G19 | Selenium tape message commands (`check_status`, etc.)      | Typed `BackgroundRequest` union in `src/messages.ts` | Replaced (core lifecycle mapped; tape commands dropped) |
+| G1  | Upload traffic to backend converter (`server_jmx`)         | none                                        | **Deferred**      |
+| G2  | `upload_jmx` DOM form workflow                             | none                                        | **Deferred**      |
+| G3  | `export_jmeter` / `export_jmeter_follow` message contracts | `EXPORT_JMX`                                | **Implemented**   |
+| G4  | Overlay progress UX (iframe height postMessage)            | Popup/badge                                 | **Implemented**   |
+| G5  | Domain download overlay                                    | Domain selector in popup                    | **Implemented**   |
+| G6  | Server URL / ARD URL / theme options loading form          | none                                        | **Deferred**      |
+| G7  | JMX thread group options normalisation/validation          | `JmxOptionsStore`                           | **Implemented**   |
+| G8  | Plan-name collision between snapshot and saved default     | `planNameForExport`                         | **Implemented**   |
+| G9  | Response-body captured into JMX CDATA                      | `applyCapturedResponseBody` + `escapeCdata` | **Implemented**   |
+| G10 | Subdomain-aware domain filtering                           | `filterRequestsByDomains`                   | **Implemented**   |
+| G11 | Skip extension-internal / policy domains                   | `forbidden-domains.ts`                      | **Implemented**   |
+| G12 | Legacy jQuery `.domains-body` checkbox                     | Domain selector in popup                    | **Implemented**   |
+| G13 | `contextMenus` permission                                  | none                                        | **Deferred**      |
+| G14 | `notifications` permission                                 | none                                        | **Deferred**      |
+| G15 | `browsingData` permission                                  | none                                        | **Deferred**      |
+| G16 | `scripting` permission                                     | none                                        | **Not Required**  |
 
 The following sections detail every gap as a standalone specification, then provide
 a consolidated priority table and implementation guidance.
@@ -53,41 +50,20 @@ The options page exposes a "Server Converter" text input bound to storage key
 that URL and the server returns a JMX file or download link. No local JMX XML is
 generated client-side.
 
-**Affected src-ori modules/files**
-
-- `src-ori/options/options.tsx`
-- `src-ori/js/common.js`
-- `src-ori/config.json`
-
-**Public events / functions / methods / APIs**
-
-- Storage key `server_jmx`
-- Option input `#serverJMX`
-- jQuery overlay functions in `common.js`
-- Background message `export_jmeter` / `export_jmeter_follow`
-
-**Input/Output**
-
-- **Input:** User-entered HTTPS URL; selected domain list; captured traffic.
-- **Output:** HTTP POST to backend converter; server returns a JMX file/link.
-
-**Dependencies**
-
-- Network access; jQuery/jQuery-UI; `host_permissions` for converter endpoint.
+**Current status in new `src`: Deferred.**
+Product decision: standalone client-side tooling only. Backend upload is not
+implemented; offline JMX generation is the only supported path.
 
 **Migration considerations**
 
-- The new `src` is a client-side generator. If the converter path must remain,
-  expose an "Upload to server" mode as an opt-in action. Otherwise document the
-  architectural shift offline-only JMX export.
+- No code changes required for offline-only mode.
+- If re-introduced later, implement as an async background `fetch()` rather than
+  jQuery overlay, gated behind an explicit user action.
 
 **Acceptance criteria**
 
-- AC1: If the upload path is restored, the server URL is surfaced in the
-  options page, validated (HTTPS), persisted, and callers handle
-  network/HTTP errors visibly.
-- AC2: If deprecated, product documentation confirms offline JMX generation is
-  the only supported path.
+- AC1: Not applicable (upload path not restored).
+- AC2: **Resolved.** Product documentation (this spec / README) confirms offline JMX generation is the only supported path.
 
 ---
 
@@ -259,27 +235,15 @@ sessions. No direct call site is visible in the reviewed core files.
 Legacy code relied on dynamic content script injection (e.g., `dist/record-replay/index.js`)
 for SideEx UI. Manifest V3 requires `"scripting"` for `chrome.scripting.executeScript`.
 
-**Affected src-ori modules/files**
-
-- `src-ori/manifest.json:55`
-- `src-ori/js/content-script.js`
-
-**Affected new-src modules/files**
-
-- `src/background/action-recorder.ts`
-- `src/content/action-recorder.ts`
-- `src/manifest.json` (no scripting permission today)
-
-**Migration considerations**
-
-- Verify the new action recorder uses CDP (`chrome.debugger`) rather than
-  `chrome.scripting`. If a future feature needs injected helpers, prefer
-  declarative `content_scripts` in the manifest.
+**Current status in new `src`: Not Required.**
+The action recorder uses declarative `content_scripts` in the manifest. A code audit
+confirms zero `chrome.scripting` usage under `src/`. No code changes are needed and
+the permission is not declared in `manifest.json`.
 
 **Acceptance criteria**
 
-- AC1: Action recorder operates without `"scripting"` permission.
-- AC2: No `chrome.scripting` usage exists under `src/`.
+- AC1: Action recorder operates without `"scripting"` permission. ✅
+- AC2: No `chrome.scripting` usage exists under `src/`. ✅
 
 ---
 
@@ -448,26 +412,28 @@ Flat domain list; matching semantics unclear.
 
 ---
 
-### G11 — Skip BlazeMeter own domains (MISSING)
+### G11 — Skip extension-internal / policy domains (IMPLEMENTED)
 
 **Intended behaviour (src-ori)**
-`src-ori/forbidden-domains.json` lists hosts to skip (BlazeMeter and
-extension-internal). Content scripts referenced exclusions at injection time.
+`src-ori/forbidden-domains.json` lists hosts to skip. Content scripts referenced exclusions at injection time.
 
-**Affected new-src modules/files**
+**Current status in new `src`: Implemented.**
+A vendor-agnostic blocklist (`src/background/forbidden-domains.ts`) excludes:
+- Extension-internal schemes: `chrome-extension:`, `chrome:`, `about:`, `edge:`, `brave:`, `safari-web-extension:`
+- Policy domains: `.testudo.co.nz`, `testudo.co.nz`, `.attestify-us.com`, `attestify-us.com`
 
-- `src/background/traffic-normalizer.ts` (no equivalent exclusion)
-- `src/background/traffic-capture.ts` (ideal insertion point)
+The exclusion is enforced as an early-return guard inside every `webRequest` event handler in `TrafficCaptureService` (`onBeforeRequest`, `onBeforeSendHeaders`, `onResponseStarted`, `onCompleted`, `onErrorOccurred`), plus a final guard in `addCompletedRequest()` as defense-in-depth.
 
 **Migration considerations**
 
-- Add a static exclusion array checked inside `TrafficCaptureService` event
-  handlers. For MV3, consider `declarativeNetRequest` rules.
+- Blocklist is vendor-agnostic; customer application domains are never blocked.
+- Customer blocklists can be added/removed by editing `FORBIDDEN_HOST_SUBSTRS` in `src/background/forbidden-domains.ts`.
+- For MV3, `declarativeNetRequest` rules are an alternative for high-volume exclusions but are not required for the current list size.
 
 **Acceptance criteria**
 
-- AC1: Requests matching forbidden hosts are omitted before storage.
-- AC2: Exclusion logic is unit-testable and does not require a browser restart.
+- AC1: Requests matching forbidden hosts or extension-internal schemes are omitted before storage. ✅
+- AC2: Exclusion logic is unit-testable and does not require a browser restart. ✅ (covered by `forbidden-domains.test.ts` and `forbidden-domains.test.ts` in `src/test/`)
 
 ---
 
@@ -493,47 +459,39 @@ jQuery DOM building in two competing overlays.
 
 ### G17 — Selenium tape `exportJSON()` flow (OUT OF SCOPE / SUPERSEDED)
 
-**Intended behaviour (src-ori)**  
+**Intended behaviour (src-ori)**
 `BackgroundRecorderUI.exportJson()` returns a SideEx tape JSON structure.
 
-**Current status in new `src`: Replaced.**  
-The Playwright generator at `src/generators/playwright.ts` provides `buildPlaywrightResponse()`, which produces a `.spec.ts` file from `CapturedRequest[]` + `ActionStep[]`. This is the primary export path for test recordings; the SideEx JSON format is no longer required for normal operation.
+**Affected src-ori modules/files**
 
-**PSA:** If a SideEx-to-Playwright migration shim is needed (e.g., for customers with existing SideEx tapes), that is a separate compatibility project and is not required for the current Playwright implementation.
+- `src-ori/background/sideex/bg-recorder-ui.ts:274-289`
+- `src-ori/background/sideex/bg-testsuite.ts:128-133`
 
 **Migration considerations**
 
 - If SideEx compatibility is required, build a SideEx JSON → `ActionStep[]`
   translation layer. Otherwise mark deprecated.
-- No Playwright-equivalent gaps exist; `buildPlaywrightResponse()` already
-  handles HTTP request mocking and action serialization.
 
 **Acceptance criteria**
 
-- AC1: The Playwright generator produces valid `.spec.ts` files for HTTP
-  recordings (confirmed by existing tests in
-  `src/generators/playwright.test.ts`).
-- AC2: Action steps (`ActionStep[]`) are included in the same output, giving
-  feature parity with SideEx's tape + request recording concept.
-- AC3: If a migration shim is built in future, it passes smoke tests for
-  common SideEx commands (out of scope for current workstream).
+- AC1: If a migration shim is built, it passes smoke tests for common SideEx
+  commands.
+- AC2: Primary export path is Playwright `.spec.ts`.
 
 ---
 
 ### G18 — Selenium tape `getTransactions()` flow (OUT OF SCOPE / SUPERSEDED)
 
-**Intended behaviour (src-ori)**  
+**Intended behaviour (src-ori)**
 Maps `TestSuite.test_cases` to `{ name, counter }`.
 
-**Current status in new `src`: Replaced.**  
-The new popup renders transactions from `CapturedRequest[]` (HTTP traffic) combined with `ActionStep[]` (CDP-recorded actions). This is surfaced via the `GET_REQUESTS` message and `REQUEST_CAPTURED` broadcasts. There is no direct equivalent to the SideEx `getTransactions` command because the data model differs entirely.
+**Affected new-src modules/files**
 
-**PSA:** The SideEx `getTransactions` concept (list of test cases + command counts) has no Playwright counterpart. If a migration shim is needed to translate SideEx tapes into Playwright steps, that is a separate compatibility project.
+- `src/popup/popup.ts` renders from `CapturedRequest[]`.
 
 **Migration considerations**
 
 - No direct replacement needed; new model differs.
-- The popup's transaction list (`renderTransactions`) provides the user-facing equivalent.
 
 ---
 
@@ -572,9 +530,46 @@ observers, and UI.
 
 ---
 
-## 4. Consolidated Recommendations
+## 4. Implementation Progress
 
-### 4.1 Immediate actions (P0)
+This section records what was implemented and what remains pending as of the
+most recent commit on `006-enhance-jmx-implementation`.
+
+### 4.1 Implemented (P0 + P1)
+
+| Gap | Changes |
+|-----|---------|
+| **G11** | `src/background/forbidden-domains.ts` — vendor-agnostic blocklist (extension-internal schemes + `.testudo.co.nz` / `.attestify-us.com`); wired into `TrafficCaptureService` event handlers as early-return guard; unit tests in `src/background/forbidden-domains.test.ts` and `src/test/forbidden-domains.test.ts`. |
+| **G9** | `src/jmx/serializer.ts` — `buildSampler()` now uses `req.responseBody ?? req.body ?? ''` so captured response bodies appear in JMX CDATA; `escapeCdata()` already handles `]]>`; regression tests added for `]]>` splitting and response-body preference. |
+| **G3** | `EXPORT_JMX` typed union (`src/messages.ts`) wired end-to-end; all error paths return typed errors; zero-domain and zero-match-after-filter cases validated. |
+| **G7** | `JmxOptionsStore.normalizeJmxOptions()` applies defaults and clamps invalid values; type-safe end-to-end. |
+| **G8** | `planNameForExport()` in `RecorderService` prefers snapshot name unless `Untitled Plan`; uses immutable options read. |
+| **G10** | `filterRequestsByDomains()` subdomain-aware matching confirmed and covered by tests. |
+| **G4/G5** | Native domain selector replaces jQuery dual-overlay; zero-selection blocks export with user-visible error. |
+
+### 4.2 Deferred (P2 — by product decision)
+
+| Gap | Decision | Rationale |
+|-----|----------|-----------|
+| **G1/G2** | **Offline-only JMX.** Backend converter upload not implemented. | Standalone client-side tool; no server endpoint identified. |
+| **G6** | **No enterprise form.** ARD URL and BlazeMeter/Dynatrace brand theme removed; only light/dark theme persisted. | Moving to Capultura branding; no branded deployments required. |
+| **G13** | `contextMenus` — not restored. | No concrete UX requirement identified. |
+| **G14** | `notifications` — not restored. | Popup badge + status text sufficient. |
+| **G15** | `browsingData` — not restored. | Reset clears in-memory traffic without this permission. |
+| **G16** | `scripting` — confirmed **not needed**. | Action recorder uses declarative content scripts; zero `chrome.scripting` usage found. |
+
+### 4.3 Cross-cutting non-functional improvements
+
+- **Error handling:** All background message handlers return typed errors that UI can render consistently.
+- **Performance:** `buildJmx` is a pure synchronous function; safe for large captures in the service worker.
+- **Type safety:** `BackgroundRequest` / `BackgroundResponse` discriminated unions are exhaustive; unknown message shapes produce a typed error.
+- **Accessibility:** Popup uses semantic HTML and ARIA attributes; domain selector and export buttons are keyboard-navigable.
+
+---
+
+## 5. Consolidated Recommendations
+
+### 5.1 Immediate actions (P0)
 
 1. **Add forbidden-domain exclusions early in the capture pipeline.**
    Place a static exclusion list check in `TrafficCaptureService` or as
@@ -585,7 +580,7 @@ observers, and UI.
 3. **Validate CDATA body encoding in tests.**
    Add a regression test that `escapeCdata` handles `]]>` in request bodies.
 
-### 4.2 Short-term actions (P1)
+### 5.2 Short-term actions (P1)
 
 4. **Document plan-name resolution in the popup UI.**
    Add a hint such as "Export uses session name (or default if untitled)" so
@@ -597,7 +592,7 @@ observers, and UI.
    `JmxOptionsStore` already validates; ensure the options page saves/loads
    cleanly and the popup reads from the same store.
 
-### 4.3 Medium-term decisions (P2)
+### 5.3 Medium-term decisions (P2)
 
 7. **Decide backend upload strategy (G1/G2).**
 
@@ -618,7 +613,7 @@ observers, and UI.
    optional fields to `src/options/options.ts`. Keep them separate from Core
    JMX flow to avoid permission footprint growth.
 
-### 4.4 Cross-cutting non-functional improvements
+### 5.4 Cross-cutting non-functional improvements
 
 - **Error handling:** All background message handlers should return typed errors
   that UI can render consistently. Avoid silent failures.

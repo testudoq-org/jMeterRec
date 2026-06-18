@@ -46,6 +46,9 @@ function buildSampler(req: CapturedRequest, idx: number): string {
   const port = url?.port ?? ''
   const name = `${req.method} ${host}${path} #${idx}`
 
+  const body = req.responseBody ?? req.body ?? ''
+  const bodyCdata = escapeCdata(body)
+
   return `        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="${xmlEsc(name)}" enabled="true">
           <boolProp name="HTTPSampler.postBodyRaw">true</boolProp>
           <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
@@ -53,7 +56,7 @@ function buildSampler(req: CapturedRequest, idx: number): string {
               <elementProp name="" elementType="HTTPArgument" guiclass="HTTPArgumentGui" testclass="HTTPArgument" testname="Argument" enabled="true">
                 <boolProp name="HTTPArgument.always_encode">false</boolProp>
                 <stringProp name="Argument.name"></stringProp>
-                <stringProp name="Argument.value"><![CDATA[${escapeCdata(req.body ?? '')}]]></stringProp>
+                <stringProp name="Argument.value"><![CDATA[${bodyCdata}]]></stringProp>
                 <stringProp name="Argument.metadata">=</stringProp>
               </elementProp>
             </collectionProp>
@@ -70,7 +73,7 @@ function buildSampler(req: CapturedRequest, idx: number): string {
           <stringProp name="HTTPSampler.embedded_url_re"></stringProp>
           <stringProp name="HTTPSampler.connect_timeout"></stringProp>
           <stringProp name="HTTPSampler.response_timeout"></stringProp>
-${buildHeaders(req.headers)}
+ ${buildHeaders(req.headers)}
         </HTTPSamplerProxy>`
 }
 

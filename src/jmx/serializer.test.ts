@@ -184,7 +184,7 @@ describe('buildJmx', () => {
     const requests: CapturedRequest[] = [
       {
         id: '4',
-        timestamp: '2024-01-01T00:00:00Z',
+        timestamp: '2024-01-01T00:00:00.000Z',
         method: 'DELETE',
         url: 'https://api.example.com/resource/123',
         headers: {},
@@ -196,5 +196,83 @@ describe('buildJmx', () => {
 
     expect(jmx).toContain('DELETE')
     expect(jmx).toContain('api.example.com')
+  })
+
+  it('percent-encodes CDATA terminator ]]> in run-time bodies', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '6',
+        timestamp: '2024-01-01T00:00:00.000Z',
+        method: 'POST',
+        url: 'https://example.com/search',
+        headers: {},
+        queryParams: {},
+        body: 'query=foo]]>bar',
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests)
+
+    // ]]> must be split so the XML parser does not see a CDATA close.
+    expect(jmx).toContain('<![CDATA[query=foo]]]]><![CDATA[>bar]]>')
+    expect(jmx).not.toContain('<![CDATA[query=foo]]>bar]]>')
+  })
+
+  it('prefers captured responseBody over request body in sampler content', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '7',
+        timestamp: '2024-01-01T00:00:00.000Z',
+        method: 'POST',
+        url: 'https://example.com/api',
+        headers: {},
+        queryParams: {},
+        body: 'request-body',
+        responseBody: 'response-body',
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests)
+
+    expect(jmx).toContain('<![CDATA[response-body]]>')
+    expect(jmx).not.toContain('<![CDATA[request-body]]>')
+  })
+
+  it('handles redacted captured response bodies as [REDACTED]', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '8',
+        timestamp: '2024-01-01T00:00:00.000Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: {},
+        queryParams: {},
+        body: 'original-request',
+        responseBody: '[REDACTED]',
+        responseBodyRedacted: true,
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests)
+
+    expect(jmx).toContain('<![CDATA[[REDACTED]]]>')
+    expect(jmx).not.toContain('<![CDATA[original-request]]>')
+  })
+
+  it('defaults to empty body when no request or response body is present', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '9',
+        timestamp: '2024-01-01T00:00:00.000Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests)
+
+    expect(jmx).toContain('<![CDATA[]]>')
   })
 })

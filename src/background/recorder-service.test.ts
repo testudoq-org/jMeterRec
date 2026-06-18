@@ -212,4 +212,31 @@ describe('RecorderService', () => {
       error: 'Select at least one domain before exporting JMX.',
     })
   })
+
+  it('returns an error when selected domains match no captured requests', async () => {
+    const mockState = createMockState()
+    const service = new RecorderService({
+      state: mockState,
+      trafficCapture: createMockTrafficCapture(),
+      jmxOptionsStore: createMockJmxOptionsStore(),
+    })
+
+    mockState.getRequests = vi.fn(() => [request('empty', 'https://example.com/only')])
+    mockState.getSnapshot = vi.fn(() => ({
+      status: 'idle' as const,
+      recording: false,
+      planName: 'Test Plan',
+      requestCount: 1,
+    }))
+
+    const response = await service.handleMessage({
+      type: 'EXPORT_JMX',
+      includedDomains: ['nonexistent.example'],
+    })
+
+    expect(response).toEqual({
+      success: false,
+      error: 'No requests match the selected domains.',
+    })
+  })
 })
