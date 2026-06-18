@@ -18,8 +18,7 @@ consumer-facing messaging/permissions.
 
 ## 2. Summary of Gaps
 
-| ID  | Gap summary                                                | new-src mapping                             | Status            |
-| --- | ---------------------------------------------------------- | ------------------------------------------- | ----------------- |
+| G20 | Enhanced JMX export functionality (comparative analysis) | Multiple new-src modules | **New** |
 | G1  | Upload traffic to backend converter (`server_jmx`)         | none                                        | **Deferred**      |
 | G2  | `upload_jmx` DOM form workflow                             | none                                        | **Deferred**      |
 | G3  | `export_jmeter` / `export_jmeter_follow` message contracts | `EXPORT_JMX`                                | **Implemented**   |
@@ -523,9 +522,10 @@ observers, and UI.
 
 | Priority         | IDs                                                                                | Rationale                                                                                                                    |
 | ---------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| **P0**           | G11 (forbidden-domains), G3 (`EXPORT_JMX` contract), G9 (response body CDATA)      | Correctness and security.`G11` prevents recursive self-recording; `G3` and `G9` ensure valid, safe JMX output.               |
+| **P0**           | G11 (forbidden-domains), G3 (`EXPORT_JMX` contract), G9 (response body CDATA)      | Correctness and security. `G11` prevents recursive self-recording; `G3` and `G9` ensure valid, safe JMX output.               |
 | **P1**           | G7 (options validation), G8 (plan name), G10 (domain filter), G4/G5 (UI contracts) | Core export-pipeline correctness and UX. Low implementation risk.                                                            |
 | **P2**           | G1/G2 (backend upload path), G13/G14/G15/G16 (permissions/options form)            | Important for enterprise users and feature parity, but not blocking core functionality. Requires product-strategy decisions. |
+| **Analysis**     | G20 (JMX export comparison)                                                        | Identifies gaps between `src-ori` and current `src` exports; informs future iteration.                                       |
 | **Out-of-Scope** | G17, G18, G19 (Selenium tape)                                                      | Superseded by Playwright recording. Only port if a SideEx compatibility shim is commercially required.                       |
 
 ---
@@ -567,9 +567,152 @@ most recent commit on `006-enhance-jmx-implementation`.
 
 ---
 
-## 5. Consolidated Recommendations
+### G20 — Enhanced JMX export functionality (NEW ANALYSIS)
 
-### 5.1 Immediate actions (P0)
+**Source of truth**
+Original export implementation: `src-ori/js/common.js`, `src-ori/options/options.tsx`, `src-ori/config.json`, `src-ori/forbidden-domains.json`.
+Current implementation: `src/jmx/serializer.ts`, `src/background/recorder-service.ts`, `src/popup/popup.ts`, `src/background/forbidden-domains.ts`, `src/options/options.ts`.
+
+---
+
+#### What the original export functionality did
+
+The original `src-ori` export path had two modes:
+
+1. **Client-side JMX generation** (`export_jmeter` / `export_jmeter_follow`)
+   - Domain checkboxes rendered in a jQuery overlay (`#run-overlay`).
+   - Selected domains persisted to `chrome.storage.local` key `selected_domains`.
+   - A `mode` storage key (`mode-follow` vs `mode-download`) determined which message was sent.
+   - The overlay showed a jQuery-ui progress bar with the string "Exporting to JMX...".
+   - IFrame height was negotiated via `window.parent.postMessage({'height': ...})`.
+   - The generated JMX used `jmeterTestPlan`, `hashTree`, `ThreadGroup`, `HTTPSamplerProxy`, and `HeaderManager`.
+
+2. **Backend converter upload** (`upload_traffic`)
+   - POSTed captured traffic to `server_jmx` URL (default: `https://converter.blazemeter.com`).
+   - A separate jQuery overlay collected domains and triggered upload.
+   - The server returned a JMX file or download link.
+
+Supporting features in `src-ori`:
+- **Forbidden domains** (`forbidden-domains.json`): blocked BlazeMeter hosts (`a.blazemeter.com`, `www.a.blazemeter.com`) and specific extension IDs.
+- **Options page** (`options.tsx`): fields for `debug`, `custom_server` (checkbox + URL), `custom_ard` (checkbox + URL), `serverJMX` (URL with validation), plus Save/Reset with notification toasts.
+- **Theme** (`config.json`): `blazemeter` or `dynatrace` brand, driving logo asset selection.
+- **Notifications** (`chrome.notifications`): desktop toasts for settings save/reset and recording status.
+- **Context menus** (`chrome.contextMenus`): right-click shortcuts dispatching recorder commands.
+- **Auto-check single domain**: if only one domain was captured, its checkbox was pre-checked.
+
+#### What the current `src` implementation provides
+
+| Area | Current `src` |
+|------|---------------|
+| JMX schema | `jmeterTestPlan`, `hashTree`, `ThreadGroup`, `HTTPSamplerProxy`, `HeaderManager` — same core structure |
+| Domain selection | Native popup domain selector, sorted, subdomain-aware matching (`example.com` matches `api.example.com`) |
+| Options | `JmxOptionsStore` with typed defaults, validation, and transparent normalization |
+| Plan name | `planNameForExport()` prefers custom session name, falls back to saved default |
+| Response body | `req.responseBody ?? req.body` embedded in CDATA; `escapeCdata` handles `]]>` |
+| Forbidden domains | Vendor-agnostic blocklist (extension-internal schemes + policy domains) wired into all `webRequest` handlers |
+| Export path | Offline-only client-side generation; no backend converter |
+| Permissions | Minimal (`storage`, `unlimitedStorage`, `webRequest`, `activeTab`, `windows`) |
+| Export modes | JMX + Playwright `.spec.ts` in the same popup |
+
+#### Gaps and opportunities for improvement
+
+| # | Gap / Opportunity | Severity | Details |
+|---|-------------------|----------|---------|
+| 1 | **Plan-name hint in popup UI** | Low | Spec §5.2 item 4 recommends a hint like "Export uses session name (or default if untitled)". The popup currently shows the plan name input but does not explain the resolution rule. |
+| 2 | **Cookie manager instead of raw Cookie headers** | Low | `Cookie` headers are emitted as `HeaderManager` entries. JMeter has a dedicated `CookieManager` element. Using `CookieManager` would produce cleaner, more idiomatic JMX. |
+| 3 | **`postBodyRaw` set for GET/DELETE** | Low | `HTTPSamplerProxy.postBodyRaw` is always `true` even for methods with no body. Semantically incorrect but functionally harmless in JMeter. |
+| 4 | **No think-time / pacing timers** | Medium | Neither `src-ori` nor current `src` inserts `ConstantTimer`, `RandomTimer`, or `UniformRandomTimer` between samplers. For performance tests, think-time is often critical. |
+| 5 | **No assertions in JMX** | Medium | No `ResponseAssertion`, `DurationAssertion`, or `Assertion.responsetime` elements are generated. Users must add them manually after export. |
+| 6 | **Redirect noise** | Low | HTTP redirects (301, 302, 307) are captured as individual samplers. JMeter already follows redirects (`follow_redirects=true`), so recording every redirect step creates noisy plans. No deduplication or "follow redirect transparently" option. |
+| 7 | **Error-request method defaults to GET** | Low | In `createCompletedRequest` and `createErrorRequest`, `method` is hardcoded to `'GET'`. If a POST/PUT fails before `onBeforeSendHeaders`, the JMX sampler will claim GET. |
+| 8 | **No "select all / select none" in domain selector** | Low | `src-ori` auto-checked a single domain. Current `src` checks all by default. A select-all / select-none toggle would improve UX for large domain sets. |
+| 9 | **Filename sanitization edge cases** | Low | `safeFilename()` strips non-ASCII and collapses runs of separators. Very long or Unicode-heavy plan names could still produce suboptimal filenames. |
+| 10 | **No export progress for large captures** | Low | `buildJmx` is synchronous. For >5k requests, the service worker may hit execution time limits. No chunked/streamed export or progress callback exists. |
+| 11 | **No response-time or response-code assertions** | Medium | Even basic response-time bounds or HTTP-status assertions would make exported JMX immediately runnable for SLA validation. |
+| 12 | **Query params not explicitly modeled** | Low | `queryParams` on `CapturedRequest` is populated from URL parsing but never used in the sampler (path includes the query string). Explicit `HTTPArgument` parameters would make JMX more editable. |
+
+#### Recommended enhancements (concrete, actionable)
+
+**Quick wins (low effort, low risk)**
+
+1. **Add plan-name hint** — In `src/popup/popup.ts`, after `planNameInput` is defined, add a `<small>` element or aria-describedby text: *"Export uses this name; falls back to the saved default if left as 'Untitled Plan'"*.
+
+2. **Fix `postBodyRaw` by method** — In `src/jmx/serializer.ts`, set `<boolProp name="HTTPSampler.postBodyRaw">` to `true` only for `POST`, `PUT`, `PATCH`; `false` for `GET`, `HEAD`, `DELETE`, `OPTIONS`.
+
+3. **Fix error-request method** — In `src/background/traffic-normalizer.ts`, `createErrorRequest` should accept `method` from the pending fragment (if available) rather than defaulting to `'GET'`.
+
+4. **Add select-all / select-none buttons** to the domain selector UI in `src/popup/popup.ts`. Buttons should toggle `selectedDomains` between `new Set(availableDomains)` and `new Set<string>()`.
+
+**Medium effort (worth doing before next major release)**
+
+5. **Insert `ConstantTimer` between samplers** — Add an optional "Think time (ms)" field to `JmxOptionsStore`. When set, each sampler pair gets a `ConstantTimer` child in the hashTree:
+   ```xml
+   <hashTree>
+     <HTTPSamplerProxy .../>
+     <hashTree>
+       <ConstantTimer guiclass="ConstantTimerGui" testclass="ConstantTimer" testname="Think Time" enabled="true">
+         <stringProp name="ConstantTimer.delay">500</stringProp>
+       </ConstantTimer>
+       <hashTree/>
+     </hashTree>
+   </hashTree>
+   ```
+
+6. **Add basic response assertions** — Generate a `ResponseAssertion` child for each sampler when a minimum status code or max response time is configured:
+   ```xml
+   <hashTree>
+     <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Status 2xx/3xx" enabled="true">
+       <collectionProp name="AssertsToTest">
+         <stringProp name="49508">2</stringProp> <!-- response code pattern -->
+       </collectionProp>
+       <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+       <boolProp name="Assertion.assume_success">false</boolProp>
+     </ResponseAssertion>
+     <hashTree/>
+   </hashTree>
+   ```
+
+7. **Use `CookieManager` instead of raw `Cookie` headers** — In `buildHeaders()`, extract `Cookie` and `Cookie2` headers and emit them in a `CookieManager` element rather than `HeaderManager`. Keep all other headers in `HeaderManager`.
+
+**Higher effort (consider for future iteration)**
+
+8. **Redirect deduplication** — Add an option "Follow redirects transparently" that collapses 3xx + subsequent same-URL request into a single sampler with `follow_redirects=true` (already set) and optionally records only the final response.
+
+9. **Chunked/streamed JMX export** — For >5k samplers, yield to the service worker event loop periodically using `setTimeout` chunks, or write to a file via `chrome.fileSystem` / download API in segments.
+
+10. **Explicit query parameter serialization** — Model `queryParams` as `HTTPArgument` entries inside the sampler's `Arguments` collection, making the JMX directly editable in JMeter's GUI.
+
+---
+
+#### Recommended priority for G20 enhancements
+
+| Priority | Item | Rationale |
+|----------|------|-----------|
+| **P0** | Fix error-request method (item 3) | Incorrect method in JMX is a data-integrity bug. |
+| **P1** | Plan-name hint (item 1) | Already recommended in spec §5.2; trivial to implement. |
+| **P1** | `postBodyRaw` by method (item 2) | Semantic correctness; one-line change. |
+| **P1** | Select-all / select-none (item 4) | UX improvement for large captures; low effort. |
+| **P2** | Think-time timer (item 5) | Requires new option field and serializer support; useful for performance testing. |
+| **P2** | Response assertions (item 6, 11) | Makes exported JMX immediately runnable for basic SLA checks. |
+| **P2** | `CookieManager` (item 7) | Cleaner JMX; minor refactor in `buildHeaders()`. |
+| **P3** | Redirect deduplication (item 8) | Complex; requires URL-matching logic and history tracking. |
+| **P3** | Chunked export (item 9) | Engineering effort; only matters for very large captures. |
+| **P3** | Query params as HTTPArguments (item 10, 12) | Nice-to-have for JMX editability; current path-based approach works. |
+
+---
+
+#### Open questions for G20
+
+1. Should think-time be derived from inter-arrival timings in the captured traffic, or only from a user-configured constant?
+2. Should response assertions be opt-in (checkbox in options) or always generated?
+3. Is redirect deduplication desirable, or do users prefer seeing every redirect step for debugging?
+4. Should `Cookie` header extraction be a breaking change (drop from `HeaderManager`) or additive (both `CookieManager` and `HeaderManager`)?
+
+---
+
+## 6. Consolidated Recommendations
+
+### 6.1 Immediate actions (P0)
 
 1. **Add forbidden-domain exclusions early in the capture pipeline.**
    Place a static exclusion list check in `TrafficCaptureService` or as
@@ -580,7 +723,7 @@ most recent commit on `006-enhance-jmx-implementation`.
 3. **Validate CDATA body encoding in tests.**
    Add a regression test that `escapeCdata` handles `]]>` in request bodies.
 
-### 5.2 Short-term actions (P1)
+### 6.2 Short-term actions (P1)
 
 4. **Document plan-name resolution in the popup UI.**
    Add a hint such as "Export uses session name (or default if untitled)" so
@@ -592,7 +735,7 @@ most recent commit on `006-enhance-jmx-implementation`.
    `JmxOptionsStore` already validates; ensure the options page saves/loads
    cleanly and the popup reads from the same store.
 
-### 5.3 Medium-term decisions (P2)
+### 6.3 Medium-term decisions (P2)
 
 7. **Decide backend upload strategy (G1/G2).**
 
@@ -613,7 +756,7 @@ most recent commit on `006-enhance-jmx-implementation`.
    optional fields to `src/options/options.ts`. Keep them separate from Core
    JMX flow to avoid permission footprint growth.
 
-### 5.4 Cross-cutting non-functional improvements
+### 6.4 Cross-cutting non-functional improvements
 
 - **Error handling:** All background message handlers should return typed errors
   that UI can render consistently. Avoid silent failures.
