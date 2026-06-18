@@ -18,7 +18,8 @@ in sequence and document your findings in the output format specified at the end
 
 ## CONTEXT YOU MUST HOLD THROUGHOUT
 
-The extension under analysis is the BlazeMeter Chrome Recorder (version 6.6.8).
+The extension under analysis is the **backendapp** Chrome Recorder (version 6.6.8).
+_(Prior product name: BM Chrome Recorder.)_
 
 Target outcome of the eventual port:
 

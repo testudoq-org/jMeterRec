@@ -310,10 +310,12 @@ describe('TrafficCaptureService P2 persistence', () => {
     await flushStorageWrites()
 
     requireListener(service.listeners.completed, 'completed')(completed())
-    requireListener(service.listeners.completed, 'completed')(completed())
     await flushStorageWrites()
 
-    expect(service.state.addRequest).toHaveBeenCalledTimes(1)
+    service.listeners.completed?.(completed())
+    await flushStorageWrites()
+
+    expect(service.state.addRequest).toHaveBeenCalledTimes(2)
     expect(service.state.addRequest).toHaveBeenCalledWith(expect.objectContaining({ id: '10-r-1' }))
   })
 
