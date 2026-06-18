@@ -1,4 +1,6 @@
 import { JmxOptionsStore } from '../options/jmx-options'
+import { BackendUploadStore } from '../options/backend-upload-options'
+import type { BackendUploadConfig } from '../options/backend-upload-options'
 import type { BackgroundRequest, BackgroundResponse, RecorderSnapshot } from '../messages'
 import type { CapturedRequest } from '../models/captured-request'
 
@@ -50,6 +52,15 @@ const transactionSearch = requireElement<HTMLInputElement>('transactionSearch')
 const transactionList = requireElement<HTMLDivElement>('transactionList')
 const openDetachedInspector = requireElement<HTMLButtonElement>('openDetachedInspector')
 const themeMode = requireElement<HTMLSelectElement>('themeMode')
+const backendUploadEnabled = requireElement<HTMLInputElement>('backendUploadEnabled')
+const backendUploadConverterUrl = requireElement<HTMLInputElement>('backendUploadConverterUrl')
+const backendUploadAuthToken = requireElement<HTMLInputElement>('backendUploadAuthToken')
+const backendUploadBtn = requireElement<HTMLButtonElement>('backendUploadBtn')
+const backendUploadPanel = requireElement<HTMLDivElement>('backendUploadPanel')
+const backendUploadFields = requireElement<HTMLDivElement>('backendUploadFields')
+
+let backendUploadStore: BackendUploadStore | undefined
+let uploadingJmx = false
 
 let availableDomains: string[] = []
 let selectedDomains = new Set<string>()
@@ -83,6 +94,7 @@ exportMode.addEventListener('change', () => {
   const isJmx = exportMode.value === 'jmx'
 
   jmxOptions.style.display = isJmx ? 'block' : 'none'
+  backendUploadPanel.style.display = isJmx ? 'block' : 'none'
   playwrightOptions.style.display = exportMode.value === 'playwright' ? 'block' : 'none'
   clearJmxDomainError()
 })
@@ -133,6 +145,15 @@ exportBtn.addEventListener('click', () => {
 
 exportJmxSelected.addEventListener('click', () => {
   void exportSelectedJmxDomains()
+})
+
+backendUploadBtn.addEventListener('click', () => {
+  void uploadBackendJmx()
+})
+
+backendUploadEnabled.addEventListener('change', () => {
+  applyBackendUploadDisabledState()
+  persistBackendUploadEnabled()
 })
 
 openDetachedInspector.addEventListener('click', () => {
@@ -888,4 +909,118 @@ function boundedNumber(value: unknown, min: number, max: number, fallback: numbe
 
 function toErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : 'Unexpected error'
+}
+
+async function persistBackendUploadEnabled(): Promise<void> {
+  if (backendUploadStore === undefined) {
+    backendUploadStore = new BackendUploadStore()
+  }
+
+  const loaded = await backendUploadStore.load()
+
+  await backendUploadStore.save({
+    enabled: backendUploadEnabled.checked,
+    converterUrl: backendUploadConverterUrl.value.trim(),
+    authToken: backendUploadAuthToken.value,
+    timeoutMs: loaded.timeoutMs,
+    includeDomains: loaded.includeDomains,
+    exportFilename: loaded.exportFilename,
+  })
+}
+
+function applyBackendUploadDisabledState(): void {
+  const disabled = !backendUploadEnabled.checked
+  backendUploadConverterUrl.disabled = disabled
+  backendUploadAuthToken.disabled = disabled
+  backendUploadBtn.style.display = disabled ? 'none' : 'inline-block'
+
+  if (disabled && backendUploadFields !== undefined) {
+    backendUploadFields.classList.add('disabled')
+  } else {
+    backendUploadFields.classList.remove('disabled')
+  }
+}
+
+async function uploadBackendJmx(): Promise<void> {
+  if (uploadingJmx) {
+    return
+  }
+
+  clearError()
+  const config = await (async (): Promise<BackendUploadConfig | null> => {
+    if (backendUploadStore === undefined) {
+      backendUploadStore = new BackendUploadStore()
+    }
+
+    const loaded = await backendUploadStore.load()
+
+    return {
+      enabled: backendUploadEnabled.checked,
+      converterUrl: backendUploadConverterUrl.value.trim(),
+      authToken: backendUploadAuthToken.value,
+      timeoutMs: 60000,
+      includeDomains:
+        loaded.includeDomains.length > 0 ? loaded.includeDomains : [...selectedDomains],
+      exportFilename: '',
+    }
+  })()
+
+  if (config === null) {
+    return
+  }
+
+  if (selectedDomains.size === 0) {
+    showJmxDomainError('Select at least one domain.')
+    return
+  }
+
+  uploadingJmx = true
+  backendUploadBtn.disabled = true
+  backendUploadBtn.textContent = 'Uploading…'
+
+  try {
+    const response = await send({
+      type: 'UPLOAD_JMX',
+      payload: {
+        converterUrl: config.converterUrl,
+        authToken: config.authToken,
+        timeoutMs: config.timeoutMs,
+        includedDomains: [...selectedDomains],
+        exportFilename: '',
+      },
+    })
+
+    if (!response.success) {
+      showError(response.error)
+      return
+    }
+
+    if ('downloadUrl' in response) {
+      // Only handle downloadUrl if `chrome.downloads` is available, otherwise surface error
+      if (typeof chrome !== 'undefined' && chrome.downloads !== undefined) {
+        chrome.downloads
+          .download({ url: response.downloadUrl, filename: 'Untitled Plan.jmx' })
+          .catch(() => {
+            showError('Unable to start download.')
+          })
+      } else {
+        showError('Downloads API unavailable in this context.')
+      }
+
+      return
+    }
+
+    if (!('jmx' in response)) {
+      showError('Upload failed.')
+      return
+    }
+
+    download(response.jmx, response.filename)
+  } catch {
+    // Error already surfaced by send()
+  } finally {
+    uploadingJmx = false
+    backendUploadBtn.disabled = false
+    backendUploadBtn.textContent = 'Upload & Download JMX'
+  }
 }
