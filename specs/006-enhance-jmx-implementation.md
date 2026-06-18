@@ -567,6 +567,30 @@ most recent commit on `006-enhance-jmx-implementation`.
 
 ---
 
+### 4.4 Implementation Closure
+
+Implementation obligations under `006-enhance-jmx-implementation` are **complete**.
+All gaps prioritised as P0 and P1 have been delivered (see §4.1). The remaining
+gaps and forward-looking content are deferred as follows:
+
+| Section | Disposition | Rationale |
+|---------|-------------|-----------|
+| G1 / G2 | **Deferred** — Backend upload path | Offline-only JMX is the confirmed product direction. Re-introducing requires a committed infrastructure decision. |
+| G6 | **Removed** — Enterprise form | ARD URL and `backendapp`/Dynatrace branding dropped; light/dark theme is the replacement. |
+| G13 | **Deferred** — `contextMenus` | No concrete UX requirement identified. Re-add only with user-research evidence. |
+| G14 | **Deferred** — `notifications` | Popup badge + status text is sufficient. Re-add only for enterprise alerting. |
+| G15 | **Deferred** — `browsingData` | No GDPR/cleanup requirement identified. Re-add only with explicit user action. |
+| G17 / G18 / G19 | **Removed** — Selenium/SideeX tape | Superseded by Playwright recording. Only revive with explicit commercial shim requirement. |
+| G20 | **Deferred** — JMX export enhancements | Analysis and recommendations documented below; no items committed to sprint work. Transfer to backlog or a future `007-*` spec. |
+| G21 | **Deferred** — Advanced Options | Design reference only. Requires a subsequent spec iteration to authorize implementation. |
+| §6 recommendations | **Carried as guidance** | Non-binding forward-looking guidance. Items will surface in backlog grooming or future specs. |
+
+**No further code changes are associated with this spec.** Any future work derived
+from the above deferred items should be scoped into new specifications (e.g.,
+`007-*`, `008-*`) with explicit acceptance criteria and product sign-off.
+
+---
+
 ### G20 — Enhanced JMX export functionality (NEW ANALYSIS)
 
 **Source of truth**
@@ -769,6 +793,281 @@ Supporting features in `src-ori`:
   discriminated unions exhaustively; add tests for unknown message shapes.
 - **Accessibility:** The new popup uses semantic HTML and ARIA attributes;
   continue to validate domain selector and export buttons.
+
+---
+
+### G21 — Advanced Options area (NEW)
+
+**Source of truth**
+Extracted from `src-ori/recorder-ui/recorder-ui.html` (old jQuery/iframe
+recorder UI). Controls were rendered as form inputs in the original page; they
+are documented here as a structured schema for future porting. **No
+implementation is implied by this section.** This section is a design reference
+only.
+
+---
+
+#### Intended behaviour (src-ori)
+
+The original recorder UI exposed an "Advanced Options" collapsible panel that
+controlled recording depth, concurrency, download parallelism, caching, user
+agent, cookie handling, and think-time randomization. The panel was rendered as
+a set of HTML inputs inside an iframe and persisted state to
+`chrome.storage.local`.
+
+The ported Playwright extension should represent the same controls natively in
+the popup/options — without iframes, without jQuery, and without backend
+dependencies.
+
+#### Recommended UI structure
+
+Group controls into a vertical list of `<fieldset>` elements. Each fieldset has
+a `<legend>` and contains one or more controls with labels. Use `<select>`,
+`<input type="range">`, `<input type="checkbox">`, `<textarea>`, and radio
+groups where appropriate. Group dependency rules:
+
+- "Requests to Record" radio group enables/disables subsequent sub-options.
+- "User Agent" dropdown defaults to "Current Browser"; changing selection may
+  unlock custom UA string input.
+- "Parallel Number of Downloads" dropdown defaults per browser; "Custom" option
+  unlocks a bounded number input (2–17).
+- Hidden/interdependent controls should use `aria-controls` and `hidden`
+  attributes rather than removing them from the DOM.
+
+#### Recommended configuration schema
+
+```json
+{
+  "advancedOptions": {
+    "concurrency": {
+      "description": "Number of virtual users to simulate.",
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 100000,
+      "step": 100,
+      "default": 100
+    },
+    "timeDistribution": {
+      "description": "Time interval during which virtual users start following.",
+      "type": "string",
+      "default": "10s Auto"
+    },
+    "userAgent": {
+      "description": "User-Agent string for recorded requests.",
+      "type": "string",
+      "default": "Current Browser",
+      "options": [
+        "Current Browser",
+        "Chrome on Windows",
+        "Chrome on Mac",
+        "Chrome on Linux",
+        "Firefox on Windows",
+        "Firefox on Mac",
+        "Firefox on Linux",
+        "Edge on Windows",
+        "Safari on Mac",
+        "Safari on iOS",
+        "Chrome on Android",
+        "Custom…"
+      ]
+    },
+    "filterPattern": {
+      "description": "Comma-separated list of URL patterns to record.",
+      "type": "string",
+      "format": "textarea",
+      "default": "http://*/*, https://*/*"
+    },
+    "disableBrowserCache": {
+      "description": "Disable the browser cache during recording.",
+      "type": "boolean",
+      "default": false
+    },
+    "wipeServiceWorkers": {
+      "description": "Wipe existing service workers before recording.",
+      "type": "boolean",
+      "default": false
+    },
+    "recordCookies": {
+      "description": "Capture Set-Cookie responses as cookie entries.",
+      "type": "boolean",
+      "default": true
+    },
+    "recordAjaxRequests": {
+      "description": "Include XHR/fetch requests in the capture.",
+      "type": "boolean",
+      "default": true
+    },
+    "updateSettingsBeforeRunningTest": {
+      "description": "Apply options immediately when recording starts.",
+      "type": "boolean",
+      "default": true
+    },
+    "randomizeThinkTimes": {
+      "description": "Randomize think times to 50%–150% of original.",
+      "type": "boolean",
+      "default": false
+    },
+    "requestsToRecord": {
+      "description": "Granularity of captured requests.",
+      "type": "string",
+      "enum": ["topLevelOnly", "topLevelAndFollowing"],
+      "default": "topLevelOnly",
+      "subOptions": {
+        "followingTypes": {
+          "description": "Resource types to include when following top-level requests.",
+          "type": "string[]",
+          "default": ["javascript", "css", "image", "font", "redirect"],
+          "options": [
+            "cookies",
+            "css",
+            "fonts",
+            "javascript",
+            "images",
+            "redirects",
+            "other"
+          ]
+        }
+      }
+    },
+    "parallelDownloads": {
+      "description": "Maximum simultaneous downloads per browser.",
+      "type": "string",
+      "default": "browser-default",
+      "browserDefaults": {
+        "chrome": 6,
+        "firefox": 6,
+        "ie6": 2,
+        "ie7": 2,
+        "ie8": 6,
+        "ie9": 6,
+        "ie10": 8,
+        "ie11": 13,
+        "edge14": 13,
+        "edge15": 13,
+        "edge16": 13,
+        "safari": 6,
+        "opera": 6,
+        "android": 4
+      },
+      "customRange": {
+        "minimum": 2,
+        "maximum": 17
+      }
+    },
+    "exportIdLocators": {
+      "description": "Export element ID locators alongside CSS/XPath (Playwright only; irrelevant for JMX).",
+      "type": "boolean",
+      "default": true
+    },
+    "allowContextClicks": {
+      "description": "Record right-click / context-menu interactions.",
+      "type": "boolean",
+      "default": false
+    },
+    "includeMetadataInSeleniumYaml": {
+      "description": "Include metadata when exporting Selenium (.side) YAML.",
+      "type": "boolean",
+      "default": true
+    }
+  }
+}
+```
+
+#### Documentation table
+
+| Control | Type | Default | Dependencies | Notes |
+|---------|------|---------|--------------|-------|
+| Concurrency | slider + number | 100 | none | Steps: 100, 1,000, 10k, 50k, 100k |
+| Time Distribution | `<select>` | `10s Auto` | none | Label: "Virtual users start" |
+| User Agent | `<select>` + optional text | `Current Browser` | Custom unlocks text input | Grouped by OS + browser family |
+| Filter Pattern | `<textarea>` | `http://*/*, https://*/*` | none | Required |
+| Disable Browser Cache | `<input type="checkbox">` | unchecked | none | MV3: no direct browser-cache API; may use `chrome.declarativeNetRequest` rules in a later iteration |
+| Wipe Service Workers | `<input type="checkbox">` | unchecked | none | Requires `chrome.debugger` or `chrome.scripting` removal; defer if G16 remains "out" |
+| Record Cookies | `<input type="checkbox">` | checked | follows Requests to Record selection | Emit `CookieManager` (see G20 item 7) |
+| Record Ajax Requests | `<input type="checkbox">` | checked | none | Core to capture depth |
+| Update Settings Before Running Test | `<input type="checkbox">` | checked | none | Immediate vs lazy apply |
+| Randomize Think Times | `<input type="checkbox">` | unchecked | none | Randomize 50%–150% of captured think times |
+| Requests to Record | radio | `topLevelOnly` | toggles sub-options | Values: `topLevelOnly`, `topLevelAndFollowing` |
+| — Cookies | checkbox | unchecked | only when `topLevelAndFollowing` | |
+| — CSS & Fonts | checkbox | checked | only when `topLevelAndFollowing` | |
+| — JavaScript | checkbox | checked | only when `topLevelAndFollowing` | |
+| — Images | checkbox | checked | only when `topLevelAndFollowing` | |
+| — Redirects | checkbox | unchecked | only when `topLevelAndFollowing` | |
+| — Other | checkbox | unchecked | only when `topLevelAndFollowing` | |
+| Parallel Number of Downloads | `<select>` + optional number | browser default | Custom unlocks number input (2–17) | See `browserDefaults` map |
+| Export ID Locators | `<input type="checkbox">` | checked | Playwright `.spec.ts` only | No JMX effect; harmless for JMX path |
+| Allow Context Clicks to be recorded | `<input type="checkbox">` | unchecked | none | Capture right-click / long-press |
+| Include metadata in Selenium-only YAML | `<input type="checkbox">` | checked | Selenium export only | No JMX effect |
+
+#### Recommended alignment with G1/G2/G6/G13/G14/G15 decisions
+
+| Decision | G21 impact |
+|----------|-----------|
+| **G1/G2 deferred** (offline-only JMX) | Options above marked "Playwright only" (e.g., `includeMetadataInSeleniumYaml`, `exportIdLocators` affecting .spec.ts) remain valid and should be persisted, but the upload/convert workflow stays out of scope. |
+| **G6 deferred** (no enterprise form) | Browser selection, UA string, theme, ARD URL, and `serverJMX` are **not** part of G21. If custom-branded deployments are ever required, the schema above provides clean extension points without retooling the core. |
+| **G13 deferred** (`contextMenus` not restored) | `allowContextClicks` should **remain in schema** even if the permission is dropped. When not recorded, the flag is ignored; no permission is needed to store the preference. |
+| **G14 deferred** (`notifications` not restored) | No G21 control triggers notifications. State changes are surfaced via popup + badge. |
+| **G15 deferred / under review** (`browsingData`) | `disableBrowserCache` and `wipeServiceWorkers` are controls in the schema; actual cache-clearing calls are **not** implemented while G15 is deferred. The controls are saved but no-op until G15 is resolved or an MV3-compatible alternative is chosen. |
+
+#### Permissions and storage
+
+- Persist under a single `chrome.storage.local` key: `advancedOptions`.
+- Use the same typed-safe store pattern as `JmxOptionsStore` when implemented.
+- Do **not** require new permissions for the schema above. All controls are
+  application-level preferences; no API calls are implied.
+
+#### Deferred / simplified controls
+
+| Control | Deferral/simplification rationale |
+|---------|-----------------------------------|
+| `disableBrowserCache` | MV3 has no direct cache-clear API; would require `declarativeNetRequest` workaround. Schema keeps the flag; implementation defers to a future iteration. |
+| `wipeServiceWorkers` | Clearing service workers requires `chrome.scripting` or `chrome.debugger`. Since G16 is "out" and G15 is under review, leave the flag schema-only. |
+| `exportIdLocators` | Flag is Playwright-relevant; JMX path ignores it. Implement the toggle when Playwright export ships it; otherwise no-op for JMX. |
+| `includeMetadataInSeleniumYaml` | Selenium-only YAML export; defer to a future Selenium-compat shim if required. Flag schema is harmless. |
+
+#### Open questions for G21
+
+1. Should "Time Distribution" accept free-form text (e.g., `10s`, `1m`, `Auto`) or be bound to a discrete enum?
+2. Should `concurrency` be exposed only when recording mode is "Performance" versus "Functional"?
+3. Should `userAgent` custom string be persisted as a separate field or inline?
+4. Should `filterPattern` validation reject malformed globs at save time or just escape them?
+5. Should `randomizeThinkTimes` derive its range from a fixed 50%–150% or from user-defined bounds?
+
+---
+
+_G21 is a design reference only. No code, UI, or configuration changes are
+authorized by this section until a subsequent spec iteration explicitly
+authorizes implementation._
+
+---
+
+## A. Future Spec Hand-off
+
+All remaining gaps and recommendations from §4.4 and §6 are candidates for
+future specifications. The following table maps each deferred item to a proposed
+future spec target and scope so the product team can sequence work without
+re-opening this spec.
+
+| Proposed future spec | Scope | Source sections |
+|----------------------|-------|-----------------|
+| `007-jmx-backend-upload` | Re-introduce backend converter upload (`G1`, `G2`). Requires: server endpoint, auth model, enterprise branding. | G1, G2, §6.3 item 7 |
+| `008-extension-permissions-refresh` | Re-audit permissions (`G13`, `G14`, `G15`). Requires UX/enterprise sign-off before any manifest change. | G13, G14, G15, §6.3 item 8 |
+| `009-jmx-export-quality` | G20 enhancements: `postBodyRaw` fix, error-request method fix, think-time timers, response assertions, `CookieManager`, redirect deduplication, query-param serialization. | G20, §4.4 |
+| `010-advanced-recorder-options` | G21 Advanced Options UI and persistence: recording depth, UA override, filter pattern, parallel downloads, think-time randomization. | G21 |
+| *(backlog only)* | Domain-filter exact-match toggle, select-all/select-none, plan-name hint, filename sanitization, content-script body fallback, in-flight state persistence, chunked export. | §6.1–6.3, `specs/XXX-backlog-ideas.md` |
+
+**Integration notes for new specs:**
+- Each future spec should include its own acceptance criteria, affected modules,
+  and public API contracts before implementation begins.
+- The `007-*`, `008-*`, and `009-*` specs may touch `src/jmx/`, `src/popup/`,
+  `src/options/`, and `src/background/`. They should be reviewed for conflict
+  with any concurrent `010-*` work.
+- `010-advanced-recorder-options` should be sequenced after permission decisions
+  from `008-*` if any controls require new manifest permissions.
+
+---
+
+_End of document._
 
 ---
 
