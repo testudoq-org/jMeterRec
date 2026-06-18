@@ -107,7 +107,7 @@ It is injected into the host page by `src-ori/js/content-script.js`.
 
 **Intended behaviour (src-ori)**
 Options page includes custom server URL, ARD URL, converter URL, and a theme
-selector (`blazemeter` vs `dynatrace`). The theme drives logo asset selection in
+selector (`backendapp` vs `dynatrace`). The theme drives logo asset selection in
 the injected popup.
 
 **Affected src-ori modules/files**
@@ -137,7 +137,7 @@ the injected popup.
 
 - AC1: Options page no longer carries `server`, `ard_url`, or `serverJMX`
   fields unless a product requirement is confirmed.
-- AC2: Theme is persisted and applied as light/dark; the BlazeMeter/Dynatrace
+- AC2: Theme is persisted and applied as light/dark; the `backendapp`/Dynatrace
   brand logo flow is documented as removed.
 
 ---
@@ -552,7 +552,7 @@ most recent commit on `006-enhance-jmx-implementation`.
 | Gap | Decision | Rationale |
 |-----|----------|-----------|
 | **G1/G2** | **Offline-only JMX.** Backend converter upload not implemented. | Standalone client-side tool; no server endpoint identified. |
-| **G6** | **No enterprise form.** ARD URL and BlazeMeter/Dynatrace brand theme removed; only light/dark theme persisted. | Moving to Capultura branding; no branded deployments required. |
+| **G6** | **No enterprise form.** ARD URL and `backendapp`/Dynatrace brand theme removed; only light/dark theme persisted. | Moving to Capultura branding; no branded deployments required. |
 | **G13** | `contextMenus` — not restored. | No concrete UX requirement identified. |
 | **G14** | `notifications` — not restored. | Popup badge + status text sufficient. |
 | **G15** | `browsingData` — not restored. | Reset clears in-memory traffic without this permission. |
@@ -588,14 +588,14 @@ The original `src-ori` export path had two modes:
    - The generated JMX used `jmeterTestPlan`, `hashTree`, `ThreadGroup`, `HTTPSamplerProxy`, and `HeaderManager`.
 
 2. **Backend converter upload** (`upload_traffic`)
-   - POSTed captured traffic to `server_jmx` URL (default: `https://converter.blazemeter.com`).
+   - POSTed captured traffic to `server_jmx` URL (default: `https://converter.backendapp.com`).
    - A separate jQuery overlay collected domains and triggered upload.
    - The server returned a JMX file or download link.
 
 Supporting features in `src-ori`:
-- **Forbidden domains** (`forbidden-domains.json`): blocked BlazeMeter hosts (`a.blazemeter.com`, `www.a.blazemeter.com`) and specific extension IDs.
+- **Forbidden domains** (`forbidden-domains.json`): blocked `a.backendapp.com`, `www.a.backendapp.com` and specific extension IDs.
 - **Options page** (`options.tsx`): fields for `debug`, `custom_server` (checkbox + URL), `custom_ard` (checkbox + URL), `serverJMX` (URL with validation), plus Save/Reset with notification toasts.
-- **Theme** (`config.json`): `blazemeter` or `dynatrace` brand, driving logo asset selection.
+- **Theme** (`config.json`): `backendapp` or `dynatrace` brand, driving logo asset selection.
 - **Notifications** (`chrome.notifications`): desktop toasts for settings save/reset and recording status.
 - **Context menus** (`chrome.contextMenus`): right-click shortcuts dispatching recorder commands.
 - **Auto-check single domain**: if only one domain was captured, its checkbox was pre-checked.
