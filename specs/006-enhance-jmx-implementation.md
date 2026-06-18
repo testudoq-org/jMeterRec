@@ -1068,7 +1068,3 @@ re-opening this spec.
 ---
 
 _End of document._
-
----
-
-_End of document._
