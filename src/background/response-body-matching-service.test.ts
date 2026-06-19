@@ -65,7 +65,11 @@ describe('ResponseBodyMatchingService', () => {
 
   it('rejects when status code does not align', () => {
     const service = new ResponseBodyMatchingService()
-    const match = service.findMatch(buildPayload({ status: 200 }), [pending({ statusCode: 404 })], [])
+    const match = service.findMatch(
+      buildPayload({ status: 200 }),
+      [pending({ statusCode: 404 })],
+      []
+    )
 
     expect(match).toBeUndefined()
   })

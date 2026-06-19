@@ -1,10 +1,4 @@
 import { DEFAULT_JMX_OPTIONS, normalizeJmxOptions } from './jmx-options'
-import {
-  DEFAULT_BACKEND_UPLOAD_CONFIG,
-  BackendUploadStore,
-  isValidUrl,
-} from './backend-upload-options'
-import type { BackendUploadConfig } from './backend-upload-options'
 
 interface RecorderOptions {
   defaultPlanName: string
@@ -51,17 +45,6 @@ const saveTransactionPanelOptions = requireElement<HTMLButtonElement>('saveTrans
 const transactionPanelSaved = requireElement<HTMLDivElement>('transactionPanelSaved')
 const themeMode = requireElement<HTMLSelectElement>('themeMode')
 
-const backendUploadEnabled = requireElement<HTMLInputElement>('backendUploadEnabled')
-const backendUploadConverterUrl = requireElement<HTMLInputElement>('backendUploadConverterUrl')
-const backendUploadAuthToken = requireElement<HTMLInputElement>('backendUploadAuthToken')
-const backendUploadTimeout = requireElement<HTMLInputElement>('backendUploadTimeout')
-const backendUploadFields = requireElement<HTMLDivElement>('backendUploadFields')
-const backendUploadUrlError = requireElement<HTMLDivElement>('backendUploadUrlError')
-const saveBackendUploadOptions = requireElement<HTMLButtonElement>('saveBackendUploadOptions')
-const backendUploadSaved = requireElement<HTMLDivElement>('backendUploadSaved')
-
-const backendUploadStore = new BackendUploadStore()
-
 captureResponseBody.addEventListener('change', () => {
   updateCaptureWarning(captureResponseBody.checked)
 })
@@ -85,8 +68,6 @@ chrome.storage.local
   .catch((err: unknown) => {
     saved.textContent = `Unable to load options: ${toErrorMessage(err)}`
   })
-
-void loadBackendUploadOptions().catch(() => undefined)
 
 save.addEventListener('click', () => {
   const normalizedJmxOptions = normalizeJmxOptions({
@@ -139,63 +120,6 @@ saveTransactionPanelOptions.addEventListener('click', () => {
     })
 })
 
-saveBackendUploadOptions.addEventListener('click', () => {
-  if (saveBackendUploadOptions.disabled) {
-    return
-  }
-
-  const url = backendUploadConverterUrl.value.trim()
-
-  if (!isValidUrl(url)) {
-    backendUploadUrlError.textContent = 'Enter a valid URL.'
-    backendUploadConverterUrl.setAttribute('aria-invalid', 'true')
-    return
-  }
-
-  backendUploadUrlError.textContent = ''
-  backendUploadConverterUrl.removeAttribute('aria-invalid')
-
-  const config: BackendUploadConfig = {
-    enabled: backendUploadEnabled.checked,
-    converterUrl: url,
-    authToken: backendUploadAuthToken.value,
-    timeoutMs: boundedNumber(
-      backendUploadTimeout.value,
-      5000,
-      300000,
-      DEFAULT_BACKEND_UPLOAD_CONFIG.timeoutMs
-    ),
-    includeDomains: [],
-    exportFilename: '',
-  }
-
-  backendUploadStore
-    .save(config)
-    .then(() => {
-      backendUploadSaved.textContent = 'Backend converter options saved.'
-    })
-    .catch((err: unknown) => {
-      backendUploadSaved.textContent = `Unable to save backend converter options: ${toErrorMessage(err)}`
-    })
-})
-
-backendUploadEnabled.addEventListener('change', () => {
-  applyBackendUploadDisabledState()
-})
-
-backendUploadConverterUrl.addEventListener('blur', () => {
-  if (
-    backendUploadConverterUrl.value.trim().length > 0 &&
-    !isValidUrl(backendUploadConverterUrl.value)
-  ) {
-    backendUploadUrlError.textContent = 'Enter a valid URL.'
-    backendUploadConverterUrl.setAttribute('aria-invalid', 'true')
-  } else {
-    backendUploadUrlError.textContent = ''
-    backendUploadConverterUrl.removeAttribute('aria-invalid')
-  }
-})
-
 function normalizeOptions(options: StoredOptions): StoredOptions {
   const jmxOptions = normalizeJmxOptions(options)
 
@@ -236,32 +160,6 @@ function boundedNumber(value: unknown, min: number, max: number, fallback: numbe
   }
 
   return Math.min(max, Math.max(min, Math.trunc(parsed)))
-}
-
-function applyBackendUploadDisabledState(): void {
-  const disabled = !backendUploadEnabled.checked
-  backendUploadConverterUrl.disabled = disabled
-  backendUploadAuthToken.disabled = disabled
-  backendUploadTimeout.disabled = disabled
-
-  if (disabled) {
-    backendUploadFields.classList.add('disabled')
-  } else {
-    backendUploadFields.classList.remove('disabled')
-  }
-}
-
-async function loadBackendUploadOptions(): Promise<void> {
-  try {
-    const config = await backendUploadStore.load()
-    backendUploadEnabled.checked = config.enabled
-    backendUploadConverterUrl.value = config.converterUrl
-    backendUploadAuthToken.value = config.authToken
-    backendUploadTimeout.value = String(config.timeoutMs)
-    applyBackendUploadDisabledState()
-  } catch {
-    // Ignore load failures
-  }
 }
 
 function requireElement<T extends HTMLElement>(id: string): T {

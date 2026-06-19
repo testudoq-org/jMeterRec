@@ -116,13 +116,6 @@ function buildPopupHtml(): string {
       <button id="exportJmxSelected"></button>
       <div id="playwrightOptions"></div>
       <input id="baseUrl" />
-      <div id="backendUploadPanel">
-        <input id="backendUploadEnabled" type="checkbox" />
-        <input id="backendUploadConverterUrl" />
-        <input id="backendUploadAuthToken" />
-        <div id="backendUploadFields"></div>
-        <button id="backendUploadBtn"></button>
-      </div>
       <p id="transactionSummary"></p>
       <select id="transactionMethodFilter"></select>
       <select id="transactionStatusFilter"></select>

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { measureBody, isPlainText, shouldRedact, MAX_RESPONSE_BODY_BYTES, ResponseBodyCapture } from './response-body'
+import {
+  measureBody,
+  isPlainText,
+  shouldRedact,
+  MAX_RESPONSE_BODY_BYTES,
+  ResponseBodyCapture,
+} from './response-body'
 
 describe('measureBody', () => {
   const body = 'Hello World! 🌍'
