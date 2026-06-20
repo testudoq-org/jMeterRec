@@ -27,7 +27,7 @@
             </div>
           </div>
           <div id="status" class="status status-idle" aria-live="polite">
-            Loading recorder state…
+            Please start recording
           </div>
           <div id="elapsedTime" class="elapsed" aria-live="polite">Elapsed: 00:00</div>
         </div>
@@ -56,63 +56,7 @@
           <div id="jmxDomainStatus" class="domain-status"></div>
           <div id="jmxDomainError" class="error" aria-live="polite"></div>
           <button id="exportJmxSelected" class="secondary" disabled type="button">
-            Export selected domains
-          </button>
-        </fieldset>
-      </div>
-
-      <div id="playwrightOptions" style="display: none">
-        <label for="baseUrl">Base URL</label>
-        <input id="baseUrl" type="text" placeholder="https://example.com" autocomplete="off" />
-      </div>
-
-      <div id="backendUploadPanel" class="backend-upload-panel" style="display: none">
-        <fieldset disabled>
-          <legend>Backend converter (future enhancement)</legend>
-          <label class="checkbox-row">
-            <input id="backendUploadEnabled" type="checkbox" disabled />
-            <span>Upload to backend converter</span>
-          </label>
-
-          <div id="backendUploadFields" class="backend-upload-fields">
-            <label for="backendUploadConverterUrl">Converter URL</label>
-            <input
-              id="backendUploadConverterUrl"
-              type="url"
-              placeholder="https://converter.example.com/api/v1/upload"
-              autocomplete="off"
-              disabled
-            />
-
-            <label for="backendUploadAuthToken">Auth token</label>
-            <input
-              id="backendUploadAuthToken"
-              type="text"
-              placeholder="Optional bearer token"
-              autocomplete="off"
-              disabled
-            />
-          </div>
-        </fieldset>
-      </div>
-
-      <div id="jmxOptions" style="display: none">
-        <fieldset>
-          <legend>Domains to include</legend>
-          <div id="jmxDomains" class="domain-list"></div>
-          <div id="jmxDomainStatus" class="domain-status"></div>
-          <div id="jmxDomainError" class="error" aria-live="polite"></div>
-          <button id="exportJmxSelected" class="secondary" disabled type="button">
-            Export selected domains
-          </button>
-          <button
-            id="backendUploadBtn"
-            class="secondary"
-            disabled
-            type="button"
-            style="display: none"
-          >
-            Upload &amp; Download JMX
+            Export JMX
           </button>
         </fieldset>
       </div>

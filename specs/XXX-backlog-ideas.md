@@ -9,6 +9,668 @@ You now have an MV3 extension port focused on browser HTTP traffic capture and l
 
 ### Backlog — newest first
 
+- [~] **012-external-har-import-and-convert-to-jmx** — Add a separate external HAR import path that reads a user-selected `.har` file, validates it, optionally filters by domain, and converts it to JMX using the existing `convertHarToJmx()` pipeline.
+  - Status: proposed
+  - Depends on: stable popup JMX export UI, `convertHarToJmx()`, `downloads` permission, HAR validation helpers
+  - Related spec: `specs/008-extension-permissions-refresh.md` open question on HAR schema completeness
+  - Key design: keep existing captured-traffic export unchanged and add a parallel `File → HAR object → convertHarToJmx() → JMX download` path.
+
+### Spec 012 — External HAR Import and Convert to JMX
+
+External HAR import can be achieved by keeping the existing captured-traffic export path unchanged and adding a parallel “import file → validate HAR → convert HAR → download JMX” path.
+
+#### 1. Keep the current pipeline intact
+
+Current flow is:
+
+```text
+Recorded browser traffic
+  → CapturedRequest[]
+  → buildHar()
+  → convertHarToJmx()
+  → JMX download
+```
+
+That path is already implemented through:
+
+- `src/har/har-builder.ts`
+- `src/jmx/har-to-jmx.ts`
+- `src/background/recorder-service.ts`
+- `src/popup/popup.ts`
+
+The new 012 feature should not replace that. It should add a second entry point into the same conversion core:
+
+```text
+User-selected .har file
+  → parsed HAR object
+  → convertHarToJmx()
+  → JMX download
+```
+
+So `convertHarToJmx(har, meta)` remains the central conversion primitive.
+
+#### 2. Add a separate UI surface
+
+Do not overload the existing `Export JMX` button. That button currently means:
+
+```text
+Export captured traffic as in-memory HAR, then convert to JMX
+```
+
+For external HAR import, add a separate section, probably in the popup under the JMX export area.
+
+Example UI structure:
+
+```text
+Export mode: JMX
+
+Captured traffic export
+- Domains to include
+- Export captured traffic to JMX
+
+Import HAR file
+- File input: Choose HAR file
+- Optional domain filter after parsing
+- Convert HAR to JMX
+```
+
+Suggested labels:
+
+- Button label is now `Export JMX` to avoid confusing HAR export with HAR import.
+- New button: `Convert HAR to JMX`.
+- File input label: `Import HAR file`.
+
+This avoids confusing “HAR export” with “HAR import”.
+
+#### 3. New message contract
+
+Add a new background message, for example:
+
+```ts
+{
+  type: 'IMPORT_HAR',
+  har: HAR,
+  includedDomains: string[]
+}
+```
+
+or:
+
+```ts
+{
+  type: 'CONVERT_HAR_TO_JMX',
+  har: HAR,
+  includedDomains: string[]
+}
+```
+
+I would prefer `IMPORT_HAR` if the background is responsible for parsing/validation/conversion. I would prefer `CONVERT_HAR_TO_JMX` if the popup parses the file and only asks the background to convert.
+
+Recommended shape:
+
+```ts
+type BackgroundRequest =
+  | ...
+  | {
+      type: 'IMPORT_HAR'
+      har: HAR
+      includedDomains: string[]
+    }
+```
+
+Response:
+
+```ts
+type BackgroundResponse =
+  | ...
+  | {
+      success: true
+      jmx: string
+      filename: string
+    }
+  | {
+      success: false
+      error: string
+    }
+```
+
+This mirrors the existing `EXPORT_JMX` response shape.
+
+#### 4. Where parsing should happen
+
+There are two reasonable designs.
+
+##### Option A — Popup reads and parses the file
+
+Flow:
+
+```text
+Popup file input
+  → FileReader / File.text()
+  → JSON.parse
+  → basic HAR validation
+  → send IMPORT_HAR with HAR object
+  → background converts to JMX
+```
+
+Pros:
+
+- Keeps file handling in the UI layer.
+- Background does not need file APIs.
+- Easier to show immediate parse errors.
+
+Cons:
+
+- Large HAR files are cloned through `chrome.runtime.sendMessage`.
+- Popup must duplicate at least some validation logic.
+
+##### Option B — Popup sends file text to background
+
+Flow:
+
+```text
+Popup file input
+  → read file as text
+  → send IMPORT_HAR_FILE with text
+  → background parses, validates, converts
+```
+
+Pros:
+
+- Single validation/conversion authority in background.
+- Cleaner message contract if background owns conversion.
+
+Cons:
+
+- Service worker may receive large text payloads.
+- More work in background.
+- Less immediate UI feedback.
+
+Recommended approach:
+
+Use Option A, but still validate again in the background before conversion. That gives good UX and keeps the background as the trusted conversion boundary.
+
+#### 5. Background conversion flow
+
+In `RecorderService`, add a handler similar to `handleExportJmxMessage`.
+
+Conceptual flow:
+
+```text
+IMPORT_HAR
+  → validate HAR
+  → filter HAR entries by includedDomains
+  → convert filtered HAR to JMX using convertHarToJmx()
+  → return { success: true, jmx, filename }
+```
+
+The important point is that external HAR import should reuse:
+
+```ts
+convertHarToJmx(har, meta)
+```
+
+The only new part is getting from:
+
+```text
+File → HAR object
+```
+
+to:
+
+```text
+HAR object
+```
+
+#### 6. Plan metadata
+
+The existing JMX export uses `PlanMeta`:
+
+```ts
+{
+  name: string
+  threadGroup: {
+    threads: number
+    rampUp: number
+    loops: number
+  }
+}
+```
+
+External HAR import should use the same metadata rules as captured-traffic export:
+
+- Plan name from popup `planNameInput`, falling back to saved JMX option name.
+- Threads/rampUp/loops from `JmxOptionsStore`.
+- Filename from safe plan name, same as existing export.
+
+So the conversion path should remain:
+
+```text
+HAR + PlanMeta
+  → convertHarToJmx()
+  → JMX
+```
+
+#### 7. Domain filtering
+
+The existing captured-traffic export filters `CapturedRequest[]` before building HAR.
+
+For external HAR import, filtering can happen either:
+
+```text
+HAR entries → filter by domain → convertHarToJmx()
+```
+
+or:
+
+```text
+HAR entries → convertHarToJmx() → JMX
+```
+
+Better design:
+
+Filter before conversion.
+
+Flow:
+
+```text
+Import HAR
+  → extract unique domains from HAR entries
+  → render domain selector
+  → user selects domains
+  → filter HAR entries by selected domains
+  → convertHarToJmx()
+```
+
+This mirrors the existing UX and avoids generating JMX for unwanted domains.
+
+#### 8. HAR validation requirements
+
+Add validation before conversion.
+
+Minimum checks:
+
+- Top-level `log` exists.
+- `log.version === "1.2"`.
+- `log.entries` exists and is an array.
+- Each entry has:
+  - `startedDateTime`
+  - `request.method`
+  - `request.url`
+  - `request.headers`
+  - `request.queryString`
+  - `response.status`
+  - `response.headers`
+  - `response.content`
+  - `timings`
+
+Useful user-facing errors:
+
+- `Invalid HAR file: file is not valid JSON.`
+- `Invalid HAR file: missing log object.`
+- `Unsupported HAR version: expected 1.2.`
+- `Invalid HAR file: no entries found.`
+- `No requests match the selected domains.`
+
+The background should validate even if the popup already did, because messages can be spoofed.
+
+#### 9. Privacy and security considerations
+
+External HAR files can contain sensitive data:
+
+- Cookies
+- Authorization headers
+- Query-string tokens
+- Request bodies
+- Response bodies
+
+The 012 spec should explicitly say:
+
+- Imported HAR is not persisted.
+- Imported HAR is only kept in memory during conversion.
+- Users should be warned before importing.
+- Optional future feature: redact headers/bodies before conversion.
+
+This is especially important because JMX output may include request/response bodies if the HAR contains them.
+
+#### 10. Suggested 012 acceptance criteria
+
+##### AC1 — User can select a HAR file
+
+Given the popup is open and JMX export mode is selected:
+
+- User sees an “Import HAR file” section.
+- User can choose a `.har` file.
+- The extension accepts `.har` and JSON MIME types.
+
+##### AC2 — Imported HAR is validated
+
+Given a selected file:
+
+- Valid HAR 1.2 files proceed.
+- Invalid JSON is rejected.
+- Missing `log` is rejected.
+- Unsupported HAR versions are rejected.
+- Files with no entries are rejected or handled with a clear error.
+
+##### AC3 — Imported domains are shown
+
+Given a valid HAR with multiple domains:
+
+- The popup extracts unique domains.
+- The popup renders a domain selector.
+- All domains are selected by default.
+- The convert button is disabled when no domains are selected.
+
+##### AC4 — HAR converts to JMX
+
+Given a valid HAR and selected domains:
+
+- User clicks “Convert HAR to JMX”.
+- Popup sends `IMPORT_HAR`.
+- Background filters HAR entries by selected domains.
+- Background calls `convertHarToJmx()`.
+- JMX file is downloaded.
+
+##### AC5 — Existing captured-traffic export is unchanged
+
+Given recorded traffic:
+
+- Existing `EXPORT_JMX` flow still works.
+- Existing `Export captured traffic to JMX` behavior is unchanged.
+- External HAR import uses a separate message and UI path.
+
+##### AC6 — No HAR persistence
+
+Given an imported HAR:
+
+- The extension does not save the HAR to storage.
+- The HAR is not sent to a remote server.
+- The HAR is only used to generate JMX.
+
+#### 11. Suggested implementation modules
+
+Likely files touched:
+
+- `src/messages.ts`
+  - Add `IMPORT_HAR` request type.
+- `src/popup/popup.ts`
+  - Add file input handling.
+  - Add import HAR state.
+  - Add domain extraction/rendering for imported HAR.
+  - Add convert button handler.
+- `src/popup/popup.html`
+  - Add import HAR UI section.
+- `src/background/recorder-service.ts`
+  - Add `IMPORT_HAR` handler.
+  - Reuse `convertHarToJmx()`.
+- `src/jmx/har-to-jmx.ts`
+  - Possibly strengthen HAR validation helpers.
+- `src/har/har-builder.ts`
+  - Probably unchanged.
+
+Tests:
+
+- Add popup unit tests for file import state.
+- Add background service tests for `IMPORT_HAR`.
+- Add HAR validation tests.
+- Add E2E test for importing a fixture HAR.
+
+#### 12. Recommended design summary
+
+The cleanest design is:
+
+```text
+Popup:
+  - File input selects .har
+  - Popup reads file as text
+  - Popup parses JSON
+  - Popup validates HAR 1.2
+  - Popup extracts domains
+  - Popup renders domain selector
+  - User clicks Convert HAR to JMX
+  - Popup sends IMPORT_HAR with HAR + selected domains
+
+Background:
+  - Validates HAR again
+  - Filters HAR entries by selected domains
+  - Builds PlanMeta from JMX options
+  - Calls convertHarToJmx()
+  - Returns JMX + filename
+
+Popup:
+  - Downloads JMX
+```
+
+This keeps the existing captured-traffic export intact, reuses the existing HAR→JMX converter, and adds external HAR import as a clearly separate feature.
+
+- [~] **011-quality-uplift** — Full hardening, performance, and security review before the next enterprise-facing release.
+  - Status: proposed
+  - Depends on: core recording/export flows being stable
+  - Related specs: `specs/005-operational-hardening-roadmap.md`, `specs/006-enhance-jmx-implementation.md`, `specs/008-extension-permissions-refresh.md`
+  - Goal: identify and fix reliability, performance, privacy, and security gaps without changing the product contract.
+
+### Spec 011 — Quality Uplift: Hardening, Performance, and Security Review
+
+#### 1. Goal
+
+Run a focused quality uplift across the extension codebase to harden recording/export behavior, improve performance under realistic traffic volumes, and review security-sensitive handling of recorded data.
+
+The goal is not to add a new user-facing feature. The goal is to make existing behavior safer, faster, more reliable, and easier to maintain before the next enterprise-facing release.
+
+#### 2. Current risk areas
+
+The uplift should review these areas:
+
+- MV3 service-worker lifecycle and in-flight request persistence.
+- Popup performance when many requests are captured.
+- Storage size and cleanup behavior.
+- Large JMX, Playwright, and HAR export behavior.
+- Sensitive data exposure in JMX, Playwright scripts, HAR data, logs, and UI.
+- Manifest permissions and least-privilege access.
+- Message validation between popup, background, content scripts, and storage.
+- DOM rendering safety in popup/options/content UI.
+- Test coverage for edge cases, failures, and privacy-sensitive paths.
+
+#### 3. Scope
+
+##### In scope
+
+- Hardening existing recording, pause/resume, stop, reset, and export flows.
+- Performance profiling and optimization of popup rendering, storage access, and export generation.
+- Security review of permissions, message handling, DOM rendering, sensitive data handling, and download behavior.
+- Reliability review of MV3 lifecycle boundaries, service-worker restarts, and persisted state.
+- Test additions for failure modes, large payloads, invalid inputs, and privacy-sensitive behavior.
+- Documentation updates for known limits, privacy behavior, and operational guidance.
+
+##### Out of scope
+
+- New recorder features not required for hardening.
+- New backend upload flow.
+- New enterprise configuration flow.
+- New external HAR import feature.
+- New response-body capture feature unless the review finds an immediate security gap.
+- Framework migration.
+
+#### 4. Hardening review
+
+The hardening review should verify that existing behavior remains correct under realistic and adverse conditions.
+
+##### Areas to audit
+
+- Recorder state transitions:
+  - start → pause → resume → stop
+  - start → reset
+  - stop → reset
+  - background restart during active recording
+  - service-worker termination during in-flight requests
+- Popup/background message handling:
+  - stale `GET_STATE` responses
+  - duplicate action responses
+  - missing response handlers
+  - invalid message payloads
+  - background restart during a popup action
+- Export flows:
+  - JMX export with no requests
+  - JMX export with many requests
+  - JMX export with unsupported methods or malformed URLs
+  - Playwright export with missing base URL
+  - Playwright export with special characters in URLs or selectors
+  - export while recording is paused
+  - export after service-worker restart
+- Storage behavior:
+  - recorder state persistence
+  - pending request persistence
+  - options persistence
+  - cleanup after stop/reset
+  - storage quota pressure
+
+##### Hardening acceptance criteria
+
+- Recorder state cannot become permanently inconsistent after service-worker restart.
+- Stale popup state responses cannot overwrite successful action results.
+- Reset, stop, and clear-requests flows clean completed and pending request data consistently.
+- Export flows return clear user-facing errors instead of silent failure.
+- Invalid or missing payloads are rejected at message boundaries.
+- Existing public message names remain stable unless a breaking change is explicitly approved.
+
+#### 5. Performance review
+
+The performance review should identify and fix avoidable work in recording, UI rendering, storage, and export generation.
+
+##### Areas to audit
+
+- Popup rendering:
+  - number of DOM nodes created during live updates.
+  - frequency of full-list rerenders.
+  - filtering and sorting cost as request count grows.
+  - transaction details expansion behavior.
+  - memory retained by detached inspector windows.
+- Storage:
+  - number of `chrome.storage.local` reads/writes.
+  - debounce/batch opportunities.
+  - cleanup of stale state.
+  - storage size growth during long recordings.
+- Background:
+  - request normalization cost.
+  - storage merge cost for pending web requests.
+  - response-body matching cost if response-body capture is enabled.
+  - JMX/Playwright export generation cost.
+- Export size:
+  - JMX size for large recordings.
+  - Playwright script size for large action sets.
+  - HAR object size if external HAR import is later added.
+
+##### Suggested performance targets
+
+Targets should be confirmed with local profiling, but useful initial goals are:
+
+- Popup remains responsive with at least 500 captured requests.
+- Popup remains usable with at least 1,000 captured requests.
+- Live request rendering does not block the popup for more than one animation frame.
+- Storage writes are batched or debounced where safe.
+- Export generation provides clear progress or error feedback for large recordings.
+- Completed recordings do not retain avoidable in-memory copies of large payloads.
+
+##### Performance acceptance criteria
+
+- Popup rendering scales acceptably with realistic traffic volume.
+- Long recordings do not grow storage without bound beyond configured limits.
+- Export generation handles large but reasonable recordings without crashing the extension.
+- Any new batching, caching, or rendering optimization preserves existing export output.
+- Performance-sensitive changes include tests or profiling notes.
+
+#### 6. Security review
+
+The security review should focus on data exposure, permission minimization, and safe handling of untrusted content.
+
+##### Areas to audit
+
+- Manifest permissions:
+  - each permission has a documented justification.
+  - no unused permissions remain.
+  - host permissions are as narrow as practical.
+  - optional permissions are documented.
+- Message validation:
+  - background validates all incoming message payloads.
+  - popup validates exported data before rendering.
+  - content scripts validate incoming control messages where applicable.
+- DOM safety:
+  - user-controlled request/response content is rendered with `textContent`, not `innerHTML`.
+  - generated Playwright/JMX content is not rendered as HTML.
+  - detached inspector uses the same safe rendering rules.
+- Sensitive data:
+  - cookies, authorization headers, query tokens, request bodies, and response bodies are not unnecessarily persisted.
+  - JMX/Playwright export clearly exposes any sensitive captured data it may include.
+  - logs do not include secrets or full request/response payloads.
+- Downloads:
+  - generated filenames are sanitized.
+  - downloads are local and not uploaded.
+  - download permission is justified and scoped.
+- External input:
+  - options values are validated.
+  - plan names and user-provided labels are sanitized for filenames.
+  - future HAR import validation is designed before implementation.
+
+##### Security acceptance criteria
+
+- Every manifest permission has a documented purpose.
+- All user-controlled or network-controlled content is rendered safely.
+- Background message handlers reject malformed payloads.
+- Exported JMX/Playwright behavior is explicit about sensitive data exposure.
+- No secrets are written to logs.
+- Sensitive captured data is not persisted unless the feature explicitly requires it and documents the trade-off.
+
+#### 7. Test strategy
+
+The uplift should add or improve tests in these areas:
+
+- Recorder state tests for restart and stale-message scenarios.
+- Pending request persistence tests for completion, error, stop, reset, and duplicate completion.
+- Popup rendering tests for large request lists and filtering.
+- Export tests for invalid, empty, and large input sets.
+- Message boundary tests for malformed payloads.
+- Security tests for safe DOM rendering and filename sanitization.
+- Permission/documentation tests where practical.
+
+Suggested test commands to keep green:
+
+- `npm run typecheck`
+- `npm run lint`
+- `npm test`
+- `npm run build`
+- `npx playwright test --workers=1`
+
+#### 8. Suggested implementation modules
+
+Likely files touched, depending on findings:
+
+- `src/background/recorder-service.ts`
+- `src/background/recorder-state.ts`
+- `src/background/traffic-capture.ts`
+- `src/background/traffic-normalizer.ts`
+- `src/background/pending-web-request-store.ts`
+- `src/popup/popup.ts`
+- `src/popup/popup.html`
+- `src/options/options.ts`
+- `src/content/index.ts`
+- `src/jmx/serializer.ts`
+- `src/playwright/playwright-generator.ts`
+- `src/utils/filename.ts`
+- `src/messages.ts`
+- `manifest.json`
+- `README.md` or operational docs if permission/privacy guidance changes.
+
+#### 9. Definition of done
+
+- Quality review checklist is completed.
+- High-risk findings are either fixed or explicitly deferred with rationale.
+- Existing recording/export behavior remains compatible.
+- Performance-sensitive changes are measured or explained.
+- Security-sensitive changes are documented.
+- Tests cover the most important hardening findings.
+- Build, typecheck, lint, unit tests, and Playwright E2E tests pass.
+
 - [x] **004 UX/UI transaction inspector and detached window** — Add compact popup/options styling, transaction panel, filters, bounded live queue, theme persistence, and detached inspector window.
   - Status: implemented in `004-improve-ux-ui-implementation`
   - Depends on: stable popup/options IDs and existing `REQUEST_CAPTURED` / `GET_REQUESTS` APIs

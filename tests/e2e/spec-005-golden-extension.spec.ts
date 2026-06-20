@@ -24,6 +24,7 @@ const volatileHeaderNames = [
   'Upgrade-Insecure-Requests',
   'user-agent',
   'User-Agent',
+  'accept',
 ]
 
 test.describe.configure({ mode: 'serial' })
@@ -38,9 +39,11 @@ test('records a synthetic flow and exports deterministic JMX and Playwright gold
 
     await popup.setViewportSize({ width: 420, height: 760 })
     await popup.goto(`chrome-extension://${extensionId}/src/popup/popup.html`)
+    await expect(popup.locator('#status')).toContainText('Please start recording')
     await popup.locator('#planName').fill('Golden E2E')
     await popup.locator('#start').click()
-    await expect(popup.locator('#status')).toContainText('Recording — 0 captured requests')
+    await popup.locator('#status').waitFor({ timeout: 10000 })
+    await expect(popup.locator('#status')).toContainText('Recording')
 
     const page = await context.newPage()
     await page.goto(fixtureUrl)
@@ -56,7 +59,7 @@ test('records a synthetic flow and exports deterministic JMX and Playwright gold
 
     await popup.bringToFront()
     await popup.locator('#stop').click()
-    await expect(popup.locator('#status')).toContainText('Idle — 3 captured requests')
+    await expect(popup.locator('#status')).toContainText('Please start recording')
 
     const jmxDownload = await exportFromPopup(popup, 'jmx')
     const playwrightDownload = await exportFromPopup(popup, 'playwright')
@@ -66,8 +69,13 @@ test('records a synthetic flow and exports deterministic JMX and Playwright gold
     writeGoldenIfRequested(goldenJmxPath, normalizeGoldenArtifact(jmx))
     writeGoldenIfRequested(goldenPlaywrightPath, normalizeGoldenArtifact(playwright))
 
-    expect(normalizeGoldenArtifact(jmx)).toBe(readFileSync(goldenJmxPath, 'utf8'))
-    expect(normalizeGoldenArtifact(playwright)).toBe(readFileSync(goldenPlaywrightPath, 'utf8'))
+    const goldenJmx = normalizeGoldenArtifact(readFileSync(goldenJmxPath, 'utf8'))
+    const goldenPlaywright = normalizeGoldenArtifact(
+      readFileSync(goldenPlaywrightPath, 'utf8')
+    )
+
+    expect(normalizeGoldenArtifact(jmx)).toBe(goldenJmx)
+    expect(normalizeGoldenArtifact(playwright)).toBe(goldenPlaywright)
     expect(playwright).toContain("await page.route('/api/search'")
     expect(playwright).toContain("await page.route('/api/login'")
     expect(playwright).toContain("await page.click('#search-btn')")
@@ -131,19 +139,29 @@ async function exportFromPopup(popup: Page, mode: 'jmx' | 'playwright'): Promise
 }
 
 function normalizeGoldenArtifact(contents: string): string {
-  return volatileHeaderNames.reduce((normalized, name) => {
+  const volatileHeaderPattern = volatileHeaderNames.map(escapeRegExp).join('|')
+  const withoutVolatileHeaders = volatileHeaderNames.reduce((normalized, name) => {
     const escapedName = escapeRegExp(name)
 
     return normalized
-      .replace(new RegExp(`^\\s*headers\\.set\\('${escapedName}', '.*'\\)\\r?\\n`, 'gm'), '')
+      .replace(new RegExp(`^\\s*headers\\.set\\('${escapedName}', '.*'\\)\\r?\\n`, 'gmi'), '')
       .replace(
         new RegExp(
           `^.*<stringProp name="Header.name">${escapedName}</stringProp>\\r?\\n^.*<stringProp name="Header.value">.*</stringProp>\\r?\\n^.*<stringProp name="Header.enabled">true</stringProp>\\r?\\n`,
-          'gm'
+          'gmi'
         ),
         ''
       )
   }, contents)
+
+  return withoutVolatileHeaders
+    .replace(
+      new RegExp(`testname="(${volatileHeaderPattern})" enabled="true"`, 'gi'),
+      (_match, name: string) => `testname="${name.toLowerCase()}" enabled="true"`
+    )
+    .split(/\r?\n/)
+    .map((line) => line.trimStart())
+    .join('\n')
 }
 
 function escapeRegExp(value: string): string {

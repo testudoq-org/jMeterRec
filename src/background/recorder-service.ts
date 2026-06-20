@@ -1,9 +1,9 @@
-import { buildJmx } from '../jmx/serializer'
+import { convertHarToJmx } from '../jmx/har-to-jmx'
+import { buildHar } from '../har/har-builder'
 import { filterRequestsByDomains } from '../jmx/domains'
 import { buildPlaywrightResponse } from '../generators/playwright'
 import { JmxOptionsStore } from '../options/jmx-options'
 import type { JmxOptions } from '../options/jmx-options'
-import { normalizeBackendUploadConfig } from '../options/backend-upload-options'
 import { safeFilename } from '../utils/filename'
 import type { BackgroundRequest, BackgroundResponse, RecorderSnapshot } from '../messages'
 import { PendingWebRequestStore } from './pending-web-request-store'
@@ -13,7 +13,6 @@ import type { PendingRequest } from './traffic-normalizer'
 import type { CapturedRequest, PlanMeta, PlaywrightStep } from '../models/captured-request'
 import { RecorderState } from './recorder-state'
 import { TrafficCaptureService } from './traffic-capture'
-import { BackendUploadService } from './backend-upload-service'
 
 type MessageHandler = (message: BackgroundRequest) => Promise<BackgroundResponse>
 type ContentRecorderMessage =
@@ -71,8 +70,6 @@ export class RecorderService {
         this.handleAddActionMessage(message as Extract<BackgroundRequest, { type: 'ADD_ACTION' }>),
       EXPORT_JMX: (message) =>
         this.handleExportJmxMessage(message as Extract<BackgroundRequest, { type: 'EXPORT_JMX' }>),
-      UPLOAD_JMX: (message) =>
-        this.handleUploadJmxMessage(message as Extract<BackgroundRequest, { type: 'UPLOAD_JMX' }>),
       EXPORT_PLAYWRIGHT: (message) =>
         this.handleExportPlaywrightMessage(
           message as Extract<BackgroundRequest, { type: 'EXPORT_PLAYWRIGHT' }>
@@ -257,20 +254,35 @@ export class RecorderService {
     return this.buildJmxExportResponse(message.includedDomains)
   }
 
-  private handleUploadJmxMessage(
-    message: Extract<BackgroundRequest, { type: 'UPLOAD_JMX' }>
-  ): Promise<BackgroundResponse> {
-    const config = normalizeBackendUploadConfig({
-      enabled: true,
-      converterUrl: message.payload.converterUrl,
-      authToken: message.payload.authToken,
-      timeoutMs: message.payload.timeoutMs,
-      includeDomains: message.payload.includedDomains,
-      exportFilename: message.payload.exportFilename,
-    })
+  private async buildJmxExportResponse(includedDomains: string[]): Promise<BackgroundResponse> {
+    if (includedDomains.length === 0) {
+      return { success: false, error: 'Select at least one domain before exporting JMX.' }
+    }
 
-    const uploadService = new BackendUploadService()
-    return uploadService.uploadAndDownload(config, this.state.getRequests())
+    const requests = filterRequestsByDomains(this.state.getRequests(), includedDomains)
+
+    if (requests.length === 0) {
+      return { success: false, error: 'No requests match the selected domains.' }
+    }
+
+    const options = await this.getJmxOptionsStore().load()
+    const meta: PlanMeta = {
+      name: this.planNameForExport(options),
+      threadGroup: {
+        threads: options.threads,
+        rampUp: options.rampUp,
+        loops: options.loops,
+      },
+    }
+
+    const har = buildHar(requests)
+    const jmx = convertHarToJmx(har, meta)
+
+    return {
+      success: true,
+      jmx,
+      filename: `${safeFilename(meta.name)}.jmx`,
+    }
   }
 
   private handleExportPlaywrightMessage(
@@ -319,34 +331,6 @@ export class RecorderService {
 
   private addAction(message: Extract<BackgroundRequest, { type: 'ADD_ACTION' }>): void {
     this.state.addAction(message.action)
-  }
-
-  private async buildJmxExportResponse(includedDomains: string[]): Promise<BackgroundResponse> {
-    if (includedDomains.length === 0) {
-      return { success: false, error: 'Select at least one domain before exporting JMX.' }
-    }
-
-    const requests = filterRequestsByDomains(this.state.getRequests(), includedDomains)
-
-    if (requests.length === 0) {
-      return { success: false, error: 'No requests match the selected domains.' }
-    }
-
-    const options = await this.getJmxOptionsStore().load()
-    const meta: PlanMeta = {
-      name: this.planNameForExport(options),
-      threadGroup: {
-        threads: options.threads,
-        rampUp: options.rampUp,
-        loops: options.loops,
-      },
-    }
-
-    return {
-      success: true,
-      jmx: buildJmx(meta, requests),
-      filename: `${safeFilename(meta.name)}.jmx`,
-    }
   }
 
   private buildPlaywrightExportResponse(

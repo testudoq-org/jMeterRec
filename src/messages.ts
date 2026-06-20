@@ -24,18 +24,7 @@ export type BackgroundRequest =
   | { type: 'GET_DOMAINS' }
   | { type: 'EXPORT_JMX'; includedDomains: string[] }
   | { type: 'EXPORT_PLAYWRIGHT'; baseUrl?: string; suiteName?: string; testCaseName?: string }
-  | { type: 'UPLOAD_JMX'; payload: UploadJmxPayload }
   | { type: 'RESPONSE_BODY_CAPTURED'; payload: ResponseBodyPayload }
-
-export interface UploadJmxPayload {
-  converterUrl: string
-  authToken: string
-  timeoutMs: number
-  includedDomains: string[]
-  exportFilename: string
-}
-
-export const UPLOAD_JMX = 'UPLOAD_JMX' as const
 
 export type BackgroundResponse =
   | { success: true; snapshot?: RecorderSnapshot; requests?: unknown[] }

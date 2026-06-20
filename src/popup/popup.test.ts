@@ -6,6 +6,8 @@ type RuntimeMessage = Record<string, unknown>
 const storageGetCalls: Array<{ keys: unknown }> = []
 const storageSetCalls: Array<Record<string, unknown>> = []
 const runtimeMessageListeners = new Set<(message: unknown) => void>()
+let pendingGetStateResolve: ((value: unknown) => void) | undefined
+let delayGetStateResponse = false
 
 const recordingSnapshot = {
   status: 'recording',
@@ -48,6 +50,12 @@ const chromeStub = {
       }
 
       if (record.type === 'GET_STATE') {
+        if (delayGetStateResponse) {
+          return new Promise((resolve) => {
+            pendingGetStateResolve = resolve
+          })
+        }
+
         return Promise.resolve({ success: true, snapshot: idleSnapshot })
       }
 
@@ -116,13 +124,6 @@ function buildPopupHtml(): string {
       <button id="exportJmxSelected"></button>
       <div id="playwrightOptions"></div>
       <input id="baseUrl" />
-      <div id="backendUploadPanel">
-        <input id="backendUploadEnabled" type="checkbox" />
-        <input id="backendUploadConverterUrl" />
-        <input id="backendUploadAuthToken" />
-        <div id="backendUploadFields"></div>
-        <button id="backendUploadBtn"></button>
-      </div>
       <p id="transactionSummary"></p>
       <select id="transactionMethodFilter"></select>
       <select id="transactionStatusFilter"></select>
@@ -138,6 +139,8 @@ function buildPopupHtml(): string {
 async function loadPopupModule() {
   vi.resetModules()
   runtimeMessageListeners.clear()
+  pendingGetStateResolve = undefined
+  delayGetStateResponse = false
   storageGetCalls.length = 0
   storageSetCalls.length = 0
   chromeStub.runtime.sendMessage.mockClear()
@@ -165,6 +168,8 @@ describe('popup timer and state contract', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+    delayGetStateResponse = false
+    pendingGetStateResolve = undefined
   })
 
   it('clicking Start sets elapsed to 00:00 and begins advancing the timer', async () => {
@@ -183,6 +188,28 @@ describe('popup timer and state contract', () => {
 
     vi.advanceTimersByTime(1500)
     expect(elapsedEl.textContent).toBe('Elapsed: 00:01')
+  })
+
+  it('ignores a stale initial state response after Start succeeds', async () => {
+    delayGetStateResponse = true
+    await loadPopupModule()
+
+    const statusEl = document.getElementById('status') as HTMLElement
+    const pauseBtn = document.getElementById('pause') as HTMLButtonElement
+    const startBtn = document.getElementById('start') as HTMLButtonElement
+
+    startBtn.click()
+    await flushRuntimeResponse()
+    expect(statusEl.textContent).toBe('Recording')
+    expect(pauseBtn.disabled).toBe(false)
+
+    pendingGetStateResolve?.({ success: true, snapshot: idleSnapshot })
+    pendingGetStateResolve = undefined
+    delayGetStateResponse = false
+    await flushRuntimeResponse()
+
+    expect(statusEl.textContent).toBe('Recording')
+    expect(pauseBtn.disabled).toBe(false)
   })
 
   it('clicking Pause stops the timer and disables Pause', async () => {
@@ -216,16 +243,51 @@ describe('popup timer and state contract', () => {
     startBtn.click()
     await flushRuntimeResponse()
     vi.advanceTimersByTime(1000)
+    runtimeMessageListeners.clear()
     pauseBtn.click()
     await flushRuntimeResponse()
 
     vi.advanceTimersByTime(2000)
     expect(elapsedEl.textContent).toBe('Elapsed: 00:01')
 
+    runtimeMessageListeners.clear()
     resumeBtn.click()
     await flushRuntimeResponse()
     vi.advanceTimersByTime(2000)
     expect(elapsedEl.textContent).toBe('Elapsed: 00:03')
+  })
+
+  it('applies action response snapshots even when state broadcasts are missed', async () => {
+    await loadPopupModule()
+
+    const statusEl = document.getElementById('status') as HTMLElement
+    const startBtn = document.getElementById('start') as HTMLButtonElement
+    const pauseBtn = document.getElementById('pause') as HTMLButtonElement
+    const resumeBtn = document.getElementById('resume') as HTMLButtonElement
+
+    runtimeMessageListeners.clear()
+    startBtn.click()
+    await flushRuntimeResponse()
+    expect(statusEl.textContent).toBe('Recording')
+    expect(statusEl.className).toBe('status status-recording')
+    expect(startBtn.disabled).toBe(true)
+    expect(pauseBtn.disabled).toBe(false)
+
+    runtimeMessageListeners.clear()
+    pauseBtn.click()
+    await flushRuntimeResponse()
+    expect(statusEl.textContent).toBe('Paused recorder state...')
+    expect(statusEl.className).toBe('status status-paused')
+    expect(pauseBtn.disabled).toBe(true)
+    expect(resumeBtn.disabled).toBe(false)
+
+    runtimeMessageListeners.clear()
+    resumeBtn.click()
+    await flushRuntimeResponse()
+    expect(statusEl.textContent).toBe('Recording')
+    expect(statusEl.className).toBe('status status-recording')
+    expect(pauseBtn.disabled).toBe(false)
+    expect(resumeBtn.disabled).toBe(true)
   })
 
   it('clicking Stop clears the timer, resets elapsed, and leaves only Start enabled', async () => {

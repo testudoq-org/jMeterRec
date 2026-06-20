@@ -28,7 +28,10 @@ const createStorage = (
   return { storage, setter: storage.set }
 }
 
-const buildPayload = (requestId = 'req-1', capturedAtMs = Date.now()): RecordedResponseBody['payload'] => ({
+const buildPayload = (
+  requestId = 'req-1',
+  capturedAtMs = Date.now()
+): RecordedResponseBody['payload'] => ({
   requestId,
   tabId: 1,
   frameId: 0,

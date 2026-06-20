@@ -1,6 +1,4 @@
 import { JmxOptionsStore } from '../options/jmx-options'
-import { BackendUploadStore } from '../options/backend-upload-options'
-import type { BackendUploadConfig } from '../options/backend-upload-options'
 import type { BackgroundRequest, BackgroundResponse, RecorderSnapshot } from '../messages'
 import type { CapturedRequest } from '../models/captured-request'
 
@@ -43,8 +41,8 @@ const jmxDomains = requireElement<HTMLDivElement>('jmxDomains')
 const jmxDomainStatus = requireElement<HTMLDivElement>('jmxDomainStatus')
 const jmxDomainError = requireElement<HTMLDivElement>('jmxDomainError')
 const exportJmxSelected = requireElement<HTMLButtonElement>('exportJmxSelected')
-const playwrightOptions = requireElement<HTMLDivElement>('playwrightOptions')
-const baseUrlInput = requireElement<HTMLInputElement>('baseUrl')
+const playwrightOptions = document.getElementById('playwrightOptions') as HTMLDivElement | null
+const baseUrlInput = document.getElementById('baseUrl') as HTMLInputElement | null
 const transactionSummary = requireElement<HTMLParagraphElement>('transactionSummary')
 const transactionMethodFilter = requireElement<HTMLSelectElement>('transactionMethodFilter')
 const transactionStatusFilter = requireElement<HTMLSelectElement>('transactionStatusFilter')
@@ -52,19 +50,11 @@ const transactionSearch = requireElement<HTMLInputElement>('transactionSearch')
 const transactionList = requireElement<HTMLDivElement>('transactionList')
 const openDetachedInspector = requireElement<HTMLButtonElement>('openDetachedInspector')
 const themeMode = requireElement<HTMLSelectElement>('themeMode')
-const backendUploadEnabled = requireElement<HTMLInputElement>('backendUploadEnabled')
-const backendUploadConverterUrl = requireElement<HTMLInputElement>('backendUploadConverterUrl')
-const backendUploadAuthToken = requireElement<HTMLInputElement>('backendUploadAuthToken')
-const backendUploadBtn = requireElement<HTMLButtonElement>('backendUploadBtn')
-const backendUploadPanel = requireElement<HTMLDivElement>('backendUploadPanel')
-const backendUploadFields = requireElement<HTMLDivElement>('backendUploadFields')
-
-let backendUploadStore: BackendUploadStore | undefined
-let uploadingJmx = false
 
 let availableDomains: string[] = []
 let selectedDomains = new Set<string>()
 let transactionPanelOptions = defaultTransactionPanelOptions
+let planNameEdited = false
 
 const transactions: CapturedRequest[] = []
 
@@ -75,6 +65,9 @@ let snapshot: RecorderSnapshot = {
   requestCount: 0,
   startedAt: undefined,
 }
+
+let actionSequence = 0
+let hasStoppedRecording = false
 
 let elapsedTimer: number | null = null
 let detachedWindowId: number | null = null
@@ -87,6 +80,7 @@ chrome.windows.onRemoved.addListener((windowId) => {
 })
 
 planNameInput.addEventListener('input', () => {
+  planNameEdited = true
   snapshot = { ...snapshot, planName: planNameInput.value }
 })
 
@@ -94,32 +88,44 @@ exportMode.addEventListener('change', () => {
   const isJmx = exportMode.value === 'jmx'
 
   jmxOptions.style.display = isJmx ? 'block' : 'none'
-  backendUploadPanel.style.display = isJmx ? 'block' : 'none'
-  playwrightOptions.style.display = exportMode.value === 'playwright' ? 'block' : 'none'
+  if (playwrightOptions !== null) {
+    playwrightOptions.style.display = exportMode.value === 'playwright' ? 'block' : 'none'
+  }
   clearJmxDomainError()
 })
 
 start.addEventListener('click', () => {
+  const startedAt = new Date().toISOString()
+
   void send({ type: 'START_RECORDING', planName: planNameInput.value }).then((response) => {
     if (response.success) {
+      applySuccessSnapshot(response, startedAt)
       openDetachedInspectorWindowIfEnabled()
     }
   })
 })
 
 pause.addEventListener('click', () => {
-  void send({ type: 'PAUSE_RECORDING' })
+  sendSnapshotAction({ type: 'PAUSE_RECORDING' })
 })
 
 resume.addEventListener('click', () => {
-  void send({ type: 'RESUME_RECORDING' })
+  sendSnapshotAction({ type: 'RESUME_RECORDING' })
 })
 
 stop.addEventListener('click', () => {
   cleanupTimer()
   void send({ type: 'STOP_RECORDING' }).then((response) => {
     if (response.success) {
-      snapshot = { ...snapshot, status: 'idle', recording: false, startedAt: undefined }
+      markActionResponse()
+      hasStoppedRecording = true
+      snapshot = {
+        ...snapshot,
+        status: 'idle',
+        recording: false,
+        requestCount: 'requestCount' in response ? response.requestCount : snapshot.requestCount,
+        startedAt: undefined,
+      }
       applySnapshot(snapshot)
     }
   })
@@ -128,9 +134,9 @@ stop.addEventListener('click', () => {
 clear.addEventListener('click', () => {
   void send({ type: 'RESET' }).then((response) => {
     if (response.success) {
-      if (isSnapshotResponse(response)) {
-        applySnapshot(response.snapshot)
-      }
+      hasStoppedRecording = false
+      planNameEdited = false
+      applySuccessSnapshot(response)
       transactions.splice(0, transactions.length)
       availableDomains = []
       selectedDomains.clear()
@@ -145,15 +151,6 @@ exportBtn.addEventListener('click', () => {
 
 exportJmxSelected.addEventListener('click', () => {
   void exportSelectedJmxDomains()
-})
-
-backendUploadBtn.addEventListener('click', () => {
-  void uploadBackendJmx()
-})
-
-backendUploadEnabled.addEventListener('change', () => {
-  applyBackendUploadDisabledState()
-  persistBackendUploadEnabled()
 })
 
 openDetachedInspector.addEventListener('click', () => {
@@ -197,12 +194,17 @@ void loadJmxOptions().catch((err: unknown) => {
   showError(toErrorMessage(err))
 })
 
-elapsedTimer = globalThis.setInterval(updateElapsed, 1000)
+elapsedTimer = globalThis.setInterval(updateElapsed, 250)
 
 chrome.runtime.onSuspend.addListener(cleanupTimer)
 
 async function refreshState(): Promise<void> {
+  const actionSequenceAtRequest = actionSequence
   const response = await send({ type: 'GET_STATE' })
+
+  if (actionSequence !== actionSequenceAtRequest) {
+    return
+  }
 
   if (isSnapshotResponse(response)) {
     applySnapshot(response.snapshot)
@@ -250,7 +252,8 @@ async function exportRecording(): Promise<void> {
 }
 
 async function exportPlaywrightRecording(): Promise<void> {
-  const baseUrl = baseUrlInput.value.trim().length > 0 ? baseUrlInput.value.trim() : undefined
+  const input = baseUrlInput
+  const baseUrl = input === null || input.value.trim().length === 0 ? undefined : input.value.trim()
 
   const response = await send({
     type: 'EXPORT_PLAYWRIGHT',
@@ -315,10 +318,16 @@ async function exportSelectedJmxDomains(): Promise<void> {
 }
 
 async function exportJmx(includedDomains: string[]): Promise<void> {
+  exportJmxSelected.disabled = true
+  exportJmxSelected.textContent = 'Converting…'
+
   const response = await send({
     type: 'EXPORT_JMX',
     includedDomains,
   })
+
+  exportJmxSelected.disabled = selectedDomains.size === 0
+  exportJmxSelected.textContent = 'Export JMX'
 
   if (!response.success) {
     showError(response.error)
@@ -355,6 +364,32 @@ async function send(message: BackgroundRequest): Promise<BackgroundResponse> {
   }
 }
 
+function sendSnapshotAction(message: BackgroundRequest): void {
+  void send(message).then((response) => {
+    if (response.success) {
+      applySuccessSnapshot(response)
+    }
+  })
+}
+
+function applySuccessSnapshot(response: BackgroundResponse, startedAt?: string): void {
+  if (response.success && isSnapshotResponse(response)) {
+    markActionResponse()
+    const next =
+      startedAt !== undefined &&
+      response.snapshot !== undefined &&
+      response.snapshot.status === 'recording'
+        ? { ...response.snapshot, startedAt }
+        : response.snapshot
+
+    applySnapshot(next)
+  }
+}
+
+function markActionResponse(): void {
+  actionSequence += 1
+}
+
 function applySnapshot(next: RecorderSnapshot | undefined): void {
   if (next === undefined) {
     return
@@ -378,8 +413,10 @@ function applySnapshot(next: RecorderSnapshot | undefined): void {
   }
 
   snapshot = next
-  planNameInput.value = next.planName
-  status.textContent = `${labelFor(next.status)} — ${next.requestCount} captured request${next.requestCount === 1 ? '' : 's'}`
+  if (!planNameEdited) {
+    planNameInput.value = next.planName
+  }
+  status.textContent = statusTextFor(next.status)
   status.className = `status status-${next.status}`
   elapsedTime.textContent = formatElapsed(snapshot.startedAt)
   start.disabled = next.status === 'recording' || next.status === 'paused'
@@ -387,7 +424,7 @@ function applySnapshot(next: RecorderSnapshot | undefined): void {
   resume.disabled = next.status !== 'paused'
   stop.disabled = !next.recording
   exportBtn.disabled = next.requestCount === 0
-  clear.disabled = next.requestCount === 0 && !next.recording
+  clear.disabled = !hasStoppedRecording && next.requestCount === 0 && !next.recording
 }
 
 function appendTransaction(request: CapturedRequest): void {
@@ -608,20 +645,18 @@ function updateJmxDomainSelectionState(): void {
 function isStateBroadcast(
   message: unknown
 ): message is { type: 'STATE_CHANGED'; snapshot: RecorderSnapshot } {
-  return (
-    typeof message === 'object' &&
-    message !== null &&
-    (message as Record<string, unknown>).type === 'STATE_CHANGED' &&
-    isRecorderSnapshot((message as Record<string, unknown>).snapshot)
-  )
+  return isMessageWithType(message, 'STATE_CHANGED') && isRecorderSnapshot(message.snapshot)
 }
 
 function isRequestCapturedMessage(message: unknown): message is RequestCapturedMessage {
+  return isMessageWithType(message, 'REQUEST_CAPTURED') && isCapturedRequest(message.request)
+}
+
+function isMessageWithType(message: unknown, type: string): message is Record<string, unknown> {
   return (
     typeof message === 'object' &&
     message !== null &&
-    (message as Record<string, unknown>).type === 'REQUEST_CAPTURED' &&
-    isCapturedRequest((message as Record<string, unknown>).request)
+    (message as Record<string, unknown>).type === type
   )
 }
 
@@ -748,14 +783,14 @@ function openDetachedInspectorWindow(): void {
     })
 }
 
-function labelFor(statusValue: RecorderSnapshot['status']): string {
+function statusTextFor(statusValue: RecorderSnapshot['status']): string {
   switch (statusValue) {
     case 'recording':
       return 'Recording'
     case 'paused':
-      return 'Paused'
+      return 'Paused recorder state...'
     case 'idle':
-      return 'Idle'
+      return 'Please start recording'
   }
 }
 
@@ -909,118 +944,4 @@ function boundedNumber(value: unknown, min: number, max: number, fallback: numbe
 
 function toErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : 'Unexpected error'
-}
-
-async function persistBackendUploadEnabled(): Promise<void> {
-  if (backendUploadStore === undefined) {
-    backendUploadStore = new BackendUploadStore()
-  }
-
-  const loaded = await backendUploadStore.load()
-
-  await backendUploadStore.save({
-    enabled: backendUploadEnabled.checked,
-    converterUrl: backendUploadConverterUrl.value.trim(),
-    authToken: backendUploadAuthToken.value,
-    timeoutMs: loaded.timeoutMs,
-    includeDomains: loaded.includeDomains,
-    exportFilename: loaded.exportFilename,
-  })
-}
-
-function applyBackendUploadDisabledState(): void {
-  const disabled = !backendUploadEnabled.checked
-  backendUploadConverterUrl.disabled = disabled
-  backendUploadAuthToken.disabled = disabled
-  backendUploadBtn.style.display = disabled ? 'none' : 'inline-block'
-
-  if (disabled && backendUploadFields !== undefined) {
-    backendUploadFields.classList.add('disabled')
-  } else {
-    backendUploadFields.classList.remove('disabled')
-  }
-}
-
-async function uploadBackendJmx(): Promise<void> {
-  if (uploadingJmx) {
-    return
-  }
-
-  clearError()
-  const config = await (async (): Promise<BackendUploadConfig | null> => {
-    if (backendUploadStore === undefined) {
-      backendUploadStore = new BackendUploadStore()
-    }
-
-    const loaded = await backendUploadStore.load()
-
-    return {
-      enabled: backendUploadEnabled.checked,
-      converterUrl: backendUploadConverterUrl.value.trim(),
-      authToken: backendUploadAuthToken.value,
-      timeoutMs: 60000,
-      includeDomains:
-        loaded.includeDomains.length > 0 ? loaded.includeDomains : [...selectedDomains],
-      exportFilename: '',
-    }
-  })()
-
-  if (config === null) {
-    return
-  }
-
-  if (selectedDomains.size === 0) {
-    showJmxDomainError('Select at least one domain.')
-    return
-  }
-
-  uploadingJmx = true
-  backendUploadBtn.disabled = true
-  backendUploadBtn.textContent = 'Uploading…'
-
-  try {
-    const response = await send({
-      type: 'UPLOAD_JMX',
-      payload: {
-        converterUrl: config.converterUrl,
-        authToken: config.authToken,
-        timeoutMs: config.timeoutMs,
-        includedDomains: [...selectedDomains],
-        exportFilename: '',
-      },
-    })
-
-    if (!response.success) {
-      showError(response.error)
-      return
-    }
-
-    if ('downloadUrl' in response) {
-      // Only handle downloadUrl if `chrome.downloads` is available, otherwise surface error
-      if (typeof chrome !== 'undefined' && chrome.downloads !== undefined) {
-        chrome.downloads
-          .download({ url: response.downloadUrl, filename: 'Untitled Plan.jmx' })
-          .catch(() => {
-            showError('Unable to start download.')
-          })
-      } else {
-        showError('Downloads API unavailable in this context.')
-      }
-
-      return
-    }
-
-    if (!('jmx' in response)) {
-      showError('Upload failed.')
-      return
-    }
-
-    download(response.jmx, response.filename)
-  } catch {
-    // Error already surfaced by send()
-  } finally {
-    uploadingJmx = false
-    backendUploadBtn.disabled = false
-    backendUploadBtn.textContent = 'Upload & Download JMX'
-  }
 }
