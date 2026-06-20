@@ -29,10 +29,11 @@ function headers(name: string, value: string): chrome.webRequest.HttpHeader[] {
   return [{ name, value }]
 }
 
-function completed(overrides: Partial<chrome.webRequest.OnCompletedDetails> = {}) {
+function completed(overrides: Partial<chrome.webRequest.OnCompletedDetails> = {}): chrome.webRequest.OnCompletedDetails {
   return {
     fromCache: false,
     requestId: 'r-1',
+    method: 'POST',
     statusCode: 200,
     statusLine: 'HTTP/1.1 200 OK',
     tabId: 10,
@@ -43,7 +44,7 @@ function completed(overrides: Partial<chrome.webRequest.OnCompletedDetails> = {}
   } as chrome.webRequest.OnCompletedDetails
 }
 
-function errorOccurred(overrides: Partial<chrome.webRequest.OnErrorOccurredDetails> = {}) {
+function errorOccurred(overrides: Partial<chrome.webRequest.OnErrorOccurredDetails> = {}): chrome.webRequest.OnErrorOccurredDetails {
   return {
     error: 'net::ERR_FAILED',
     requestId: 'r-1',
@@ -128,7 +129,7 @@ describe('traffic-normalizer', () => {
     expect(request).toEqual(
       expect.objectContaining({
         id: '10-r-1',
-        method: 'GET',
+        method: 'POST',
         url: 'https://api.example.com/submit?tenant=acme',
         statusCode: 200,
         responseHeaders: { 'content-type': 'application/json' },
@@ -137,7 +138,20 @@ describe('traffic-normalizer', () => {
     )
   })
 
-  it('creates a minimal failed request when only error details are available', () => {
+  it('preserves the method from the pending request when available', () => {
+    const request = createErrorRequest(errorOccurred(), 'POST')
+
+    expect(request).toEqual(
+      expect.objectContaining({
+        id: '10-r-1',
+        method: 'POST',
+        error: 'net::ERR_FAILED',
+        completedAt: '2023-11-14T22:13:20.200Z',
+      })
+    )
+  })
+
+  it('defaults to GET when no pending method is supplied', () => {
     const request = createErrorRequest(errorOccurred())
 
     expect(request).toEqual(
@@ -145,7 +159,6 @@ describe('traffic-normalizer', () => {
         id: '10-r-1',
         method: 'GET',
         error: 'net::ERR_FAILED',
-        completedAt: '2023-11-14T22:13:20.200Z',
       })
     )
   })

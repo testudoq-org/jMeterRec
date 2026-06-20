@@ -32,10 +32,31 @@
       <label for="rampUp">Ramp-up seconds</label>
       <input id="rampUp" type="number" min="0" />
 
-      <label for="loops">Loop count</label>
-      <input id="loops" type="number" min="1" />
+       <label for="loops">Loop count</label>
+       <input id="loops" type="number" min="1" />
 
-      <button id="save" type="button">Save options</button>
+       <label class="checkbox-row">
+         <input id="thinkTimeEnabled" type="checkbox" />
+         <span>Export think-time timers between requests</span>
+       </label>
+
+       <label class="checkbox-row">
+         <input id="thinkTimeRandomize" type="checkbox" />
+         <span>Randomize recorded think times (±X %)</span>
+       </label>
+
+       <label for="thinkTimeRangePercent">Randomization range (%)</label>
+       <input id="thinkTimeRangePercent" type="number" min="1" max="100" />
+
+       <label class="checkbox-row">
+         <input id="assertionsEnabled" type="checkbox" />
+         <span>Add response assertions on expected status code</span>
+       </label>
+
+       <label for="assertionExpectStatus">Expected HTTP status</label>
+       <input id="assertionExpectStatus" type="number" min="100" max="599" />
+
+       <button id="save" type="button">Save options</button>
       <div id="saved" aria-live="polite"></div>
     </section>
 

@@ -155,10 +155,11 @@ function responseStarted(
   } as chrome.webRequest.OnResponseStartedDetails
 }
 
-function completed(overrides: Partial<chrome.webRequest.OnCompletedDetails> = {}) {
+function completed(overrides: Partial<chrome.webRequest.OnCompletedDetails> = {}): chrome.webRequest.OnCompletedDetails {
   return {
     fromCache: false,
     requestId: 'r-1',
+    method: 'POST',
     statusCode: 200,
     statusLine: 'HTTP/1.1 200 OK',
     tabId: 10,
@@ -169,7 +170,7 @@ function completed(overrides: Partial<chrome.webRequest.OnCompletedDetails> = {}
   } as chrome.webRequest.OnCompletedDetails
 }
 
-function errorOccurred(overrides: Partial<chrome.webRequest.OnErrorOccurredDetails> = {}) {
+function errorOccurred(overrides: Partial<chrome.webRequest.OnErrorOccurredDetails> = {}): chrome.webRequest.OnErrorOccurredDetails {
   return {
     error: 'net::ERR_FAILED',
     requestId: 'r-1',
@@ -270,6 +271,7 @@ describe('TrafficCaptureService P2 persistence', () => {
     expect(service.state.addRequest).toHaveBeenCalledWith(
       expect.objectContaining({
         id: '10-r-1',
+        method: 'POST',
         error: 'net::ERR_FAILED',
         completedAt: '2023-11-14T22:13:20.200Z',
       })
@@ -290,7 +292,7 @@ describe('TrafficCaptureService P2 persistence', () => {
     requireListener(
       service.listeners.completed,
       'completed'
-    )(completed({ requestId: 'missing', tabId: 10 }))
+    )(completed({ requestId: 'missing', tabId: 10, method: 'GET' }))
     await flushStorageWrites()
 
     expect(service.state.addRequest).toHaveBeenCalledWith(
@@ -298,6 +300,7 @@ describe('TrafficCaptureService P2 persistence', () => {
         id: '10-missing',
         method: 'GET',
         statusCode: 200,
+        completedAt: '2023-11-14T22:13:20.200Z',
       })
     )
   })

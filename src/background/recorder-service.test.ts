@@ -173,6 +173,11 @@ describe('RecorderService', () => {
         threads: 4,
         rampUp: 5,
         loops: 6,
+        thinkTimeEnabled: false,
+        thinkTimeRandomize: false,
+        thinkTimeRangePercent: 20,
+        assertionsEnabled: false,
+        assertionExpectStatus: 200,
       }),
     })
 

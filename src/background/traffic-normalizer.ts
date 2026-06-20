@@ -21,7 +21,7 @@ export function createCompletedRequest(
 ): PendingRequest {
   return {
     ...createBaseRequest(details),
-    method: 'GET',
+    method: details.method,
     contentType: undefined,
     statusCode: details.statusCode,
     responseHeaders: headersToRecord(details.responseHeaders),
@@ -31,11 +31,12 @@ export function createCompletedRequest(
 }
 
 export function createErrorRequest(
-  details: chrome.webRequest.OnErrorOccurredDetails
+  details: chrome.webRequest.OnErrorOccurredDetails,
+  pendingMethod?: string
 ): PendingRequest {
   return {
     ...createBaseRequest(details),
-    method: 'GET',
+    method: pendingMethod ?? 'GET',
     contentType: undefined,
     error: details.error,
     completedAt: new Date(details.timeStamp).toISOString(),

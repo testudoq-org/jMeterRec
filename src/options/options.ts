@@ -5,6 +5,11 @@ interface RecorderOptions {
   threads: number
   rampUp: number
   loops: number
+  thinkTimeEnabled: boolean
+  thinkTimeRandomize: boolean
+  thinkTimeRangePercent: number
+  assertionsEnabled: boolean
+  assertionExpectStatus: number
 }
 
 interface TransactionPanelOptions {
@@ -26,6 +31,11 @@ const defaults: StoredOptions = {
   threads: DEFAULT_JMX_OPTIONS.threads,
   rampUp: DEFAULT_JMX_OPTIONS.rampUp,
   loops: DEFAULT_JMX_OPTIONS.loops,
+  thinkTimeEnabled: false,
+  thinkTimeRandomize: false,
+  thinkTimeRangePercent: 20,
+  assertionsEnabled: false,
+  assertionExpectStatus: 200,
   maxTransactions: 200,
   openDetachedInspector: false,
   captureResponseBody: false,
@@ -36,6 +46,11 @@ const defaultPlanName = requireElement<HTMLInputElement>('defaultPlanName')
 const threads = requireElement<HTMLInputElement>('threads')
 const rampUp = requireElement<HTMLInputElement>('rampUp')
 const loops = requireElement<HTMLInputElement>('loops')
+const thinkTimeEnabled = requireElement<HTMLInputElement>('thinkTimeEnabled')
+const thinkTimeRandomize = requireElement<HTMLInputElement>('thinkTimeRandomize')
+const thinkTimeRangePercent = requireElement<HTMLInputElement>('thinkTimeRangePercent')
+const assertionsEnabled = requireElement<HTMLInputElement>('assertionsEnabled')
+const assertionExpectStatus = requireElement<HTMLInputElement>('assertionExpectStatus')
 const save = requireElement<HTMLButtonElement>('save')
 const saved = requireElement<HTMLDivElement>('saved')
 const maxTransactions = requireElement<HTMLInputElement>('maxTransactions')
@@ -58,6 +73,11 @@ chrome.storage.local
     threads.value = String(normalizedOptions.threads)
     rampUp.value = String(normalizedOptions.rampUp)
     loops.value = String(normalizedOptions.loops)
+    thinkTimeEnabled.checked = normalizedOptions.thinkTimeEnabled
+    thinkTimeRandomize.checked = normalizedOptions.thinkTimeRandomize
+    thinkTimeRangePercent.value = String(normalizedOptions.thinkTimeRangePercent)
+    assertionsEnabled.checked = normalizedOptions.assertionsEnabled
+    assertionExpectStatus.value = String(normalizedOptions.assertionExpectStatus)
     maxTransactions.value = String(normalizedOptions.maxTransactions)
     openDetachedInspector.checked = normalizedOptions.openDetachedInspector
     captureResponseBody.checked = normalizedOptions.captureResponseBody
@@ -75,12 +95,22 @@ save.addEventListener('click', () => {
     threads: threads.value,
     rampUp: rampUp.value,
     loops: loops.value,
+    thinkTimeEnabled: thinkTimeEnabled.checked,
+    thinkTimeRandomize: thinkTimeRandomize.checked,
+    thinkTimeRangePercent: positiveNumber(thinkTimeRangePercent.value, DEFAULT_JMX_OPTIONS.thinkTimeRangePercent),
+    assertionsEnabled: assertionsEnabled.checked,
+    assertionExpectStatus: positiveNumber(assertionExpectStatus.value, DEFAULT_JMX_OPTIONS.assertionExpectStatus),
   })
   const options: RecorderOptions & AppearanceOptions = {
     defaultPlanName: normalizedJmxOptions.name,
     threads: normalizedJmxOptions.threads,
     rampUp: normalizedJmxOptions.rampUp,
     loops: normalizedJmxOptions.loops,
+    thinkTimeEnabled: thinkTimeEnabled.checked,
+    thinkTimeRandomize: thinkTimeRandomize.checked,
+    thinkTimeRangePercent: normalizedJmxOptions.thinkTimeRangePercent,
+    assertionsEnabled: assertionsEnabled.checked,
+    assertionExpectStatus: normalizedJmxOptions.assertionExpectStatus,
     theme: normalizeTheme(themeMode.value),
   }
 
@@ -128,6 +158,11 @@ function normalizeOptions(options: StoredOptions): StoredOptions {
     threads: jmxOptions.threads,
     rampUp: jmxOptions.rampUp,
     loops: jmxOptions.loops,
+    thinkTimeEnabled: options.thinkTimeEnabled === true,
+    thinkTimeRandomize: options.thinkTimeRandomize === true,
+    thinkTimeRangePercent: positiveNumber(options.thinkTimeRangePercent, DEFAULT_JMX_OPTIONS.thinkTimeRangePercent),
+    assertionsEnabled: options.assertionsEnabled === true,
+    assertionExpectStatus: positiveNumber(options.assertionExpectStatus, DEFAULT_JMX_OPTIONS.assertionExpectStatus),
     maxTransactions: boundedNumber(options.maxTransactions, 20, 500, defaults.maxTransactions),
     openDetachedInspector: options.openDetachedInspector === true,
     captureResponseBody: options.captureResponseBody === true,
@@ -137,6 +172,11 @@ function normalizeOptions(options: StoredOptions): StoredOptions {
 
 function applyTheme(theme: AppTheme): void {
   document.documentElement.dataset.theme = theme
+}
+
+function positiveNumber(value: unknown, fallback: number): number {
+  const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
 }
 
 function normalizeTheme(theme: unknown): AppTheme {

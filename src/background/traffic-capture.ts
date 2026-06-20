@@ -186,7 +186,10 @@ export class TrafficCaptureService {
 
     try {
       const pending = await this.loadPending(id)
-      const request = pending ?? createErrorRequest(details)
+      const fallbackMethod = pending?.method
+      const request =
+        pending ??
+        createErrorRequest(details, fallbackMethod)
       if (pending !== undefined) {
         markRequestError(request, details)
       }

@@ -275,4 +275,283 @@ describe('buildJmx', () => {
 
     expect(jmx).toContain('<![CDATA[]]>')
   })
+
+  it.each<{ method: string; expected: 'true' | 'false' }>([
+    { method: 'POST', expected: 'true' },
+    { method: 'PUT', expected: 'true' },
+    { method: 'PATCH', expected: 'true' },
+    { method: 'DELETE', expected: 'true' },
+    { method: 'GET', expected: 'false' },
+    { method: 'HEAD', expected: 'false' },
+    { method: 'OPTIONS', expected: 'false' },
+    { method: 'TRACE', expected: 'false' },
+    { method: 'CONNECT', expected: 'false' },
+  ])('sets postBodyRaw=$expected for $method', ({ method, expected }) => {
+    const requests: CapturedRequest[] = [
+      {
+        id: `pb-${method}`,
+        timestamp: '2024-01-01T00:00:00.000Z',
+        method,
+        url: 'https://example.com/api',
+        headers: {},
+        queryParams: {},
+        ...(expected === 'true' ? { body: '{"key":"value"}' } : undefined),
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests)
+
+    expect(jmx).toContain(`<boolProp name="HTTPSampler.postBodyRaw">${expected}</boolProp>`)
+  })
+
+  it('omits CookieManager when no Cookie or Cookie2 headers are present', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: { accept: 'application/json' },
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests)
+
+    expect(jmx).not.toContain('CookieManager')
+  })
+
+  it('emits a CookieManager with a single Cookie entry', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: { cookie: 'session=abc123' },
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests)
+
+    expect(jmx).toContain('CookieManager')
+    expect(jmx).toContain('session=abc123')
+    expect(jmx).toContain('testname="cookie"')
+  })
+
+  it('preserves both Cookie and Cookie2 headers separately', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: { cookie: 'a=1', cookie2: 'a=1' },
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests)
+
+    expect(jmx).toContain('CookieManager')
+    const matches = jmx.match(/<CookieManager[\s\S]*?<\/CookieManager>/g)
+    expect(matches?.length).toBe(1)
+    const cookieEntries = (jmx.match(/elementProp name="" elementType="Cookie"/g) ?? []).length
+    expect(cookieEntries).toBe(2)
+  })
+
+  it('deduplicates identical cookies across requests', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://example.com/1',
+        headers: { cookie: 'session=abc' },
+        queryParams: {},
+      },
+      {
+        id: '2',
+        timestamp: '2024-01-01T00:00:01Z',
+        method: 'GET',
+        url: 'https://example.com/2',
+        headers: { cookie: 'session=abc' },
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests)
+
+    const cookieEntries = (jmx.match(/elementProp name="" elementType="Cookie"/g) ?? []).length
+    expect(cookieEntries).toBe(1)
+  })
+
+  it('preserves distinct cookies with different values', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://example.com/1',
+        headers: { cookie: 'a=1' },
+        queryParams: {},
+      },
+      {
+        id: '2',
+        timestamp: '2024-01-01T00:00:01Z',
+        method: 'GET',
+        url: 'https://example.com/2',
+        headers: { cookie: 'a=2' },
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests)
+
+    const cookieEntries = (jmx.match(/elementProp name="" elementType="Cookie"/g) ?? []).length
+    expect(cookieEntries).toBe(2)
+  })
+
+  it('emits a ConstantTimer between requests when there is a timestamp gap', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00.000Z',
+        method: 'GET',
+        url: 'https://example.com/1',
+        headers: {},
+        queryParams: {},
+      },
+      {
+        id: '2',
+        timestamp: '2024-01-01T00:00:01.500Z',
+        method: 'GET',
+        url: 'https://example.com/2',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests)
+
+    expect(jmx).toContain('ConstantTimer')
+    expect(jmx).toContain('<stringProp name="ConstantTimer.delay">1500</stringProp>')
+  })
+
+  it('omits the timer when consecutive requests have zero or negative gap', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00.000Z',
+        method: 'GET',
+        url: 'https://example.com/1',
+        headers: {},
+        queryParams: {},
+      },
+      {
+        id: '2',
+        timestamp: '2024-01-01T00:00:00.000Z',
+        method: 'GET',
+        url: 'https://example.com/2',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests)
+
+    expect(jmx).not.toContain('ConstantTimer')
+  })
+
+  it('does not emit a timer before the first sampler', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:01.000Z',
+        method: 'GET',
+        url: 'https://example.com/1',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests)
+
+    const timerIndex = jmx.indexOf('ConstantTimer')
+    const firstSamplerIndex = jmx.indexOf('<HTTPSamplerProxy')
+    expect(timerIndex).toBe(-1)
+    expect(firstSamplerIndex).toBeGreaterThan(-1)
+  })
+
+  it('omits ResponseAssertion when assertions are disabled', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00.000Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(
+      meta,
+      requests,
+      { assertion: { enabled: false, expectStatus: 201 } }
+    )
+
+    expect(jmx).not.toContain('ResponseAssertion')
+  })
+
+  it('adds a ResponseAssertion for the expected status code when enabled', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00.000Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(
+      meta,
+      requests,
+      { assertion: { enabled: true, expectStatus: 201 } }
+    )
+
+    expect(jmx).toContain('ResponseAssertion')
+    expect(jmx).toContain('<stringProp name="200">201</stringProp>')
+  })
+
+  it('emits a UniformRandomTimer when randomization is enabled', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00.000Z',
+        method: 'GET',
+        url: 'https://example.com/1',
+        headers: {},
+        queryParams: {},
+      },
+      {
+        id: '2',
+        timestamp: '2024-01-01T00:00:02.000Z',
+        method: 'GET',
+        url: 'https://example.com/2',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests, {
+      thinkTime: { enabled: true, randomize: true, rangePercent: 20 },
+    })
+
+    expect(jmx).toContain('UniformRandomTimer')
+    expect(jmx).toContain('<stringProp name="UniformRandomTimer.delay">1600')
+  })
 })

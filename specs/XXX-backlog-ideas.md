@@ -1,12 +1,3 @@
-### Summary
-
-You now have an MV3 extension port focused on browser HTTP traffic capture and local JMX export without SideeX/Selenium in the initial phase. The next work is to harden request-body fidelity, persist in-flight webRequest state, wire options into export metadata, and add golden E2E coverage.
-
-> **From the brief:** **Recommendation: TypeScript MV3 Chrome extension, deployed via enterprise Chrome policy.**
-> **Current status:** HTTP/JMX + Playwright MV3 SideeX-free port implemented in the working tree, with 004 UX/UI transaction inspector completed.
-
----
-
 ### Backlog — newest first
 
 - [~] **012-external-har-import-and-convert-to-jmx** — Add a separate external HAR import path that reads a user-selected `.har` file, validates it, optionally filters by domain, and converts it to JMX using the existing `convertHarToJmx()` pipeline.
@@ -676,6 +667,7 @@ Likely files touched, depending on findings:
   - Depends on: stable popup/options IDs and existing `REQUEST_CAPTURED` / `GET_REQUESTS` APIs
   - Related spec: `specs/004-improve-ux-ui-implementation.md`
   - Remaining follow-ups: response body capture and optional background port forwarding
+
 - [~] **Typed response body capture for transaction inspector** — Add explicit opt-in capture for page-origin response bodies with privacy warnings, size limits, and tests.
   - Status: proposed
   - Depends on: 004 UX/UI transaction inspector landing
@@ -706,6 +698,7 @@ Likely files touched, depending on findings:
 - [~] **CRX packaging validation** — Run `npm run pack-crx` in the intended packaging environment and fix placeholder/path handling.
   - Status: proposed
   - Depends on: Chrome/openssl availability
+
 - [x] **HTTP/JMX + Playwright MV3 SideeX-free port** — Remove SideeX manifest entries, replace capture with `webRequest`, add typed background state, popup/options pages, local JMX export, Playwright export, and transaction inspector UI.
   - Status: implemented in working tree
   - Depends on: SideeX analysis
@@ -713,14 +706,14 @@ Likely files touched, depending on findings:
 
 ### Quick comparison (decision table)
 
-| **Attribute** | **Go CLI (local proxy)** | **TypeScript MV3 extension** | **Notes** |
-| ------------------------------------------- | -----------------------------: | ------------------------------------------ | ---------------------------------------------- |
-| **Feasibility for browser recording** | High | High | Both capture browser HTTP traffic |
-| **User friction (certs / proxy)** | High | Low | Go requires CA install and proxy config |
-| **Enterprise open-source risk** | Ambiguous | Low | Extension compiled JS is easiest to approve |
-| **Non-browser traffic capture** | **Yes** | No | Go can capture system-wide traffic |
-| **Request body fidelity** | Full | Good via `webRequest.requestBody`; fallback needed for edge cases | SideeX content interceptors removed from initial port |
-| **Deployment & scaling** | Installer required | Enterprise policy (.crx) | Extension can be force-installed silently |
+| **Attribute**                         | **Go CLI (local proxy)** | **TypeScript MV3 extension**                                      | **Notes**                                             |
+| ------------------------------------- | -----------------------: | ----------------------------------------------------------------- | ----------------------------------------------------- |
+| **Feasibility for browser recording** |                     High | High                                                              | Both capture browser HTTP traffic                     |
+| **User friction (certs / proxy)**     |                     High | Low                                                               | Go requires CA install and proxy config               |
+| **Enterprise open-source risk**       |                Ambiguous | Low                                                               | Extension compiled JS is easiest to approve           |
+| **Non-browser traffic capture**       |                  **Yes** | No                                                                | Go can capture system-wide traffic                    |
+| **Request body fidelity**             |                     Full | Good via `webRequest.requestBody`; fallback needed for edge cases | SideeX content interceptors removed from initial port |
+| **Deployment & scaling**              |       Installer required | Enterprise policy (.crx)                                          | Extension can be force-installed silently             |
 
 **Verdict:** **TypeScript MV3 extension** is the recommended primary approach for browser-based recording in enterprise environments. Use a Go CLI only if you must capture non-browser traffic.
 
@@ -737,14 +730,17 @@ Likely files touched, depending on findings:
 2. **Stabilize request capture**
 
    - [x] Use `chrome.webRequest.onBeforeRequest` with `requestBody` where available.
+
    - [~] Add typed content-script fallback for fetch/XHR/form bodies where `webRequest.requestBody` is incomplete.
+
    - [x] Normalize captured requests into a single canonical `CapturedRequest` interface.
 
 3. **Implement robust JMX serializer**
 
    - [x] Build a deterministic XML template generator that maps `CapturedRequest` → JMeter HTTPSamplerProxy nodes.
-   - [~] Add support for common JMeter elements: CookieManager, CacheManager, Timers, CSV Data Set Config, JSON/Regex extractors. *(basic HTTPSamplerProxy done)*
-   - [~] Provide a compact mapping config to control sampler naming and grouping. *(basic naming done)*
+
+   - [~] Add support for common JMeter elements: CookieManager, CacheManager, Timers, CSV Data Set Config, JSON/Regex extractors. _(basic HTTPSamplerProxy done)_
+   - [~] Provide a compact mapping config to control sampler naming and grouping. _(basic naming done)_
 
 4. **Refactor background service worker**
 
@@ -755,12 +751,13 @@ Likely files touched, depending on findings:
 5. **Testing and QA**
 
    - [x] Unit tests for serializer and canonicalization logic using Vitest in CI.
-   - [~] End-to-end tests using a headless Chrome runner that loads the extension and performs scripted navigation to validate JMX output. *(placeholder exists)*
-   - [~] Add a small sample site and golden JMX files for regression tests. *(stub exists)*
+
+   - [~] End-to-end tests using a headless Chrome runner that loads the extension and performs scripted navigation to validate JMX output. _(placeholder exists)_
+   - [~] Add a small sample site and golden JMX files for regression tests. _(stub exists)_
 
 6. **Enterprise packaging & policy**
 
-   - [x] Build a reproducible release pipeline that outputs a signed `.crx` and the compiled JS bundle. *(script created, needs Chrome on CI for actual signing)*
+   - [x] Build a reproducible release pipeline that outputs a signed `.crx` and the compiled JS bundle. _(script created, needs Chrome on CI for actual signing)_
    - [x] Provide an enterprise install manifest and a one-click GPO/GPO-like instruction set for ExtensionInstallForcelist deployment.
 
 ---
@@ -771,6 +768,7 @@ Likely files touched, depending on findings:
 
 - [x] `src/models/captured-request.ts` - CapturedRequest and PlanMeta interfaces created
 - [x] `traffic-normalizer.ts` - implemented in `src/background/traffic-normalizer.ts`
+
 - [~] `normalizeContentScriptMessage(msg)` - SideeX-free content panel exists; body fallback still pending
 
 #### 2. JMX serializer API
@@ -787,11 +785,13 @@ Likely files touched, depending on findings:
 #### 4. Content script lifecycle UI
 
 - [x] SideeX-free status panel implemented in `src/content/index.ts`
+
 - [~] Content body fallback for fetch/XHR/form capture - not yet implemented
 
 #### 5. Performance and memory
 
 - [~] Batch streaming to `chrome.storage.local` - not yet implemented
+
 - [x] Ring buffer for live UI preview - bounded transaction queue implemented in popup; background in-flight persistence remains pending.
 
 ---
@@ -799,9 +799,12 @@ Likely files touched, depending on findings:
 ### Acceptance criteria (minimal)
 
 - [x] **Recording**: Start/stop/pause/resume works and captures HTTP traffic through `webRequest` for the initial SideeX-free phase.
-- [~] **JMX output**: Generated JMX opens in JMeter and reproduces recorded HTTP requests with methods, headers, paths, and bodies. *(basic sampler generation works; managers/extractors pending)*
+
+- [~] **JMX output**: Generated JMX opens in JMeter and reproduces recorded HTTP requests with methods, headers, paths, and bodies. _(basic sampler generation works; managers/extractors pending)_
+
 - [x] **No external calls**: Recording and JMX generation are fully local.
 - [x] **Enterprise deployable**: Compiled artifact can be force-installed via ExtensionInstallForcelist and requires no CA or proxy changes.
+
 - [~] **Tests**: Unit tests pass; E2E golden extension export test still pending.
 
 ---
@@ -870,7 +873,8 @@ Current implementation notes:
 ### Testing, rollout, and monitoring
 
 - [x] **Unit tests**: serializer, recorder state, and traffic normalizer tests pass in Vitest.
-- [~] **Golden tests**: keep a small set of sample sites and expected JMX outputs. *(E2E still placeholder)*
-- [~] **Beta rollout**: publish to a small enterprise OU first via ExtensionInstallForcelist. *(enterprise-install.json script ready)*
-- [~] **Telemetry**: optional anonymized metrics for errors and export success rates. *(not implemented - opt-in only)*
-- [~] **Rollback**: provide a simple uninstall script and a version pinning mechanism for enterprise admins. *(not implemented)*
+
+- [~] **Golden tests**: keep a small set of sample sites and expected JMX outputs. _(E2E still placeholder)_
+- [~] **Beta rollout**: publish to a small enterprise OU first via ExtensionInstallForcelist. _(enterprise-install.json script ready)_
+- [~] **Telemetry**: optional anonymized metrics for errors and export success rates. _(not implemented - opt-in only)_
+- [~] **Rollback**: provide a simple uninstall script and a version pinning mechanism for enterprise admins. _(not implemented)_
