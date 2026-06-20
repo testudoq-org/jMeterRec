@@ -199,25 +199,25 @@ export interface TrafficMetadata {
 - Think-time timers in JMX (G20 recommendation; deferred to `009-jmx-export-quality`).
 - Response assertions, `CookieManager`, redirect deduplication.
 
-### 5.3 — Popup UX: single-step "Export HAR → JMX"
+### 5.3 — Popup UX: single-step "Export JMX"
 
-Replace the disabled 007 backend-upload panel with a single **"Export HAR → JMX"**
+Replace the disabled 007 backend-upload panel with a single **"Export JMX"**
 button in the JMX options fieldset.
 
 **States:**
 
 | State | Button text | Disabled | Error surface |
 |-------|-------------|----------|----------------|
-| Idle, domains selected | Export HAR → JMX | `false` | — |
-| No domains selected | Export HAR → JMX | `true` | jmxDomainError |
+| Idle, domains selected | Export JMX | `false` | — |
+| No domains selected | Export JMX | `true` | jmxDomainError |
 | Converting... | Converting… | `true` | — |
-| Success | Export HAR → JMX | `false` | — |
-| Failure | Export HAR → JMX | `false` | showError |
+| Success | Export JMX | `false` | — |
+| Failure | Export JMX | `false` | showError |
 
 **Flow:**
 
 1. User selects domains (same selector as current offline export).
-2. User clicks **"Export HAR → JMX"**.
+2. User clicks **"Export JMX"**.
 3. Popup sends `EXPORT_JMX` (reuses existing message) with the selected domains.
 4. Background `handleExportJmxMessage` is extended:
    - Filter requests by domain.
@@ -252,7 +252,7 @@ permission and the related code paths at that time.
 | `src/har/har-builder.ts` | **New.** Build HAR 1.2 from `CapturedRequest[]`. |
 | `src/jmx/har-to-jmx.ts` | **New.** Convert HAR → TrafficModel → `buildJmx(meta, requests)`. |
 | `src/background/recorder-service.ts` | `handleExportJmxMessage` now routes HAR build + conversion before returning JMX. |
-| `src/popup/popup.ts` | Replace disabled backend-upload panel with "Export HAR → JMX" button in the JMX fieldset. |
+| `src/popup/popup.ts` | Replace disabled backend-upload panel with "Export JMX" button in the JMX fieldset. |
 | `src/popup/popup.html` | New button markup; remove backend-upload panel. |
 | `src/manifest.json` | Add `"scripting"` and `"browsingData"` for the new lifecycle surfaces; `"downloads"` remains from `007`. No other permission changes in this spec. (`"notifications"` omitted; browser toast notifications are dropped.) |
 | `src/content/index.ts` | Idempotency guard at frame level if prototype shows duplicate `executeScript` calls. |
@@ -311,11 +311,11 @@ Given captured traffic includes an extension-internal domain in
 - That domain is not present in the HAR.
 - It is not present in the resulting JMX.
 
-### AC5 — Export HAR → JMX button triggers download
+### AC5 — Export JMX button triggers download
 
 Given recording has captured requests and domains are selected:
 
-- User clicks the new **"Export HAR → JMX"** button in the popup.
+- User clicks the new **"Export JMX"** button in the popup.
 - Popup shows "Converting…" state.
 - JMX is downloaded via `chrome.downloads.download`.
 - Filename honours `planNameForExport()`.
@@ -369,7 +369,7 @@ permission review so that `"downloads"`, `"scripting"`, and `"browsingData"`
 are reviewed in one pass. Notifications are explicitly dropped from this spec
 and should not appear in the current permission coordination.
 
-## 11. E2E test harness status and coverage gaps
+## 12. E2E test harness status and coverage gaps
 
 This section documents the existing Playwright end-to-end test harness and the
 frontend UI surfaces that remain uncovered, based on an audit performed after
@@ -413,7 +413,7 @@ Coverage provided by spec-005:
 | 9 | JMX domain selector fieldset | `#jmxDomains` (dynamic checkboxes) |
 | 10 | Domain selection status | `#jmxDomainStatus` |
 | 11 | Domain error display | `#jmxDomainError` |
-| 12 | "Export HAR → JMX" button (008 deliverable) | `#exportJmxSelected` |
+| 12 | "Export JMX" button (008 deliverable) | `#exportJmxSelected` |
 | 13 | Clear captured data | `#clear` |
 | 14 | Detached inspector | `#openDetachedInspector` |
 | 15 | Transaction method filter | `#transactionMethodFilter` |
@@ -455,7 +455,7 @@ Coverage provided by spec-005:
 | Pause/resume elapsed continuity | ❌ | Not validated |
 | Clear button | ❌ | Not tested in E2E |
 | JMX domain selector (checkboxes) | ❌ | spec-005 bypasses domain selector (uses `#export`) |
-| **"Export HAR → JMX" button (`#exportJmxSelected`)** | ❌ | 008 UI deliverable, untested at E2E level |
+| **"Export JMX" button (`#exportJmxSelected`)** | ❌ | 008 UI deliverable, untested at E2E level |
 | Domain selection state updates | ❌ | `#jmxDomainStatus` counter not tested |
 | No domains selected → button disabled | ❌ | Edge case untested |
 | Empty capture state | ❌ | Zero-request UI state not tested |

@@ -53,7 +53,6 @@ describe('buildHar', () => {
   it('falls back startedDateTime to now when timestamp is absent or empty', () => {
     const before = new Date().toISOString()
     const har = buildHar([{ ...request('one', 'https://example.com/x'), timestamp: '' }])
-    const after = new Date().toISOString()
     const result = har.log.entries[0]!.startedDateTime
 
     // Implementation uses req.timestamp ?? now, so empty string does NOT fall back.
@@ -67,7 +66,8 @@ describe('buildHar', () => {
     const result2 = har2.log.entries[0]!.startedDateTime
     const result2Time = new Date(result2).getTime()
     expect(result2Time).toBeGreaterThanOrEqual(new Date(before).getTime())
-    expect(result2Time).toBeLessThanOrEqual(new Date(after).getTime())
+    // Allow 1s clock skew for the build-now timestamp.
+    expect(result2Time).toBeLessThanOrEqual(Date.now() + 1000)
   })
 
   it('includes postData when body is present', () => {

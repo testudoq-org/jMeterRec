@@ -16,14 +16,34 @@ Implemented in the current branch:
 - Detached inspector window using `chrome.windows.create`
 - Shared popup/options theme setting
 - Unit tests for serializer, recorder state, traffic normalizer, action recording, Playwright generation, popup state, and options normalization
+- Golden E2E extension export tests (`tests/e2e/spec-005-golden-extension.spec.ts`)
+- Recorder state E2E tests (`tests/e2e/spec-001-extension.spec.ts`)
+- HAR 1.2 builder and HAR→JMX conversion pipeline
+- Permission refresh with `scripting` and `browsingData`
 
-Deferred follow-ups:
+### Popup status text
 
-- Guaranteed response body capture
-- Background port forwarding for transaction events
-- Mid-flight request persistence across service-worker termination
-- Golden E2E extension export tests
-- Full CRX packaging validation in the intended packaging environment
+- Idle / initial load: `Please start recording`
+- Recording: `Recording`
+- Paused: `Paused recorder state...`
+- After stop / clear: `Please start recording`
+
+### E2E tests
+
+```bash
+# Build the extension first (E2E loads from dist/)
+npm run build
+
+# Run Playwright E2E tests (starts fixture server automatically)
+npx playwright test
+
+# Update golden files if outputs changed intentionally
+UPDATE_GOLDEN=1 npx playwright test
+```
+
+E2E tests require Chromium and the fixture server. Tests live in `tests/e2e/` and use
+`playwright.config.ts`. Golden fixtures are in `tests/fixtures/golden/` and the local
+fixture server is `scripts/e2e-server.mjs`.
 
 ## Quick start
 
@@ -47,21 +67,19 @@ npm run build  # production bundle
 npm run pack-crx  # produces signed .crx and enterprise-install.json for ExtensionInstallForcelist
 ```
 
-## Project structure
+### E2E tests
 
+```bash
+# Build the extension first (E2E loads from dist/)
+npm run build
+
+# Run Playwright E2E tests (starts fixture server automatically)
+npx playwright test
+
+# Update golden files if outputs changed intentionally
+UPDATE_GOLDEN=1 npx playwright test
 ```
-├── src/
-│   ├── background/     # Service worker
-│   ├── content/        # Content scripts (action recorder)
-│   ├── generators/     # Playwright test generator
-│   ├── jmx/            # JMX serializer
-│   ├── models/         # TypeScript interfaces
-│   ├── popup/          # Extension action popup
-│   ├── options/        # Extension options page
-│   └── manifest.json   # MV3 manifest
-├── tests/
-│   ├── unit/           # Vitest unit tests
-│   └── e2e/            # Playwright E2E tests
-├── scripts/            # Build scripts
-└── .github/workflows/  # CI/CD
-```
+
+E2E tests require Chromium and the fixture server. Tests live in `tests/e2e/` and use
+`playwright.config.ts`. Golden fixtures are in `tests/fixtures/golden/` and the local
+fixture server is `scripts/e2e-server.mjs`.
