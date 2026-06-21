@@ -3,6 +3,12 @@ export interface JmxOptions {
   threads: number
   rampUp: number
   loops: number
+  thinkTimeEnabled: boolean
+  thinkTimeRandomize: boolean
+  thinkTimeRangePercent: number
+  assertionsEnabled: boolean
+  assertionExpectStatus: number
+  redirectDedupEnabled: boolean
 }
 
 export interface JmxOptionsStorage {
@@ -14,9 +20,26 @@ export const DEFAULT_JMX_OPTIONS: JmxOptions = {
   threads: 1,
   rampUp: 1,
   loops: 1,
+  thinkTimeEnabled: false,
+  thinkTimeRandomize: false,
+  thinkTimeRangePercent: 20,
+  assertionsEnabled: false,
+  assertionExpectStatus: 200,
+  redirectDedupEnabled: false,
 }
 
-const JMX_OPTION_KEYS = ['defaultPlanName', 'threads', 'rampUp', 'loops'] as const
+const JMX_OPTION_KEYS = [
+  'defaultPlanName',
+  'threads',
+  'rampUp',
+  'loops',
+  'thinkTimeEnabled',
+  'thinkTimeRandomize',
+  'thinkTimeRangePercent',
+  'assertionsEnabled',
+  'assertionExpectStatus',
+  'redirectDedupEnabled',
+] as const
 
 export class JmxOptionsStore {
   constructor(private readonly storage: JmxOptionsStorage = chrome.storage.local) {}
@@ -39,7 +62,32 @@ export function normalizeJmxOptions(value: unknown): JmxOptions {
     threads: positiveNumber(record.threads, DEFAULT_JMX_OPTIONS.threads),
     rampUp: nonNegativeNumber(record.rampUp, DEFAULT_JMX_OPTIONS.rampUp),
     loops: positiveNumber(record.loops, DEFAULT_JMX_OPTIONS.loops),
+    thinkTimeEnabled: parseBoolean(record.thinkTimeEnabled, DEFAULT_JMX_OPTIONS.thinkTimeEnabled),
+    thinkTimeRandomize: parseBoolean(
+      record.thinkTimeRandomize,
+      DEFAULT_JMX_OPTIONS.thinkTimeRandomize
+    ),
+    thinkTimeRangePercent: positiveNumber(
+      record.thinkTimeRangePercent,
+      DEFAULT_JMX_OPTIONS.thinkTimeRangePercent
+    ),
+    assertionsEnabled: parseBoolean(
+      record.assertionsEnabled,
+      DEFAULT_JMX_OPTIONS.assertionsEnabled
+    ),
+    assertionExpectStatus: positiveNumber(
+      record.assertionExpectStatus,
+      DEFAULT_JMX_OPTIONS.assertionExpectStatus
+    ),
+    redirectDedupEnabled: parseBoolean(
+      record.redirectDedupEnabled,
+      DEFAULT_JMX_OPTIONS.redirectDedupEnabled
+    ),
   }
+}
+
+function parseBoolean(value: unknown, fallback: boolean): boolean {
+  return typeof value === 'boolean' ? value : fallback
 }
 
 function normalizeName(value: unknown): string {

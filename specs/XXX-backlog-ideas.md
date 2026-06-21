@@ -1,13 +1,150 @@
-### Summary
-
-You now have an MV3 extension port focused on browser HTTP traffic capture and local JMX export without SideeX/Selenium in the initial phase. The next work is to harden request-body fidelity, persist in-flight webRequest state, wire options into export metadata, and add golden E2E coverage.
-
-> **From the brief:** **Recommendation: TypeScript MV3 Chrome extension, deployed via enterprise Chrome policy.**
-> **Current status:** HTTP/JMX + Playwright MV3 SideeX-free port implemented in the working tree, with 004 UX/UI transaction inspector completed.
-
----
-
 ### Backlog — newest first
+
+- [x] **009-post-impl-review** — Post-implementation review findings from `009-jmx-export-quality` delivery. High-priority items: gate the dead `redirectDedupEnabled` option, fix `as never` casts in `createRedirectFollowUp` tests, and add bounded eviction to the redirect map. Medium-priority items: revert formatting-only changes to committed files, and add edge-case tests for cross-tab isolation and disallowed-scheme `Location` headers. See dedicated section below for full action items and file references.
+
+### Spec 009-Post-Impl — 009 Post-Implementation Review Action Items
+
+#### 1. Goal
+
+Address findings from the 009 P3 code review before the next cycle. The P0-P2 items are committed and working. The P3 implementation is functionally correct but has hygiene, typing, and coverage gaps that should be resolved while the diff is still fresh.
+
+#### 2. High-priority action items
+
+##### 2.1 Gate `redirectDedupEnabled` or remove the option wiring
+
+**Files**: `src/options/jmx-options.ts`, `src/options/options.ts`, `src/options/options.html`, `src/options/jmx-options.test.ts`, `src/background/traffic-capture.ts`
+
+`redirectDedupEnabled` is persisted in `DEFAULT_JMX_OPTIONS`, `JmxOptionsStore`, and the options page UI, but `traffic-capture.ts` never reads it. Every redirect link runs unconditionally.
+
+**Recommended fix**:
+
+- Option A (preferred): Pass `redirectDedupEnabled` into `TrafficCaptureService` (constructor or setter) and guard `registerRedirectChainHead` / `createPendingRequestForBeforeRequest` with `if (!this.redirectDedupEnabled) return`.
+- Option B: Remove `redirectDedupEnabled` from `JmxOptionsStore`, the UI, and the options tests. Reintroduce it when the gating logic is ready. This avoids shipping a dead checkbox.
+
+If Option A is chosen, `jmx-options.test.ts` should assert that the gating behavior is wired, not just that persistence works.
+
+##### 2.2 Remove `as never` casts by fixing `createRedirectFollowUp` parameter typing
+
+**Files**: `src/background/traffic-normalizer.ts`, `src/background/traffic-normalizer.test.ts`
+
+```ts
+const followUp = createRedirectFollowUp(source as never, details as never)
+```
+
+The `as never` casts exist because the test fabricates objects that don't satisfy the declared parameter types. The `_source` parameter is intentionally unused, which means its type should not force callers to provide a fully-typed `PendingRequest`.
+
+**Recommended fix**:
+
+- Change the signature to:
+  ```ts
+  export function createRedirectFollowUp(
+    _source: PendingRequest | undefined,
+    details: chrome.webRequest.OnBeforeRequestDetails
+  ): PendingRequest
+  ```
+  or simply drop the first parameter if no future use is planned:
+  ```ts
+  export function createRedirectFollowUp(
+    details: chrome.webRequest.OnBeforeRequestDetails
+  ): PendingRequest
+  ```
+- Update the test to call the function without `as never` casts.
+
+##### 2.3 Add bounded size/eviction policy to `redirectChainHeads`
+
+**File**: `src/background/traffic-capture.ts`
+
+`redirectChainHeads` is an unbounded `Map`. Long sessions with abandoned redirect chains can grow it until the service worker restarts.
+
+**Recommended fix**:
+
+- Add a max-size guard (e.g., 256 entries) with FIFO eviction, or a TTL.
+- Minimal implementation: wrap the map with a small helper that evicts the oldest entry when `size > MAX`.
+- Document the chosen limit in a code comment next to the field declaration.
+
+#### 3. Medium-priority action items
+
+##### 3.1 Revert formatting-only changes to committed files
+
+**Files**: All files touched by Prettier that were already committed in `4205afb`
+
+The working diff contains pure-formatting changes in committed files:
+- Multi-line function signatures in `traffic-normalizer.test.ts` (e.g., `completed(...)`, `errorOccurred(...)`).
+- Collapsed `buildJmx(...)` call args in `serializer.test.ts`.
+- Timestamp string normalization (`'2024-01-01T00:00:00.000Z'` → `'2024-01-01T00:00:00Z'`).
+
+These changes:
+- Reduce `git blame` readability.
+- Increase merge-conflict surface.
+- Violate the plan's "limit edits" guidance.
+
+**Recommended fix**:
+
+- Run `git diff` against `4205afb` for each committed file.
+- Revert formatting-only hunks, keeping only functional changes.
+- Run Prettier only on the four intended P3 files: `traffic-capture.ts`, `traffic-normalizer.test.ts`, `serializer.test.ts`, `traffic-capture.test.ts`.
+
+##### 3.2 Add edge-case tests for redirect linking
+
+**Files**: `src/background/traffic-capture.test.ts`
+
+The integration test covers one happy path. Missing coverage:
+
+1. **Relative `Location` without leading slash**: `Location: new?token=abc`
+2. **Disallowed scheme**: `Location: javascript:alert(1)` and `Location: file:///etc/passwd` — map must remain empty.
+3. **Cross-tab isolation**: Tab 10 redirects to `/new`; Tab 20 requests `/new` — must not match.
+4. **Follow-up before redirect completion**: `onBeforeRequest` for `/new` arrives before `onCompleted` for the 302 — map must survive past completion.
+5. **Follow-up after recording stops**: Map entry should be dropped silently when `isCapturing()` is false.
+
+**Recommended fix**:
+
+- Add a `describe('redirect chain edge cases', ...)` block with the five scenarios above.
+- Use the existing `MemoryStorage`, `stubChrome`, and `createService` harness.
+
+#### 4. Low-priority action items
+
+##### 4.1 Consider inheriting cookies/headers from the redirect source
+
+**File**: `src/background/traffic-normalizer.ts`
+
+`createRedirectFollowUp` ignores `_source` entirely. The follow-up starts with empty `headers` and no knowledge of the redirect response's `Set-Cookie` headers.
+
+**Recommendation**:
+
+- Document the explicit choice: "Follow-up requests start clean; any cookies set by the 302 are handled by the browser and will appear in `onBeforeSendHeaders` for the follow-up."
+- If this is undesirable, copy `responseHeaders` (or at least cookies) from `source` to the follow-up.
+
+##### 4.2 Update spec acceptance criteria
+
+**File**: `specs/009-jmx-export-quality.md`
+
+§4.4 lists `DurationAssertion` as optional, but §6 acceptance criteria says:
+
+> Think times and assertions (when enabled) are present and functional.
+
+`DurationAssertion` was not implemented. Update §6 to explicitly limit assertions to `ResponseAssertion`, or move `DurationAssertion` to the backlog with a clear "deferred" note.
+
+#### 5. Suggested command sequence
+
+```bash
+# 1. Review and revert formatting-only changes in committed files
+git diff 4205afb -- src/background/traffic-normalizer.test.ts src/jmx/serializer.test.ts src/background/traffic-capture.ts
+
+# 2. After fixes, run focused P3 tests
+npx vitest run src/background/traffic-capture.test.ts src/background/traffic-normalizer.test.ts src/jmx/serializer.test.ts
+
+# 3. Run full regression
+npm test && npm run typecheck && npm run lint
+```
+
+#### 6. Definition of done for review items
+
+- [ ] `redirectDedupEnabled` is either gated in capture logic or removed from all four persistence/UI files.
+- [ ] `createRedirectFollowUp` signature accepts test values without `as never`.
+- [ ] `redirectChainHeads` has a documented size or TTL cap.
+- [ ] Formatting-only hunks in committed files are reverted; Prettier has only run on P3-intended files.
+- [ ] New edge-case tests cover cross-tab, disallowed scheme, pre-completion follow-up, and relative Location.
+- [ ] `specs/009-jmx-export-quality.md` acceptance criteria reflects actual delivered assertion behavior.
 
 - [~] **012-external-har-import-and-convert-to-jmx** — Add a separate external HAR import path that reads a user-selected `.har` file, validates it, optionally filters by domain, and converts it to JMX using the existing `convertHarToJmx()` pipeline.
   - Status: proposed
@@ -676,6 +813,7 @@ Likely files touched, depending on findings:
   - Depends on: stable popup/options IDs and existing `REQUEST_CAPTURED` / `GET_REQUESTS` APIs
   - Related spec: `specs/004-improve-ux-ui-implementation.md`
   - Remaining follow-ups: response body capture and optional background port forwarding
+
 - [~] **Typed response body capture for transaction inspector** — Add explicit opt-in capture for page-origin response bodies with privacy warnings, size limits, and tests.
   - Status: proposed
   - Depends on: 004 UX/UI transaction inspector landing
@@ -706,6 +844,7 @@ Likely files touched, depending on findings:
 - [~] **CRX packaging validation** — Run `npm run pack-crx` in the intended packaging environment and fix placeholder/path handling.
   - Status: proposed
   - Depends on: Chrome/openssl availability
+
 - [x] **HTTP/JMX + Playwright MV3 SideeX-free port** — Remove SideeX manifest entries, replace capture with `webRequest`, add typed background state, popup/options pages, local JMX export, Playwright export, and transaction inspector UI.
   - Status: implemented in working tree
   - Depends on: SideeX analysis
@@ -713,14 +852,14 @@ Likely files touched, depending on findings:
 
 ### Quick comparison (decision table)
 
-| **Attribute** | **Go CLI (local proxy)** | **TypeScript MV3 extension** | **Notes** |
-| ------------------------------------------- | -----------------------------: | ------------------------------------------ | ---------------------------------------------- |
-| **Feasibility for browser recording** | High | High | Both capture browser HTTP traffic |
-| **User friction (certs / proxy)** | High | Low | Go requires CA install and proxy config |
-| **Enterprise open-source risk** | Ambiguous | Low | Extension compiled JS is easiest to approve |
-| **Non-browser traffic capture** | **Yes** | No | Go can capture system-wide traffic |
-| **Request body fidelity** | Full | Good via `webRequest.requestBody`; fallback needed for edge cases | SideeX content interceptors removed from initial port |
-| **Deployment & scaling** | Installer required | Enterprise policy (.crx) | Extension can be force-installed silently |
+| **Attribute**                         | **Go CLI (local proxy)** | **TypeScript MV3 extension**                                      | **Notes**                                             |
+| ------------------------------------- | -----------------------: | ----------------------------------------------------------------- | ----------------------------------------------------- |
+| **Feasibility for browser recording** |                     High | High                                                              | Both capture browser HTTP traffic                     |
+| **User friction (certs / proxy)**     |                     High | Low                                                               | Go requires CA install and proxy config               |
+| **Enterprise open-source risk**       |                Ambiguous | Low                                                               | Extension compiled JS is easiest to approve           |
+| **Non-browser traffic capture**       |                  **Yes** | No                                                                | Go can capture system-wide traffic                    |
+| **Request body fidelity**             |                     Full | Good via `webRequest.requestBody`; fallback needed for edge cases | SideeX content interceptors removed from initial port |
+| **Deployment & scaling**              |       Installer required | Enterprise policy (.crx)                                          | Extension can be force-installed silently             |
 
 **Verdict:** **TypeScript MV3 extension** is the recommended primary approach for browser-based recording in enterprise environments. Use a Go CLI only if you must capture non-browser traffic.
 
@@ -737,14 +876,17 @@ Likely files touched, depending on findings:
 2. **Stabilize request capture**
 
    - [x] Use `chrome.webRequest.onBeforeRequest` with `requestBody` where available.
+
    - [~] Add typed content-script fallback for fetch/XHR/form bodies where `webRequest.requestBody` is incomplete.
+
    - [x] Normalize captured requests into a single canonical `CapturedRequest` interface.
 
 3. **Implement robust JMX serializer**
 
    - [x] Build a deterministic XML template generator that maps `CapturedRequest` → JMeter HTTPSamplerProxy nodes.
-   - [~] Add support for common JMeter elements: CookieManager, CacheManager, Timers, CSV Data Set Config, JSON/Regex extractors. *(basic HTTPSamplerProxy done)*
-   - [~] Provide a compact mapping config to control sampler naming and grouping. *(basic naming done)*
+
+   - [~] Add support for common JMeter elements: CookieManager, CacheManager, Timers, CSV Data Set Config, JSON/Regex extractors. _(basic HTTPSamplerProxy done)_
+   - [~] Provide a compact mapping config to control sampler naming and grouping. _(basic naming done)_
 
 4. **Refactor background service worker**
 
@@ -755,12 +897,13 @@ Likely files touched, depending on findings:
 5. **Testing and QA**
 
    - [x] Unit tests for serializer and canonicalization logic using Vitest in CI.
-   - [~] End-to-end tests using a headless Chrome runner that loads the extension and performs scripted navigation to validate JMX output. *(placeholder exists)*
-   - [~] Add a small sample site and golden JMX files for regression tests. *(stub exists)*
+
+   - [~] End-to-end tests using a headless Chrome runner that loads the extension and performs scripted navigation to validate JMX output. _(placeholder exists)_
+   - [~] Add a small sample site and golden JMX files for regression tests. _(stub exists)_
 
 6. **Enterprise packaging & policy**
 
-   - [x] Build a reproducible release pipeline that outputs a signed `.crx` and the compiled JS bundle. *(script created, needs Chrome on CI for actual signing)*
+   - [x] Build a reproducible release pipeline that outputs a signed `.crx` and the compiled JS bundle. _(script created, needs Chrome on CI for actual signing)_
    - [x] Provide an enterprise install manifest and a one-click GPO/GPO-like instruction set for ExtensionInstallForcelist deployment.
 
 ---
@@ -771,6 +914,7 @@ Likely files touched, depending on findings:
 
 - [x] `src/models/captured-request.ts` - CapturedRequest and PlanMeta interfaces created
 - [x] `traffic-normalizer.ts` - implemented in `src/background/traffic-normalizer.ts`
+
 - [~] `normalizeContentScriptMessage(msg)` - SideeX-free content panel exists; body fallback still pending
 
 #### 2. JMX serializer API
@@ -787,11 +931,13 @@ Likely files touched, depending on findings:
 #### 4. Content script lifecycle UI
 
 - [x] SideeX-free status panel implemented in `src/content/index.ts`
+
 - [~] Content body fallback for fetch/XHR/form capture - not yet implemented
 
 #### 5. Performance and memory
 
 - [~] Batch streaming to `chrome.storage.local` - not yet implemented
+
 - [x] Ring buffer for live UI preview - bounded transaction queue implemented in popup; background in-flight persistence remains pending.
 
 ---
@@ -799,9 +945,12 @@ Likely files touched, depending on findings:
 ### Acceptance criteria (minimal)
 
 - [x] **Recording**: Start/stop/pause/resume works and captures HTTP traffic through `webRequest` for the initial SideeX-free phase.
-- [~] **JMX output**: Generated JMX opens in JMeter and reproduces recorded HTTP requests with methods, headers, paths, and bodies. *(basic sampler generation works; managers/extractors pending)*
+
+- [~] **JMX output**: Generated JMX opens in JMeter and reproduces recorded HTTP requests with methods, headers, paths, and bodies. _(basic sampler generation works; managers/extractors pending)_
+
 - [x] **No external calls**: Recording and JMX generation are fully local.
 - [x] **Enterprise deployable**: Compiled artifact can be force-installed via ExtensionInstallForcelist and requires no CA or proxy changes.
+
 - [~] **Tests**: Unit tests pass; E2E golden extension export test still pending.
 
 ---
@@ -870,7 +1019,9 @@ Current implementation notes:
 ### Testing, rollout, and monitoring
 
 - [x] **Unit tests**: serializer, recorder state, and traffic normalizer tests pass in Vitest.
-- [~] **Golden tests**: keep a small set of sample sites and expected JMX outputs. *(E2E still placeholder)*
-- [~] **Beta rollout**: publish to a small enterprise OU first via ExtensionInstallForcelist. *(enterprise-install.json script ready)*
-- [~] **Telemetry**: optional anonymized metrics for errors and export success rates. *(not implemented - opt-in only)*
-- [~] **Rollback**: provide a simple uninstall script and a version pinning mechanism for enterprise admins. *(not implemented)*
+
+- [~] **Golden tests**: keep a small set of sample sites and expected JMX outputs. _(E2E still placeholder)_
+- [~] **Beta rollout**: publish to a small enterprise OU first via ExtensionInstallForcelist. _(enterprise-install.json script ready)_
+- [~] **Telemetry**: optional anonymized metrics for errors and export success rates. _(not implemented - opt-in only)_
+- [~] **Rollback**: provide a simple uninstall script and a version pinning mechanism for enterprise admins. _(not implemented)_
+

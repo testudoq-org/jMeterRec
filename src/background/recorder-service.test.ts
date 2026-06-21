@@ -52,6 +52,7 @@ const createMockTrafficCapture = (): TrafficCaptureService => {
   return {
     start: vi.fn(async () => undefined),
     clearPending: vi.fn(async () => undefined),
+    setRedirectDedupEnabled: vi.fn(),
   } as unknown as TrafficCaptureService
 }
 
@@ -173,6 +174,12 @@ describe('RecorderService', () => {
         threads: 4,
         rampUp: 5,
         loops: 6,
+        thinkTimeEnabled: false,
+        thinkTimeRandomize: false,
+        thinkTimeRangePercent: 20,
+        assertionsEnabled: false,
+        assertionExpectStatus: 200,
+        redirectDedupEnabled: false,
       }),
     })
 

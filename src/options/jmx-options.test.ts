@@ -20,6 +20,12 @@ describe('normalizeJmxOptions', () => {
       threads: 4,
       rampUp: 0,
       loops: 6,
+      thinkTimeEnabled: false,
+      thinkTimeRandomize: false,
+      thinkTimeRangePercent: 20,
+      assertionsEnabled: false,
+      assertionExpectStatus: 200,
+      redirectDedupEnabled: false,
     })
   })
 
@@ -36,6 +42,12 @@ describe('normalizeJmxOptions', () => {
       threads: DEFAULT_JMX_OPTIONS.threads,
       rampUp: DEFAULT_JMX_OPTIONS.rampUp,
       loops: DEFAULT_JMX_OPTIONS.loops,
+      thinkTimeEnabled: false,
+      thinkTimeRandomize: false,
+      thinkTimeRangePercent: 20,
+      assertionsEnabled: false,
+      assertionExpectStatus: 200,
+      redirectDedupEnabled: false,
     })
   })
 })

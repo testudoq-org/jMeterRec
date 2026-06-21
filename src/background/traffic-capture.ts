@@ -5,7 +5,9 @@ import {
   createPendingRequest,
   createCompletedRequest,
   createErrorRequest,
+  createRedirectFollowUp,
   createRequestId,
+  findHeaderValue,
   markRequestError,
   mergeBeforeSendHeaders,
   mergeCompleted,
@@ -16,13 +18,16 @@ import type { BackgroundBroadcast } from '../messages'
 
 export class TrafficCaptureService {
   private pending = new Map<string, PendingRequest>()
+  private readonly redirectChainHeads = new Map<string, PendingRequest>()
+  private readonly maxRedirectChainHeads = 256
   private readonly finalizing = new Set<string>()
   private readonly filter: chrome.webRequest.RequestFilter = { urls: ['<all_urls>'] }
   private listenersRegistered = false
 
   constructor(
     private readonly state: RecorderState,
-    private readonly pendingStore = new PendingWebRequestStore()
+    private readonly pendingStore = new PendingWebRequestStore(),
+    private redirectDedupEnabled = false
   ) {}
 
   async start(
@@ -73,7 +78,7 @@ export class TrafficCaptureService {
     }
 
     this.runSafely(
-      this.persistPending(createPendingRequest(details)),
+      this.persistPending(this.createPendingRequestForBeforeRequest(details)),
       'Unable to persist pending request.'
     )
     return undefined
@@ -139,6 +144,7 @@ export class TrafficCaptureService {
     const pending = (await this.loadPending(id)) ?? createPendingRequest(details)
 
     mergeResponseStarted(pending, details)
+    this.registerRedirectChainHead(pending, details)
     await this.persistPending(pending)
   }
 
@@ -161,6 +167,8 @@ export class TrafficCaptureService {
       if (pending !== undefined) {
         mergeCompleted(request, details)
       }
+
+      this.registerRedirectChainHead(request, details)
 
       await this.removePending(id)
       this.addCompletedRequest(request)
@@ -186,7 +194,8 @@ export class TrafficCaptureService {
 
     try {
       const pending = await this.loadPending(id)
-      const request = pending ?? createErrorRequest(details)
+      const fallbackMethod = pending?.method
+      const request = pending ?? createErrorRequest(details, fallbackMethod)
       if (pending !== undefined) {
         markRequestError(request, details)
       }
@@ -230,6 +239,99 @@ export class TrafficCaptureService {
     })
   }
 
+  private createPendingRequestForBeforeRequest(
+    details: chrome.webRequest.OnBeforeRequestDetails
+  ): PendingRequest {
+    if (!this.redirectDedupEnabled) {
+      return createPendingRequest(details)
+    }
+
+    const source = this.findRedirectSource(details.tabId, details.url)
+
+    if (source === undefined) {
+      return createPendingRequest(details)
+    }
+
+    return createRedirectFollowUp(source, details)
+  }
+
+  private registerRedirectChainHead(
+    request: PendingRequest,
+    details: {
+      statusCode: number
+      responseHeaders?: chrome.webRequest.HttpHeader[]
+      url: string
+    }
+  ): void {
+    if (!this.redirectDedupEnabled) {
+      return
+    }
+
+    if (!isRedirectStatus(details.statusCode)) {
+      return
+    }
+
+    const location = this.findLocationHeader(details.responseHeaders)
+    if (location === undefined) {
+      return
+    }
+
+    if (request.tabId === undefined) {
+      return
+    }
+
+    const targetUrl = resolveRedirectUrl(request.url, location)
+    const key = targetUrl === undefined ? undefined : this.redirectKey(request.tabId, targetUrl)
+
+    if (key === undefined) {
+      return
+    }
+
+    this.evictOldestRedirectChainHeadIfNeeded()
+
+    request.followRedirects = true
+    this.redirectChainHeads.set(key, request)
+  }
+
+  private findRedirectSource(tabId: number, url: string): PendingRequest | undefined {
+    const key = this.redirectKey(tabId, url)
+
+    if (key === undefined) {
+      return undefined
+    }
+
+    const source = this.redirectChainHeads.get(key)
+
+    if (source === undefined) {
+      return undefined
+    }
+
+    this.redirectChainHeads.delete(key)
+    return source
+  }
+
+  private findLocationHeader(
+    headers: chrome.webRequest.HttpHeader[] | undefined
+  ): string | undefined {
+    const location = findHeaderValue(headers, 'location')?.trim()
+
+    return location?.length === 0 ? undefined : location
+  }
+
+  private redirectKey(tabId: number, url: string): string | undefined {
+    const normalizedUrl = normalizeRedirectUrl(url)
+
+    if (normalizedUrl === undefined) {
+      return undefined
+    }
+
+    return `${tabId}:${normalizedUrl}`
+  }
+
+  setRedirectDedupEnabled(enabled: boolean): void {
+    this.redirectDedupEnabled = enabled
+  }
+
   private isCapturing(): boolean {
     return this.state.isCapturing()
   }
@@ -242,5 +344,45 @@ export class TrafficCaptureService {
     chrome.runtime.sendMessage(message).catch((err: unknown) => {
       console.warn('Unable to broadcast traffic capture update.', err)
     })
+  }
+
+  private evictOldestRedirectChainHeadIfNeeded(): void {
+    if (this.redirectChainHeads.size < this.maxRedirectChainHeads) {
+      return
+    }
+
+    const firstKey = this.redirectChainHeads.keys().next().value
+    if (firstKey !== undefined) {
+      this.redirectChainHeads.delete(firstKey)
+    }
+  }
+}
+
+function isRedirectStatus(statusCode: number): boolean {
+  return statusCode >= 300 && statusCode < 400
+}
+
+function resolveRedirectUrl(baseUrl: string, location: string): string | undefined {
+  try {
+    const absoluteUrl = new URL(location, baseUrl)
+
+    if (absoluteUrl.protocol !== 'http:' && absoluteUrl.protocol !== 'https:') {
+      return undefined
+    }
+
+    return normalizeRedirectUrl(absoluteUrl.toString())
+  } catch {
+    return undefined
+  }
+}
+
+function normalizeRedirectUrl(url: string): string | undefined {
+  try {
+    const parsed = new URL(url)
+
+    parsed.hash = ''
+    return parsed.toString()
+  } catch {
+    return undefined
   }
 }

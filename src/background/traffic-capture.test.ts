@@ -97,13 +97,17 @@ function createState(isCapturing = true): { state: RecorderState; requests: Capt
   return { state, requests }
 }
 
-async function createService(storage: MemoryStorage, isCapturing = true): Promise<ServiceHarness> {
+async function createService(
+  storage: MemoryStorage,
+  isCapturing = true,
+  redirectDedupEnabled = false
+): Promise<ServiceHarness> {
   const listeners: CapturedListeners = {}
   stubChrome(listeners)
 
   const pendingStore = new PendingWebRequestStore(storage)
   const { state, requests } = createState(isCapturing)
-  const service = new TrafficCaptureService(state, pendingStore)
+  const service = new TrafficCaptureService(state, pendingStore, redirectDedupEnabled)
 
   await service.start({}, true)
 
@@ -155,10 +159,13 @@ function responseStarted(
   } as chrome.webRequest.OnResponseStartedDetails
 }
 
-function completed(overrides: Partial<chrome.webRequest.OnCompletedDetails> = {}) {
+function completed(
+  overrides: Partial<chrome.webRequest.OnCompletedDetails> = {}
+): chrome.webRequest.OnCompletedDetails {
   return {
     fromCache: false,
     requestId: 'r-1',
+    method: 'POST',
     statusCode: 200,
     statusLine: 'HTTP/1.1 200 OK',
     tabId: 10,
@@ -169,7 +176,9 @@ function completed(overrides: Partial<chrome.webRequest.OnCompletedDetails> = {}
   } as chrome.webRequest.OnCompletedDetails
 }
 
-function errorOccurred(overrides: Partial<chrome.webRequest.OnErrorOccurredDetails> = {}) {
+function errorOccurred(
+  overrides: Partial<chrome.webRequest.OnErrorOccurredDetails> = {}
+): chrome.webRequest.OnErrorOccurredDetails {
   return {
     error: 'net::ERR_FAILED',
     requestId: 'r-1',
@@ -270,6 +279,7 @@ describe('TrafficCaptureService P2 persistence', () => {
     expect(service.state.addRequest).toHaveBeenCalledWith(
       expect.objectContaining({
         id: '10-r-1',
+        method: 'POST',
         error: 'net::ERR_FAILED',
         completedAt: '2023-11-14T22:13:20.200Z',
       })
@@ -290,7 +300,7 @@ describe('TrafficCaptureService P2 persistence', () => {
     requireListener(
       service.listeners.completed,
       'completed'
-    )(completed({ requestId: 'missing', tabId: 10 }))
+    )(completed({ requestId: 'missing', tabId: 10, method: 'GET' }))
     await flushStorageWrites()
 
     expect(service.state.addRequest).toHaveBeenCalledWith(
@@ -298,6 +308,7 @@ describe('TrafficCaptureService P2 persistence', () => {
         id: '10-missing',
         method: 'GET',
         statusCode: 200,
+        completedAt: '2023-11-14T22:13:20.200Z',
       })
     )
   })
@@ -358,5 +369,131 @@ describe('TrafficCaptureService P2 persistence', () => {
     await service.start(await pendingStore.load(), false)
 
     await expect(pendingStore.load()).resolves.toEqual({})
+  })
+})
+
+describe('TrafficCaptureService redirect chains', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(REQUEST_TIME)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  it('links a redirect chain head to its follow-up request', async () => {
+    const storage = new MemoryStorage()
+    const service = await createService(storage, true, true)
+
+    const followUpTime = '2023-11-14T22:13:21.000Z'
+
+    service.listeners.beforeRequest?.(
+      beforeRequest({
+        requestId: 'r-1',
+        url: 'https://api.example.com/old',
+        method: 'GET',
+      })
+    )
+    await flushStorageWrites()
+
+    requireListener(
+      service.listeners.responseStarted,
+      'responseStarted'
+    )(
+      responseStarted({
+        requestId: 'r-1',
+        tabId: 10,
+        url: 'https://api.example.com/old',
+        statusCode: 302,
+        statusLine: 'HTTP/1.1 302 Found',
+        responseHeaders: [{ name: 'location', value: '/new?token=abc' }],
+      })
+    )
+    await flushStorageWrites()
+
+    requireListener(
+      service.listeners.completed,
+      'completed'
+    )(
+      completed({
+        requestId: 'r-1',
+        tabId: 10,
+        url: 'https://api.example.com/old',
+        method: 'GET',
+        statusCode: 302,
+        statusLine: 'HTTP/1.1 302 Found',
+        responseHeaders: [{ name: 'location', value: '/new?token=abc' }],
+      })
+    )
+    await flushStorageWrites()
+
+    service.listeners.beforeRequest?.(
+      beforeRequest({
+        requestId: 'r-2',
+        url: 'https://api.example.com/new?token=abc',
+        method: 'GET',
+        timeStamp: new Date(followUpTime).getTime(),
+      })
+    )
+    await flushStorageWrites()
+
+    requireListener(
+      service.listeners.responseStarted,
+      'responseStarted'
+    )(
+      responseStarted({
+        requestId: 'r-2',
+        tabId: 10,
+        url: 'https://api.example.com/new?token=abc',
+        method: 'GET',
+        timeStamp: new Date(followUpTime).getTime(),
+        statusCode: 200,
+        responseHeaders: [{ name: 'content-type', value: 'text/html' }],
+      })
+    )
+    await flushStorageWrites()
+
+    requireListener(
+      service.listeners.completed,
+      'completed'
+    )(
+      completed({
+        requestId: 'r-2',
+        tabId: 10,
+        url: 'https://api.example.com/new?token=abc',
+        method: 'GET',
+        timeStamp: new Date(followUpTime).getTime() + 100,
+        statusCode: 200,
+        responseHeaders: [{ name: 'content-type', value: 'text/html' }],
+      })
+    )
+    await flushStorageWrites()
+
+    const captured = service.requests
+    const chainHead = captured.find((req: { id?: string }) => req.id === '10-r-1')
+    const followUp = captured.find((req: { id?: string }) => req.id === '10-r-2')
+
+    expect(chainHead).toEqual(
+      expect.objectContaining({
+        id: '10-r-1',
+        method: 'GET',
+        url: 'https://api.example.com/old',
+        statusCode: 302,
+        followRedirects: true,
+      })
+    )
+
+    expect(followUp).toEqual(
+      expect.objectContaining({
+        id: '10-r-2',
+        method: 'GET',
+        url: 'https://api.example.com/new?token=abc',
+        followRedirects: false,
+        path: '/new?token=abc',
+        queryParams: { token: 'abc' },
+      })
+    )
   })
 })
