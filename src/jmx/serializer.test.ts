@@ -290,7 +290,7 @@ describe('buildJmx', () => {
     const requests: CapturedRequest[] = [
       {
         id: `pb-${method}`,
-        timestamp: '2024-01-01T00:00:00.000Z',
+        timestamp: '2024-01-01T00:00:00Z',
         method,
         url: 'https://example.com/api',
         headers: {},
@@ -302,6 +302,41 @@ describe('buildJmx', () => {
     const jmx = buildJmx(meta, requests)
 
     expect(jmx).toContain(`<boolProp name="HTTPSampler.postBodyRaw">${expected}</boolProp>`)
+  })
+
+  it('serializes followRedirects=false to HTTPSampler.follow_redirects=false', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: 'fr-false',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://api.example.com/next?token=abc',
+        headers: {},
+        queryParams: { token: 'abc' },
+        followRedirects: false,
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests)
+
+    expect(jmx).toContain('<boolProp name="HTTPSampler.follow_redirects">false</boolProp>')
+  })
+
+  it('defaults followRedirects to true when not set', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: 'fr-default',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://api.example.com/old',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests)
+
+    expect(jmx).toContain('<boolProp name="HTTPSampler.follow_redirects">true</boolProp>')
   })
 
   it('omits CookieManager when no Cookie or Cookie2 headers are present', () => {
@@ -496,11 +531,7 @@ describe('buildJmx', () => {
       },
     ]
 
-    const jmx = buildJmx(
-      meta,
-      requests,
-      { assertion: { enabled: false, expectStatus: 201 } }
-    )
+    const jmx = buildJmx(meta, requests, { assertion: { enabled: false, expectStatus: 201 } })
 
     expect(jmx).not.toContain('ResponseAssertion')
   })
@@ -517,11 +548,7 @@ describe('buildJmx', () => {
       },
     ]
 
-    const jmx = buildJmx(
-      meta,
-      requests,
-      { assertion: { enabled: true, expectStatus: 201 } }
-    )
+    const jmx = buildJmx(meta, requests, { assertion: { enabled: true, expectStatus: 201 } })
 
     expect(jmx).toContain('ResponseAssertion')
     expect(jmx).toContain('<stringProp name="200">201</stringProp>')

@@ -53,10 +53,15 @@
          <span>Add response assertions on expected status code</span>
        </label>
 
-       <label for="assertionExpectStatus">Expected HTTP status</label>
-       <input id="assertionExpectStatus" type="number" min="100" max="599" />
+        <label for="assertionExpectStatus">Expected HTTP status</label>
+        <input id="assertionExpectStatus" type="number" min="100" max="599" />
 
-       <button id="save" type="button">Save options</button>
+        <label class="checkbox-row">
+          <input id="redirectDedupEnabled" type="checkbox" />
+          <span>Deduplicate redirect chains (collapse 3xx + follow-up into one sampler)</span>
+        </label>
+
+        <button id="save" type="button">Save options</button>
       <div id="saved" aria-live="polite"></div>
     </section>
 

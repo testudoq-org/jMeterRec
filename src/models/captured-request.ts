@@ -25,6 +25,7 @@ export interface CapturedRequest {
   responseBodySize?: number
   responseBodyCapturedAt?: string
   responseBodyContentType?: string
+  followRedirects?: boolean
 }
 
 export interface ActionStep {

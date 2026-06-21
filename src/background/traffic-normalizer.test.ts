@@ -4,6 +4,7 @@ import {
   createCompletedRequest,
   createErrorRequest,
   createPendingRequest,
+  createRedirectFollowUp,
   mergeBeforeSendHeaders,
   mergeCompleted,
   mergeResponseStarted,
@@ -29,7 +30,9 @@ function headers(name: string, value: string): chrome.webRequest.HttpHeader[] {
   return [{ name, value }]
 }
 
-function completed(overrides: Partial<chrome.webRequest.OnCompletedDetails> = {}): chrome.webRequest.OnCompletedDetails {
+function completed(
+  overrides: Partial<chrome.webRequest.OnCompletedDetails> = {}
+): chrome.webRequest.OnCompletedDetails {
   return {
     fromCache: false,
     requestId: 'r-1',
@@ -44,7 +47,9 @@ function completed(overrides: Partial<chrome.webRequest.OnCompletedDetails> = {}
   } as chrome.webRequest.OnCompletedDetails
 }
 
-function errorOccurred(overrides: Partial<chrome.webRequest.OnErrorOccurredDetails> = {}): chrome.webRequest.OnErrorOccurredDetails {
+function errorOccurred(
+  overrides: Partial<chrome.webRequest.OnErrorOccurredDetails> = {}
+): chrome.webRequest.OnErrorOccurredDetails {
   return {
     error: 'net::ERR_FAILED',
     requestId: 'r-1',
@@ -159,6 +164,38 @@ describe('traffic-normalizer', () => {
         id: '10-r-1',
         method: 'GET',
         error: 'net::ERR_FAILED',
+      })
+    )
+  })
+
+  it('creates a redirect follow-up pending request with followRedirects=false', () => {
+    const source = {
+      ...createPendingRequest(beforeRequest()),
+      followRedirects: true,
+    } as const
+
+    const details = {
+      documentLifecycle: 'active' as const,
+      frameId: 0,
+      frameType: 'outermost_frame' as const,
+      method: 'GET',
+      parentFrameId: -1,
+      requestId: 'r-2',
+      tabId: 10,
+      timeStamp: 1_700_000_000_500,
+      type: 'xmlhttprequest' as const,
+      url: 'https://api.example.com/next?token=abc',
+    }
+
+    const followUp = createRedirectFollowUp(source as never, details as never)
+
+    expect(followUp).toEqual(
+      expect.objectContaining({
+        id: '10-r-2',
+        url: 'https://api.example.com/next?token=abc',
+        followRedirects: false,
+        path: '/next?token=abc',
+        queryParams: { token: 'abc' },
       })
     )
   })

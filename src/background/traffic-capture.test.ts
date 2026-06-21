@@ -363,3 +363,120 @@ describe('TrafficCaptureService P2 persistence', () => {
     await expect(pendingStore.load()).resolves.toEqual({})
   })
 })
+
+describe('TrafficCaptureService redirect chains', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(REQUEST_TIME)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  it('links a redirect chain head to its follow-up request', async () => {
+    const storage = new MemoryStorage()
+    const service = await createService(storage)
+
+    const followUpTime = '2023-11-14T22:13:21.000Z'
+
+    service.listeners.beforeRequest?.(
+      beforeRequest({
+        requestId: 'r-1',
+        url: 'https://api.example.com/old',
+        method: 'GET',
+      })
+    )
+    await flushStorageWrites()
+
+    requireListener(service.listeners.responseStarted, 'responseStarted')(
+      responseStarted({
+        requestId: 'r-1',
+        tabId: 10,
+        url: 'https://api.example.com/old',
+        statusCode: 302,
+        statusLine: 'HTTP/1.1 302 Found',
+        responseHeaders: [{ name: 'location', value: '/new?token=abc' }],
+      })
+    )
+    await flushStorageWrites()
+
+    requireListener(service.listeners.completed, 'completed')(
+      completed({
+        requestId: 'r-1',
+        tabId: 10,
+        url: 'https://api.example.com/old',
+        method: 'GET',
+        statusCode: 302,
+        statusLine: 'HTTP/1.1 302 Found',
+        responseHeaders: [{ name: 'location', value: '/new?token=abc' }],
+      })
+    )
+    await flushStorageWrites()
+
+    service.listeners.beforeRequest?.(
+      beforeRequest({
+        requestId: 'r-2',
+        url: 'https://api.example.com/new?token=abc',
+        method: 'GET',
+        timeStamp: new Date(followUpTime).getTime(),
+      })
+    )
+    await flushStorageWrites()
+
+    requireListener(
+      service.listeners.responseStarted,
+      'responseStarted'
+    )(
+      responseStarted({
+        requestId: 'r-2',
+        tabId: 10,
+        url: 'https://api.example.com/new?token=abc',
+        method: 'GET',
+        timeStamp: new Date(followUpTime).getTime(),
+        statusCode: 200,
+        responseHeaders: [{ name: 'content-type', value: 'text/html' }],
+      })
+    )
+    await flushStorageWrites()
+
+    requireListener(service.listeners.completed, 'completed')(
+      completed({
+        requestId: 'r-2',
+        tabId: 10,
+        url: 'https://api.example.com/new?token=abc',
+        method: 'GET',
+        timeStamp: new Date(followUpTime).getTime() + 100,
+        statusCode: 200,
+        responseHeaders: [{ name: 'content-type', value: 'text/html' }],
+      })
+    )
+    await flushStorageWrites()
+
+    const captured = service.requests
+    const chainHead = captured.find((req: { id?: string }) => req.id === '10-r-1')
+    const followUp = captured.find((req: { id?: string }) => req.id === '10-r-2')
+
+    expect(chainHead).toEqual(
+      expect.objectContaining({
+        id: '10-r-1',
+        method: 'GET',
+        url: 'https://api.example.com/old',
+        statusCode: 302,
+        followRedirects: true,
+      })
+    )
+
+    expect(followUp).toEqual(
+      expect.objectContaining({
+        id: '10-r-2',
+        method: 'GET',
+        url: 'https://api.example.com/new?token=abc',
+        followRedirects: false,
+        path: '/new?token=abc',
+        queryParams: { token: 'abc' },
+      })
+    )
+  })
+})

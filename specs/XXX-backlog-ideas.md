@@ -1,5 +1,151 @@
 ### Backlog — newest first
 
+- [ ] **009-post-impl-review** — Post-implementation review findings from `009-jmx-export-quality` delivery. High-priority items: gate the dead `redirectDedupEnabled` option, fix `as never` casts in `createRedirectFollowUp` tests, and add bounded eviction to the redirect map. Medium-priority items: revert formatting-only changes to committed files, and add edge-case tests for cross-tab isolation and disallowed-scheme `Location` headers. See dedicated section below for full action items and file references.
+
+### Spec 009-Post-Impl — 009 Post-Implementation Review Action Items
+
+#### 1. Goal
+
+Address findings from the 009 P3 code review before the next cycle. The P0-P2 items are committed and working. The P3 implementation is functionally correct but has hygiene, typing, and coverage gaps that should be resolved while the diff is still fresh.
+
+#### 2. High-priority action items
+
+##### 2.1 Gate `redirectDedupEnabled` or remove the option wiring
+
+**Files**: `src/options/jmx-options.ts`, `src/options/options.ts`, `src/options/options.html`, `src/options/jmx-options.test.ts`, `src/background/traffic-capture.ts`
+
+`redirectDedupEnabled` is persisted in `DEFAULT_JMX_OPTIONS`, `JmxOptionsStore`, and the options page UI, but `traffic-capture.ts` never reads it. Every redirect link runs unconditionally.
+
+**Recommended fix**:
+
+- Option A (preferred): Pass `redirectDedupEnabled` into `TrafficCaptureService` (constructor or setter) and guard `registerRedirectChainHead` / `createPendingRequestForBeforeRequest` with `if (!this.redirectDedupEnabled) return`.
+- Option B: Remove `redirectDedupEnabled` from `JmxOptionsStore`, the UI, and the options tests. Reintroduce it when the gating logic is ready. This avoids shipping a dead checkbox.
+
+If Option A is chosen, `jmx-options.test.ts` should assert that the gating behavior is wired, not just that persistence works.
+
+##### 2.2 Remove `as never` casts by fixing `createRedirectFollowUp` parameter typing
+
+**Files**: `src/background/traffic-normalizer.ts`, `src/background/traffic-normalizer.test.ts`
+
+```ts
+const followUp = createRedirectFollowUp(source as never, details as never)
+```
+
+The `as never` casts exist because the test fabricates objects that don't satisfy the declared parameter types. The `_source` parameter is intentionally unused, which means its type should not force callers to provide a fully-typed `PendingRequest`.
+
+**Recommended fix**:
+
+- Change the signature to:
+  ```ts
+  export function createRedirectFollowUp(
+    _source: PendingRequest | undefined,
+    details: chrome.webRequest.OnBeforeRequestDetails
+  ): PendingRequest
+  ```
+  or simply drop the first parameter if no future use is planned:
+  ```ts
+  export function createRedirectFollowUp(
+    details: chrome.webRequest.OnBeforeRequestDetails
+  ): PendingRequest
+  ```
+- Update the test to call the function without `as never` casts.
+
+##### 2.3 Add bounded size/eviction policy to `redirectChainHeads`
+
+**File**: `src/background/traffic-capture.ts`
+
+`redirectChainHeads` is an unbounded `Map`. Long sessions with abandoned redirect chains can grow it until the service worker restarts.
+
+**Recommended fix**:
+
+- Add a max-size guard (e.g., 256 entries) with FIFO eviction, or a TTL.
+- Minimal implementation: wrap the map with a small helper that evicts the oldest entry when `size > MAX`.
+- Document the chosen limit in a code comment next to the field declaration.
+
+#### 3. Medium-priority action items
+
+##### 3.1 Revert formatting-only changes to committed files
+
+**Files**: All files touched by Prettier that were already committed in `4205afb`
+
+The working diff contains pure-formatting changes in committed files:
+- Multi-line function signatures in `traffic-normalizer.test.ts` (e.g., `completed(...)`, `errorOccurred(...)`).
+- Collapsed `buildJmx(...)` call args in `serializer.test.ts`.
+- Timestamp string normalization (`'2024-01-01T00:00:00.000Z'` → `'2024-01-01T00:00:00Z'`).
+
+These changes:
+- Reduce `git blame` readability.
+- Increase merge-conflict surface.
+- Violate the plan's "limit edits" guidance.
+
+**Recommended fix**:
+
+- Run `git diff` against `4205afb` for each committed file.
+- Revert formatting-only hunks, keeping only functional changes.
+- Run Prettier only on the four intended P3 files: `traffic-capture.ts`, `traffic-normalizer.test.ts`, `serializer.test.ts`, `traffic-capture.test.ts`.
+
+##### 3.2 Add edge-case tests for redirect linking
+
+**Files**: `src/background/traffic-capture.test.ts`
+
+The integration test covers one happy path. Missing coverage:
+
+1. **Relative `Location` without leading slash**: `Location: new?token=abc`
+2. **Disallowed scheme**: `Location: javascript:alert(1)` and `Location: file:///etc/passwd` — map must remain empty.
+3. **Cross-tab isolation**: Tab 10 redirects to `/new`; Tab 20 requests `/new` — must not match.
+4. **Follow-up before redirect completion**: `onBeforeRequest` for `/new` arrives before `onCompleted` for the 302 — map must survive past completion.
+5. **Follow-up after recording stops**: Map entry should be dropped silently when `isCapturing()` is false.
+
+**Recommended fix**:
+
+- Add a `describe('redirect chain edge cases', ...)` block with the five scenarios above.
+- Use the existing `MemoryStorage`, `stubChrome`, and `createService` harness.
+
+#### 4. Low-priority action items
+
+##### 4.1 Consider inheriting cookies/headers from the redirect source
+
+**File**: `src/background/traffic-normalizer.ts`
+
+`createRedirectFollowUp` ignores `_source` entirely. The follow-up starts with empty `headers` and no knowledge of the redirect response's `Set-Cookie` headers.
+
+**Recommendation**:
+
+- Document the explicit choice: "Follow-up requests start clean; any cookies set by the 302 are handled by the browser and will appear in `onBeforeSendHeaders` for the follow-up."
+- If this is undesirable, copy `responseHeaders` (or at least cookies) from `source` to the follow-up.
+
+##### 4.2 Update spec acceptance criteria
+
+**File**: `specs/009-jmx-export-quality.md`
+
+§4.4 lists `DurationAssertion` as optional, but §6 acceptance criteria says:
+
+> Think times and assertions (when enabled) are present and functional.
+
+`DurationAssertion` was not implemented. Update §6 to explicitly limit assertions to `ResponseAssertion`, or move `DurationAssertion` to the backlog with a clear "deferred" note.
+
+#### 5. Suggested command sequence
+
+```bash
+# 1. Review and revert formatting-only changes in committed files
+git diff 4205afb -- src/background/traffic-normalizer.test.ts src/jmx/serializer.test.ts src/background/traffic-capture.ts
+
+# 2. After fixes, run focused P3 tests
+npx vitest run src/background/traffic-capture.test.ts src/background/traffic-normalizer.test.ts src/jmx/serializer.test.ts
+
+# 3. Run full regression
+npm test && npm run typecheck && npm run lint
+```
+
+#### 6. Definition of done for review items
+
+- [ ] `redirectDedupEnabled` is either gated in capture logic or removed from all four persistence/UI files.
+- [ ] `createRedirectFollowUp` signature accepts test values without `as never`.
+- [ ] `redirectChainHeads` has a documented size or TTL cap.
+- [ ] Formatting-only hunks in committed files are reverted; Prettier has only run on P3-intended files.
+- [ ] New edge-case tests cover cross-tab, disallowed scheme, pre-completion follow-up, and relative Location.
+- [ ] `specs/009-jmx-export-quality.md` acceptance criteria reflects actual delivered assertion behavior.
+
 - [~] **012-external-har-import-and-convert-to-jmx** — Add a separate external HAR import path that reads a user-selected `.har` file, validates it, optionally filters by domain, and converts it to JMX using the existing `convertHarToJmx()` pipeline.
   - Status: proposed
   - Depends on: stable popup JMX export UI, `convertHarToJmx()`, `downloads` permission, HAR validation helpers

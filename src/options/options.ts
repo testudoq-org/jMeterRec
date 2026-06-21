@@ -10,6 +10,7 @@ interface RecorderOptions {
   thinkTimeRangePercent: number
   assertionsEnabled: boolean
   assertionExpectStatus: number
+  redirectDedupEnabled: boolean
 }
 
 interface TransactionPanelOptions {
@@ -36,6 +37,7 @@ const defaults: StoredOptions = {
   thinkTimeRangePercent: 20,
   assertionsEnabled: false,
   assertionExpectStatus: 200,
+  redirectDedupEnabled: false,
   maxTransactions: 200,
   openDetachedInspector: false,
   captureResponseBody: false,
@@ -51,6 +53,7 @@ const thinkTimeRandomize = requireElement<HTMLInputElement>('thinkTimeRandomize'
 const thinkTimeRangePercent = requireElement<HTMLInputElement>('thinkTimeRangePercent')
 const assertionsEnabled = requireElement<HTMLInputElement>('assertionsEnabled')
 const assertionExpectStatus = requireElement<HTMLInputElement>('assertionExpectStatus')
+const redirectDedupEnabled = requireElement<HTMLInputElement>('redirectDedupEnabled')
 const save = requireElement<HTMLButtonElement>('save')
 const saved = requireElement<HTMLDivElement>('saved')
 const maxTransactions = requireElement<HTMLInputElement>('maxTransactions')
@@ -78,6 +81,7 @@ chrome.storage.local
     thinkTimeRangePercent.value = String(normalizedOptions.thinkTimeRangePercent)
     assertionsEnabled.checked = normalizedOptions.assertionsEnabled
     assertionExpectStatus.value = String(normalizedOptions.assertionExpectStatus)
+    redirectDedupEnabled.checked = normalizedOptions.redirectDedupEnabled
     maxTransactions.value = String(normalizedOptions.maxTransactions)
     openDetachedInspector.checked = normalizedOptions.openDetachedInspector
     captureResponseBody.checked = normalizedOptions.captureResponseBody
@@ -100,6 +104,7 @@ save.addEventListener('click', () => {
     thinkTimeRangePercent: positiveNumber(thinkTimeRangePercent.value, DEFAULT_JMX_OPTIONS.thinkTimeRangePercent),
     assertionsEnabled: assertionsEnabled.checked,
     assertionExpectStatus: positiveNumber(assertionExpectStatus.value, DEFAULT_JMX_OPTIONS.assertionExpectStatus),
+    redirectDedupEnabled: redirectDedupEnabled.checked,
   })
   const options: RecorderOptions & AppearanceOptions = {
     defaultPlanName: normalizedJmxOptions.name,
@@ -111,6 +116,7 @@ save.addEventListener('click', () => {
     thinkTimeRangePercent: normalizedJmxOptions.thinkTimeRangePercent,
     assertionsEnabled: assertionsEnabled.checked,
     assertionExpectStatus: normalizedJmxOptions.assertionExpectStatus,
+    redirectDedupEnabled: redirectDedupEnabled.checked,
     theme: normalizeTheme(themeMode.value),
   }
 
@@ -163,6 +169,7 @@ function normalizeOptions(options: StoredOptions): StoredOptions {
     thinkTimeRangePercent: positiveNumber(options.thinkTimeRangePercent, DEFAULT_JMX_OPTIONS.thinkTimeRangePercent),
     assertionsEnabled: options.assertionsEnabled === true,
     assertionExpectStatus: positiveNumber(options.assertionExpectStatus, DEFAULT_JMX_OPTIONS.assertionExpectStatus),
+    redirectDedupEnabled: options.redirectDedupEnabled === true,
     maxTransactions: boundedNumber(options.maxTransactions, 20, 500, defaults.maxTransactions),
     openDetachedInspector: options.openDetachedInspector === true,
     captureResponseBody: options.captureResponseBody === true,

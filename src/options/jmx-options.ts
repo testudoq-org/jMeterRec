@@ -8,6 +8,7 @@ export interface JmxOptions {
   thinkTimeRangePercent: number
   assertionsEnabled: boolean
   assertionExpectStatus: number
+  redirectDedupEnabled: boolean
 }
 
 export interface JmxOptionsStorage {
@@ -24,9 +25,10 @@ export const DEFAULT_JMX_OPTIONS: JmxOptions = {
   thinkTimeRangePercent: 20,
   assertionsEnabled: false,
   assertionExpectStatus: 200,
+  redirectDedupEnabled: false,
 }
 
-const JMX_OPTION_KEYS = ['defaultPlanName', 'threads', 'rampUp', 'loops', 'thinkTimeEnabled', 'thinkTimeRandomize', 'thinkTimeRangePercent', 'assertionsEnabled', 'assertionExpectStatus'] as const
+const JMX_OPTION_KEYS = ['defaultPlanName', 'threads', 'rampUp', 'loops', 'thinkTimeEnabled', 'thinkTimeRandomize', 'thinkTimeRangePercent', 'assertionsEnabled', 'assertionExpectStatus', 'redirectDedupEnabled'] as const
 
 export class JmxOptionsStore {
   constructor(private readonly storage: JmxOptionsStorage = chrome.storage.local) {}
@@ -54,6 +56,7 @@ export function normalizeJmxOptions(value: unknown): JmxOptions {
     thinkTimeRangePercent: positiveNumber(record.thinkTimeRangePercent, DEFAULT_JMX_OPTIONS.thinkTimeRangePercent),
     assertionsEnabled: parseBoolean(record.assertionsEnabled, DEFAULT_JMX_OPTIONS.assertionsEnabled),
     assertionExpectStatus: positiveNumber(record.assertionExpectStatus, DEFAULT_JMX_OPTIONS.assertionExpectStatus),
+    redirectDedupEnabled: parseBoolean(record.redirectDedupEnabled, DEFAULT_JMX_OPTIONS.redirectDedupEnabled),
   }
 }
 

@@ -83,6 +83,18 @@ It builds directly upon the foundation laid in `006-enhance-jmx-implementation.m
 | P2       | Basic response assertions         | Medium |
 | P3       | Redirect deduplication            | High   |
 
+### 5.1 Implementation status
+
+| Priority | Item                              | Commit / Status |
+|----------|-----------------------------------|-----------------|
+| P0       | postBodyRaw by method             | `4205afb` — complete |
+| P0       | Error-request method fix          | `4205afb` — complete |
+| P1       | CookieManager                     | `4205afb` — complete |
+| P1       | Query parameter serialization     | `4205afb` — complete |
+| P2       | Think-time timers                 | `4205afb` — complete |
+| P2       | Basic response assertions         | `4205afb` — complete |
+| P3       | Redirect deduplication            | Uncommitted P3 diff — `followRedirects` propagation and capture-time linking implemented. `redirectDedupEnabled` option scaffolding persisted but not wired to capture logic. See `specs/XXX-backlog-ideas.md` §"009 Post-Implementation Review Action Items".
+
 ## 6. Acceptance Criteria
 
 - Generated JMX files open in JMeter 5.6+ without major warnings.
@@ -117,7 +129,10 @@ The exported JMX should feel professional and require minimal manual editing in 
 
 ---
 
-**Status**: Draft  
+**Status**: P0-P3 implemented; P0-P2 committed in `4205afb`, P3 in uncommitted diff. Post-implementation review action items tracked in `specs/XXX-backlog-ideas.md`.
+**Depends on**: 006-enhance-jmx-implementation
+**Related**: 008-extension-permissions-refresh
+**Target Milestone**: Post-006 stabilization
 **Depends on**: 006-enhance-jmx-implementation  
 **Related**: 008-extension-permissions-refresh  
 **Target Milestone**: Post-006 stabilization
@@ -172,3 +187,10 @@ Each has a single responsibility and is covered by unit tests.
 ### 10.6 Popup download regression
 
 - `src/popup/popup.ts:827-836` uses `<a>` click instead of `chrome.downloads.download()`. Fragile if popup closes before click.
+
+---
+
+**Status**: P0-P3 implemented; P0-P2 committed in `4205afb`, P3 in uncommitted diff. Post-implementation review action items tracked in `specs/XXX-backlog-ideas.md`.
+**Depends on**: 006-enhance-jmx-implementation
+**Related**: 008-extension-permissions-refresh
+**Target Milestone**: Post-006 stabilization

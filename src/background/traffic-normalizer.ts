@@ -30,6 +30,24 @@ export function createCompletedRequest(
   }
 }
 
+export function createRedirectFollowUp(
+  _source: PendingRequest,
+  details: chrome.webRequest.OnBeforeRequestDetails
+): PendingRequest {
+  const url = parseUrl(details.url)
+
+  return {
+    ...createBaseRequest(details),
+    method: details.method,
+    body: decodeRequestBody(details.requestBody),
+    contentType: undefined,
+    startedAtMs: details.timeStamp,
+    followRedirects: false,
+    path: url?.path,
+    queryParams: url?.queryParams ?? {},
+  }
+}
+
 export function createErrorRequest(
   details: chrome.webRequest.OnErrorOccurredDetails,
   pendingMethod?: string

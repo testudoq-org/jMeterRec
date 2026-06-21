@@ -25,6 +25,7 @@ describe('normalizeJmxOptions', () => {
       thinkTimeRangePercent: 20,
       assertionsEnabled: false,
       assertionExpectStatus: 200,
+      redirectDedupEnabled: false,
     })
   })
 
@@ -46,6 +47,7 @@ describe('normalizeJmxOptions', () => {
       thinkTimeRangePercent: 20,
       assertionsEnabled: false,
       assertionExpectStatus: 200,
+      redirectDedupEnabled: false,
     })
   })
 })

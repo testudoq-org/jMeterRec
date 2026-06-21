@@ -88,7 +88,7 @@ ${buildQueryParams(req.queryParams)}
           <stringProp name="HTTPSampler.protocol">${xmlEsc(protocol)}</stringProp>
           <stringProp name="HTTPSampler.path">${xmlEsc(path)}</stringProp>
           <stringProp name="HTTPSampler.method">${xmlEsc(req.method)}</stringProp>
-          <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+          <boolProp name="HTTPSampler.follow_redirects">${req.followRedirects ?? true}</boolProp>
           <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
           <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
           <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
