@@ -28,7 +28,18 @@ export const DEFAULT_JMX_OPTIONS: JmxOptions = {
   redirectDedupEnabled: false,
 }
 
-const JMX_OPTION_KEYS = ['defaultPlanName', 'threads', 'rampUp', 'loops', 'thinkTimeEnabled', 'thinkTimeRandomize', 'thinkTimeRangePercent', 'assertionsEnabled', 'assertionExpectStatus', 'redirectDedupEnabled'] as const
+const JMX_OPTION_KEYS = [
+  'defaultPlanName',
+  'threads',
+  'rampUp',
+  'loops',
+  'thinkTimeEnabled',
+  'thinkTimeRandomize',
+  'thinkTimeRangePercent',
+  'assertionsEnabled',
+  'assertionExpectStatus',
+  'redirectDedupEnabled',
+] as const
 
 export class JmxOptionsStore {
   constructor(private readonly storage: JmxOptionsStorage = chrome.storage.local) {}
@@ -52,11 +63,26 @@ export function normalizeJmxOptions(value: unknown): JmxOptions {
     rampUp: nonNegativeNumber(record.rampUp, DEFAULT_JMX_OPTIONS.rampUp),
     loops: positiveNumber(record.loops, DEFAULT_JMX_OPTIONS.loops),
     thinkTimeEnabled: parseBoolean(record.thinkTimeEnabled, DEFAULT_JMX_OPTIONS.thinkTimeEnabled),
-    thinkTimeRandomize: parseBoolean(record.thinkTimeRandomize, DEFAULT_JMX_OPTIONS.thinkTimeRandomize),
-    thinkTimeRangePercent: positiveNumber(record.thinkTimeRangePercent, DEFAULT_JMX_OPTIONS.thinkTimeRangePercent),
-    assertionsEnabled: parseBoolean(record.assertionsEnabled, DEFAULT_JMX_OPTIONS.assertionsEnabled),
-    assertionExpectStatus: positiveNumber(record.assertionExpectStatus, DEFAULT_JMX_OPTIONS.assertionExpectStatus),
-    redirectDedupEnabled: parseBoolean(record.redirectDedupEnabled, DEFAULT_JMX_OPTIONS.redirectDedupEnabled),
+    thinkTimeRandomize: parseBoolean(
+      record.thinkTimeRandomize,
+      DEFAULT_JMX_OPTIONS.thinkTimeRandomize
+    ),
+    thinkTimeRangePercent: positiveNumber(
+      record.thinkTimeRangePercent,
+      DEFAULT_JMX_OPTIONS.thinkTimeRangePercent
+    ),
+    assertionsEnabled: parseBoolean(
+      record.assertionsEnabled,
+      DEFAULT_JMX_OPTIONS.assertionsEnabled
+    ),
+    assertionExpectStatus: positiveNumber(
+      record.assertionExpectStatus,
+      DEFAULT_JMX_OPTIONS.assertionExpectStatus
+    ),
+    redirectDedupEnabled: parseBoolean(
+      record.redirectDedupEnabled,
+      DEFAULT_JMX_OPTIONS.redirectDedupEnabled
+    ),
   }
 }
 

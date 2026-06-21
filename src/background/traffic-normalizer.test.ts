@@ -187,7 +187,7 @@ describe('traffic-normalizer', () => {
       url: 'https://api.example.com/next?token=abc',
     }
 
-    const followUp = createRedirectFollowUp(source as never, details as never)
+    const followUp = createRedirectFollowUp(source, details)
 
     expect(followUp).toEqual(
       expect.objectContaining({

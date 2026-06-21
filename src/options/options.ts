@@ -101,9 +101,15 @@ save.addEventListener('click', () => {
     loops: loops.value,
     thinkTimeEnabled: thinkTimeEnabled.checked,
     thinkTimeRandomize: thinkTimeRandomize.checked,
-    thinkTimeRangePercent: positiveNumber(thinkTimeRangePercent.value, DEFAULT_JMX_OPTIONS.thinkTimeRangePercent),
+    thinkTimeRangePercent: positiveNumber(
+      thinkTimeRangePercent.value,
+      DEFAULT_JMX_OPTIONS.thinkTimeRangePercent
+    ),
     assertionsEnabled: assertionsEnabled.checked,
-    assertionExpectStatus: positiveNumber(assertionExpectStatus.value, DEFAULT_JMX_OPTIONS.assertionExpectStatus),
+    assertionExpectStatus: positiveNumber(
+      assertionExpectStatus.value,
+      DEFAULT_JMX_OPTIONS.assertionExpectStatus
+    ),
     redirectDedupEnabled: redirectDedupEnabled.checked,
   })
   const options: RecorderOptions & AppearanceOptions = {
@@ -166,9 +172,15 @@ function normalizeOptions(options: StoredOptions): StoredOptions {
     loops: jmxOptions.loops,
     thinkTimeEnabled: options.thinkTimeEnabled === true,
     thinkTimeRandomize: options.thinkTimeRandomize === true,
-    thinkTimeRangePercent: positiveNumber(options.thinkTimeRangePercent, DEFAULT_JMX_OPTIONS.thinkTimeRangePercent),
+    thinkTimeRangePercent: positiveNumber(
+      options.thinkTimeRangePercent,
+      DEFAULT_JMX_OPTIONS.thinkTimeRangePercent
+    ),
     assertionsEnabled: options.assertionsEnabled === true,
-    assertionExpectStatus: positiveNumber(options.assertionExpectStatus, DEFAULT_JMX_OPTIONS.assertionExpectStatus),
+    assertionExpectStatus: positiveNumber(
+      options.assertionExpectStatus,
+      DEFAULT_JMX_OPTIONS.assertionExpectStatus
+    ),
     redirectDedupEnabled: options.redirectDedupEnabled === true,
     maxTransactions: boundedNumber(options.maxTransactions, 20, 500, defaults.maxTransactions),
     openDetachedInspector: options.openDetachedInspector === true,

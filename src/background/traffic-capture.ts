@@ -19,13 +19,15 @@ import type { BackgroundBroadcast } from '../messages'
 export class TrafficCaptureService {
   private pending = new Map<string, PendingRequest>()
   private readonly redirectChainHeads = new Map<string, PendingRequest>()
+  private readonly maxRedirectChainHeads = 256
   private readonly finalizing = new Set<string>()
   private readonly filter: chrome.webRequest.RequestFilter = { urls: ['<all_urls>'] }
   private listenersRegistered = false
 
   constructor(
     private readonly state: RecorderState,
-    private readonly pendingStore = new PendingWebRequestStore()
+    private readonly pendingStore = new PendingWebRequestStore(),
+    private redirectDedupEnabled = false
   ) {}
 
   async start(
@@ -240,6 +242,10 @@ export class TrafficCaptureService {
   private createPendingRequestForBeforeRequest(
     details: chrome.webRequest.OnBeforeRequestDetails
   ): PendingRequest {
+    if (!this.redirectDedupEnabled) {
+      return createPendingRequest(details)
+    }
+
     const source = this.findRedirectSource(details.tabId, details.url)
 
     if (source === undefined) {
@@ -257,6 +263,10 @@ export class TrafficCaptureService {
       url: string
     }
   ): void {
+    if (!this.redirectDedupEnabled) {
+      return
+    }
+
     if (!isRedirectStatus(details.statusCode)) {
       return
     }
@@ -276,6 +286,8 @@ export class TrafficCaptureService {
     if (key === undefined) {
       return
     }
+
+    this.evictOldestRedirectChainHeadIfNeeded()
 
     request.followRedirects = true
     this.redirectChainHeads.set(key, request)
@@ -316,6 +328,10 @@ export class TrafficCaptureService {
     return `${tabId}:${normalizedUrl}`
   }
 
+  setRedirectDedupEnabled(enabled: boolean): void {
+    this.redirectDedupEnabled = enabled
+  }
+
   private isCapturing(): boolean {
     return this.state.isCapturing()
   }
@@ -328,6 +344,17 @@ export class TrafficCaptureService {
     chrome.runtime.sendMessage(message).catch((err: unknown) => {
       console.warn('Unable to broadcast traffic capture update.', err)
     })
+  }
+
+  private evictOldestRedirectChainHeadIfNeeded(): void {
+    if (this.redirectChainHeads.size < this.maxRedirectChainHeads) {
+      return
+    }
+
+    const firstKey = this.redirectChainHeads.keys().next().value
+    if (firstKey !== undefined) {
+      this.redirectChainHeads.delete(firstKey)
+    }
   }
 }
 

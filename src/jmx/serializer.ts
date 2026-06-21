@@ -11,15 +11,22 @@ interface ThinkTimeOptions {
   rangePercent: number
 }
 
-export function buildJmx(meta: PlanMeta, requests: CapturedRequest[], options?: JmxSerializerOptions): string {
+export function buildJmx(
+  meta: PlanMeta,
+  requests: CapturedRequest[],
+  options?: JmxSerializerOptions
+): string {
   const samplers = requests
     .map((req, idx) => {
       const prev = idx > 0 ? requests[idx - 1] : undefined
-      const gap = prev !== undefined
-        ? new Date(req.timestamp).getTime() - new Date(prev.timestamp).getTime()
-        : 0
+      const gap =
+        prev !== undefined
+          ? new Date(req.timestamp).getTime() - new Date(prev.timestamp).getTime()
+          : 0
       const timerMarkup = gap > 0 ? buildThinkTimeTimer(gap, options?.thinkTime) : ''
-      const assertionMarkup = options?.assertion?.enabled ? buildAssertion(options.assertion.expectStatus) : ''
+      const assertionMarkup = options?.assertion?.enabled
+        ? buildAssertion(options.assertion.expectStatus)
+        : ''
       return `${timerMarkup}${buildSampler(req, idx)}${assertionMarkup}\n        <hashTree/>`
     })
     .join('\n')
@@ -207,7 +214,10 @@ function buildCookieManager(cookies: Array<{ name: string; value: string }>): st
 
   const entries = cookies
     .map(
-      ({ name, value }) => `            <elementProp name="" elementType="Cookie" guiclass="HTTPPanel" testclass="Cookie" testname="${xmlEsc(name)}" enabled="true">
+      ({
+        name,
+        value,
+      }) => `            <elementProp name="" elementType="Cookie" guiclass="HTTPPanel" testclass="Cookie" testname="${xmlEsc(name)}" enabled="true">
               <stringProp name="Cookie.domain"></stringProp>
               <stringProp name="Cookie.path"></stringProp>
               <stringProp name="Cookie.value">${xmlEsc(value)}</stringProp>
@@ -229,7 +239,10 @@ ${entries}
 function buildQueryParams(queryParams: Record<string, string>): string {
   const entries = Object.entries(queryParams)
     .map(
-      ([name, value]) => `              <elementProp name="" elementType="HTTPArgument" guiclass="HTTPArgumentGui" testclass="HTTPArgument" testname="Argument" enabled="true">
+      ([
+        name,
+        value,
+      ]) => `              <elementProp name="" elementType="HTTPArgument" guiclass="HTTPArgumentGui" testclass="HTTPArgument" testname="Argument" enabled="true">
                 <boolProp name="HTTPArgument.always_encode">false</boolProp>
                 <stringProp name="Argument.name">${xmlEsc(name)}</stringProp>
                 <stringProp name="Argument.value"><![CDATA[${escapeCdata(value)}]]></stringProp>
@@ -245,10 +258,7 @@ function buildQueryParams(queryParams: Record<string, string>): string {
   return `\n${entries}\n`
 }
 
-function buildThinkTimeTimer(
-  thinkTimeMs: number,
-  options?: ThinkTimeOptions
-): string {
+function buildThinkTimeTimer(thinkTimeMs: number, options?: ThinkTimeOptions): string {
   if (thinkTimeMs <= 0) {
     return ''
   }

@@ -89,6 +89,12 @@ export class RecorderService {
     await this.state.load()
     const pendingStore = this.getPendingStore()
     const pendingFragments = await pendingStore.load()
+
+    const jmxOptions = await this.getJmxOptionsStore().load()
+    ;(
+      this.trafficCapture as { setRedirectDedupEnabled?: (enabled: boolean) => void }
+    ).setRedirectDedupEnabled?.(jmxOptions.redirectDedupEnabled)
+
     await this.trafficCapture.start(pendingFragments, this.state.isCapturing())
     this.initialized = true
   }

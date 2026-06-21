@@ -87,13 +87,13 @@ It builds directly upon the foundation laid in `006-enhance-jmx-implementation.m
 
 | Priority | Item                              | Commit / Status |
 |----------|-----------------------------------|-----------------|
-| P0       | postBodyRaw by method             | `4205afb` — complete |
-| P0       | Error-request method fix          | `4205afb` — complete |
-| P1       | CookieManager                     | `4205afb` — complete |
-| P1       | Query parameter serialization     | `4205afb` — complete |
-| P2       | Think-time timers                 | `4205afb` — complete |
-| P2       | Basic response assertions         | `4205afb` — complete |
-| P3       | Redirect deduplication            | Uncommitted P3 diff — `followRedirects` propagation and capture-time linking implemented. `redirectDedupEnabled` option scaffolding persisted but not wired to capture logic. See `specs/XXX-backlog-ideas.md` §"009 Post-Implementation Review Action Items".
+| P0       | postBodyRaw by method             | ``4205afb`` — complete |
+| P0       | Error-request method fix          | ``4205afb`` — complete |
+| P1       | CookieManager                     | ``4205afb`` — complete |
+| P1       | Query parameter serialization     | ``4205afb`` — complete |
+| P2       | Think-time timers                 | ``4205afb`` — complete |
+| P2       | Basic response assertions         | ``4205afb`` — complete |
+| P3       | Redirect deduplication            | `7f12701` — complete. Capture-time linking, bounded map eviction, and redirectDedupEnabled gating all implemented and tested. |
 
 ## 6. Acceptance Criteria
 
@@ -102,7 +102,8 @@ It builds directly upon the foundation laid in `006-enhance-jmx-implementation.m
 - Failed requests preserve their original method.
 - Cookies appear in a `CookieManager`.
 - Query parameters are editable as individual arguments.
-- Think times and assertions (when enabled) are present and functional.
+- Think times (when enabled) are present and functional.
+- Response assertions for expected status code (when enabled) are present. DurationAssertion is deferred to a future pass.
 - All new behavior is covered by unit tests with golden JMX fixtures where output is deterministic.
 - No regression in existing basic export functionality.
 
@@ -129,14 +130,10 @@ The exported JMX should feel professional and require minimal manual editing in 
 
 ---
 
-**Status**: P0-P3 implemented; P0-P2 committed in `4205afb`, P3 in uncommitted diff. Post-implementation review action items tracked in `specs/XXX-backlog-ideas.md`.
+**Status**: Complete. All in-scope P0-P3 items delivered, tested, and committed in `4205afb` (P0-P2) and `7f12701` (P3 + post-impl review fixes).
 **Depends on**: 006-enhance-jmx-implementation
 **Related**: 008-extension-permissions-refresh
 **Target Milestone**: Post-006 stabilization
-**Depends on**: 006-enhance-jmx-implementation  
-**Related**: 008-extension-permissions-refresh  
-**Target Milestone**: Post-006 stabilization
-
 ---
 
 ## 10. Implementation audit findings (referenced from 008 post-delivery review)
@@ -190,7 +187,12 @@ Each has a single responsibility and is covered by unit tests.
 
 ---
 
-**Status**: P0-P3 implemented; P0-P2 committed in `4205afb`, P3 in uncommitted diff. Post-implementation review action items tracked in `specs/XXX-backlog-ideas.md`.
+**Status**: Complete. All in-scope P0-P3 items delivered, tested, and committed in `4205afb` (P0-P2) and `7f12701` (P3 + post-impl review fixes).
 **Depends on**: 006-enhance-jmx-implementation
 **Related**: 008-extension-permissions-refresh
 **Target Milestone**: Post-006 stabilization
+
+
+
+
+

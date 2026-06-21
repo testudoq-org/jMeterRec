@@ -97,13 +97,17 @@ function createState(isCapturing = true): { state: RecorderState; requests: Capt
   return { state, requests }
 }
 
-async function createService(storage: MemoryStorage, isCapturing = true): Promise<ServiceHarness> {
+async function createService(
+  storage: MemoryStorage,
+  isCapturing = true,
+  redirectDedupEnabled = false
+): Promise<ServiceHarness> {
   const listeners: CapturedListeners = {}
   stubChrome(listeners)
 
   const pendingStore = new PendingWebRequestStore(storage)
   const { state, requests } = createState(isCapturing)
-  const service = new TrafficCaptureService(state, pendingStore)
+  const service = new TrafficCaptureService(state, pendingStore, redirectDedupEnabled)
 
   await service.start({}, true)
 
@@ -155,7 +159,9 @@ function responseStarted(
   } as chrome.webRequest.OnResponseStartedDetails
 }
 
-function completed(overrides: Partial<chrome.webRequest.OnCompletedDetails> = {}): chrome.webRequest.OnCompletedDetails {
+function completed(
+  overrides: Partial<chrome.webRequest.OnCompletedDetails> = {}
+): chrome.webRequest.OnCompletedDetails {
   return {
     fromCache: false,
     requestId: 'r-1',
@@ -170,7 +176,9 @@ function completed(overrides: Partial<chrome.webRequest.OnCompletedDetails> = {}
   } as chrome.webRequest.OnCompletedDetails
 }
 
-function errorOccurred(overrides: Partial<chrome.webRequest.OnErrorOccurredDetails> = {}): chrome.webRequest.OnErrorOccurredDetails {
+function errorOccurred(
+  overrides: Partial<chrome.webRequest.OnErrorOccurredDetails> = {}
+): chrome.webRequest.OnErrorOccurredDetails {
   return {
     error: 'net::ERR_FAILED',
     requestId: 'r-1',
@@ -377,7 +385,7 @@ describe('TrafficCaptureService redirect chains', () => {
 
   it('links a redirect chain head to its follow-up request', async () => {
     const storage = new MemoryStorage()
-    const service = await createService(storage)
+    const service = await createService(storage, true, true)
 
     const followUpTime = '2023-11-14T22:13:21.000Z'
 
@@ -390,7 +398,10 @@ describe('TrafficCaptureService redirect chains', () => {
     )
     await flushStorageWrites()
 
-    requireListener(service.listeners.responseStarted, 'responseStarted')(
+    requireListener(
+      service.listeners.responseStarted,
+      'responseStarted'
+    )(
       responseStarted({
         requestId: 'r-1',
         tabId: 10,
@@ -402,7 +413,10 @@ describe('TrafficCaptureService redirect chains', () => {
     )
     await flushStorageWrites()
 
-    requireListener(service.listeners.completed, 'completed')(
+    requireListener(
+      service.listeners.completed,
+      'completed'
+    )(
       completed({
         requestId: 'r-1',
         tabId: 10,
@@ -441,7 +455,10 @@ describe('TrafficCaptureService redirect chains', () => {
     )
     await flushStorageWrites()
 
-    requireListener(service.listeners.completed, 'completed')(
+    requireListener(
+      service.listeners.completed,
+      'completed'
+    )(
       completed({
         requestId: 'r-2',
         tabId: 10,

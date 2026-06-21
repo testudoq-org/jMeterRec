@@ -1,6 +1,6 @@
 ### Backlog — newest first
 
-- [ ] **009-post-impl-review** — Post-implementation review findings from `009-jmx-export-quality` delivery. High-priority items: gate the dead `redirectDedupEnabled` option, fix `as never` casts in `createRedirectFollowUp` tests, and add bounded eviction to the redirect map. Medium-priority items: revert formatting-only changes to committed files, and add edge-case tests for cross-tab isolation and disallowed-scheme `Location` headers. See dedicated section below for full action items and file references.
+- [x] **009-post-impl-review** — Post-implementation review findings from `009-jmx-export-quality` delivery. High-priority items: gate the dead `redirectDedupEnabled` option, fix `as never` casts in `createRedirectFollowUp` tests, and add bounded eviction to the redirect map. Medium-priority items: revert formatting-only changes to committed files, and add edge-case tests for cross-tab isolation and disallowed-scheme `Location` headers. See dedicated section below for full action items and file references.
 
 ### Spec 009-Post-Impl — 009 Post-Implementation Review Action Items
 
@@ -1024,3 +1024,4 @@ Current implementation notes:
 - [~] **Beta rollout**: publish to a small enterprise OU first via ExtensionInstallForcelist. _(enterprise-install.json script ready)_
 - [~] **Telemetry**: optional anonymized metrics for errors and export success rates. _(not implemented - opt-in only)_
 - [~] **Rollback**: provide a simple uninstall script and a version pinning mechanism for enterprise admins. _(not implemented)_
+
