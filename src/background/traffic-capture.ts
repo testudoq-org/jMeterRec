@@ -15,6 +15,12 @@ import {
   type PendingRequest,
 } from './traffic-normalizer'
 import type { BackgroundBroadcast } from '../messages'
+import {
+  parseUrlPatterns,
+  matchesUrlPattern,
+  shouldCaptureResourceType,
+  type AdvancedOptions,
+} from '../options/advanced-options'
 
 export class TrafficCaptureService {
   private pending = new Map<string, PendingRequest>()
@@ -27,7 +33,16 @@ export class TrafficCaptureService {
   constructor(
     private readonly state: RecorderState,
     private readonly pendingStore = new PendingWebRequestStore(),
-    private redirectDedupEnabled = false
+    private redirectDedupEnabled = false,
+    private advancedOptions: AdvancedOptions = {
+      filterPattern: 'http://*/*, https://*/*',
+      recordCss: true,
+      recordJs: true,
+      recordImages: true,
+      recordRedirects: false,
+      recordCookies: true,
+      userAgent: 'current',
+    }
   ) {}
 
   async start(
@@ -68,12 +83,27 @@ export class TrafficCaptureService {
     return Array.from(this.pending.values())
   }
 
+  setAdvancedOptions(options: AdvancedOptions): void {
+    this.advancedOptions = options
+  }
+
   private readonly onBeforeRequest = (details: chrome.webRequest.OnBeforeRequestDetails) => {
     if (!this.isCapturing()) {
       return undefined
     }
 
     if (this.isForbiddenUrl(details.url)) {
+      return undefined
+    }
+
+    // URL pattern filtering
+    const urlPatterns = parseUrlPatterns(this.advancedOptions.filterPattern)
+    if (!matchesUrlPattern(details.url, urlPatterns)) {
+      return undefined
+    }
+
+    // Resource type filtering
+    if (!shouldCaptureResourceType(this.advancedOptions, details.type, details.url)) {
       return undefined
     }
 
@@ -168,13 +198,38 @@ export class TrafficCaptureService {
         mergeCompleted(request, details)
       }
 
+      // Register redirect chain head BEFORE potential filtering
+      // This is needed for redirect deduplication to work
       this.registerRedirectChainHead(request, details)
+
+      // Redirect filtering: omit redirect responses when recordRedirects is false
+      // BUT only if redirect deduplication is disabled (redirectDedup needs them)
+      if (
+        !this.redirectDedupEnabled &&
+        !this.advancedOptions.recordRedirects &&
+        isRedirectStatus(details.statusCode)
+      ) {
+        await this.removePending(id)
+        return
+      }
 
       await this.removePending(id)
       this.addCompletedRequest(request)
     } finally {
       this.finalizing.delete(id)
     }
+  }
+
+  private addCompletedRequest(request: PendingRequest): void {
+    if (this.isForbiddenUrl(request.url)) {
+      return
+    }
+
+    this.state.addRequest(request)
+    this.state.save().catch((err: unknown) => {
+      console.warn('Unable to save completed request.', err)
+    })
+    this.broadcast({ type: 'REQUEST_CAPTURED', request })
   }
 
   private async handleErrorOccurred(
@@ -219,18 +274,6 @@ export class TrafficCaptureService {
   private async removePending(id: string): Promise<void> {
     this.pending.delete(id)
     await this.pendingStore.remove(id)
-  }
-
-  private addCompletedRequest(request: PendingRequest): void {
-    if (this.isForbiddenUrl(request.url)) {
-      return
-    }
-
-    this.state.addRequest(request)
-    this.state.save().catch((err: unknown) => {
-      console.warn('Unable to save completed request.', err)
-    })
-    this.broadcast({ type: 'REQUEST_CAPTURED', request })
   }
 
   private runSafely(operation: Promise<void>, message: string): void {

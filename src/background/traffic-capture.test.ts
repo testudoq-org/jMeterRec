@@ -3,6 +3,7 @@ import type { RecorderState } from './recorder-state'
 import { TrafficCaptureService } from './traffic-capture'
 import { PendingWebRequestStore } from './pending-web-request-store'
 import type { CapturedRequest } from '../models/captured-request'
+import type { AdvancedOptions } from '../options/advanced-options'
 
 class MemoryStorage {
   private values = new Map<string, unknown>()
@@ -92,6 +93,7 @@ function createState(isCapturing = true): { state: RecorderState; requests: Capt
     isCapturing: vi.fn(() => isCapturing),
     addRequest: vi.fn((request: CapturedRequest) => requests.push(request)),
     save: vi.fn(async () => undefined),
+    getRequests: vi.fn(() => requests),
   } as unknown as RecorderState
 
   return { state, requests }
@@ -495,5 +497,264 @@ describe('TrafficCaptureService redirect chains', () => {
         queryParams: { token: 'abc' },
       })
     )
+  })
+})
+
+describe('TrafficCaptureService advanced filtering', () => {
+  const DEFAULT_ADVANCED: AdvancedOptions = {
+    filterPattern: 'http://*/*, https://*/*',
+    recordCss: true,
+    recordJs: true,
+    recordImages: true,
+    recordRedirects: false,
+    recordCookies: true,
+    userAgent: 'current',
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(REQUEST_TIME)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  function createServiceWithAdvanced(advancedOpts?: AdvancedOptions): ServiceHarness {
+    const opts = advancedOpts ?? DEFAULT_ADVANCED
+    const storage = new MemoryStorage()
+    const listeners: CapturedListeners = {}
+    stubChrome(listeners)
+    const pendingStore = new PendingWebRequestStore(storage)
+    const { state, requests } = createState(true)
+    const service = new TrafficCaptureService(state, pendingStore, false, opts)
+    service.start({}, true)
+
+    return { service, pendingStore, state, requests, listeners }
+  }
+
+  it('filters requests by URL pattern', async () => {
+    const harness = createServiceWithAdvanced({
+      ...DEFAULT_ADVANCED,
+      filterPattern: 'https://api.example.com/*',
+    })
+
+    // Request matching pattern
+    requireListener(
+      harness.listeners.beforeRequest,
+      'beforeRequest'
+    )(beforeRequest({ url: 'https://api.example.com/users', requestId: 'r-1' }))
+    // Request not matching pattern
+    requireListener(
+      harness.listeners.beforeRequest,
+      'beforeRequest'
+    )(beforeRequest({ url: 'https://other.example.com/data', requestId: 'r-2' }))
+    await flushStorageWrites()
+
+    // Only the matching request should be captured
+    const pending = harness.service.getPendingRequests()
+    expect(pending.find((r) => r.id === '10-r-1')).toBeDefined()
+    expect(pending.find((r) => r.id === '10-r-2')).toBeUndefined()
+  })
+
+  it('filters requests by resource type - stylesheet', async () => {
+    const harness = createServiceWithAdvanced({
+      ...DEFAULT_ADVANCED,
+      recordCss: false,
+    })
+
+    // Stylesheet request
+    requireListener(
+      harness.listeners.beforeRequest,
+      'beforeRequest'
+    )(beforeRequest({ type: 'stylesheet', url: 'https://example.com/style.css', requestId: 'r-1' }))
+    // Script request
+    requireListener(
+      harness.listeners.beforeRequest,
+      'beforeRequest'
+    )(beforeRequest({ type: 'script', url: 'https://example.com/app.js', requestId: 'r-2' }))
+    await flushStorageWrites()
+
+    const pending = harness.service.getPendingRequests()
+    expect(pending.find((r) => r.id === '10-r-1')).toBeUndefined()
+    expect(pending.find((r) => r.id === '10-r-2')).toBeDefined()
+  })
+
+  it('filters requests by resource type - stylesheet with font extension', async () => {
+    const harness = createServiceWithAdvanced({
+      ...DEFAULT_ADVANCED,
+      recordCss: false,
+    })
+
+    // Font file request (should be filtered by extension)
+    requireListener(
+      harness.listeners.beforeRequest,
+      'beforeRequest'
+    )(beforeRequest({ type: 'image', url: 'https://example.com/font.woff2', requestId: 'r-1' }))
+    await flushStorageWrites()
+
+    const pending = harness.service.getPendingRequests()
+    expect(pending.find((r) => r.id === '10-r-1')).toBeUndefined()
+  })
+
+  it('filters requests by resource type - image', async () => {
+    const harness = createServiceWithAdvanced({
+      ...DEFAULT_ADVANCED,
+      recordImages: false,
+    })
+
+    // Image request
+    requireListener(
+      harness.listeners.beforeRequest,
+      'beforeRequest'
+    )(beforeRequest({ type: 'image', url: 'https://example.com/photo.png', requestId: 'r-1' }))
+    // Script request
+    requireListener(
+      harness.listeners.beforeRequest,
+      'beforeRequest'
+    )(beforeRequest({ type: 'script', url: 'https://example.com/app.js', requestId: 'r-2' }))
+    await flushStorageWrites()
+
+    const pending = harness.service.getPendingRequests()
+    expect(pending.find((r) => r.id === '10-r-1')).toBeUndefined()
+    expect(pending.find((r) => r.id === '10-r-2')).toBeDefined()
+  })
+
+  it('filters requests by resource type - xmlhttprequest', async () => {
+    const harness = createServiceWithAdvanced({
+      ...DEFAULT_ADVANCED,
+      recordJs: false,
+    })
+
+    // XHR request
+    requireListener(
+      harness.listeners.beforeRequest,
+      'beforeRequest'
+    )(
+      beforeRequest({
+        type: 'xmlhttprequest',
+        url: 'https://api.example.com/data',
+        requestId: 'r-1',
+      })
+    )
+    // Stylesheet request
+    requireListener(
+      harness.listeners.beforeRequest,
+      'beforeRequest'
+    )(beforeRequest({ type: 'stylesheet', url: 'https://example.com/style.css', requestId: 'r-2' }))
+    await flushStorageWrites()
+
+    const pending = harness.service.getPendingRequests()
+    expect(pending.find((r) => r.id === '10-r-1')).toBeUndefined()
+    expect(pending.find((r) => r.id === '10-r-2')).toBeDefined()
+  })
+
+  it('blocks all requests when all resource types unchecked', async () => {
+    const harness = createServiceWithAdvanced({
+      ...DEFAULT_ADVANCED,
+      recordCss: false,
+      recordJs: false,
+      recordImages: false,
+    })
+
+    // Script request
+    requireListener(
+      harness.listeners.beforeRequest,
+      'beforeRequest'
+    )(beforeRequest({ type: 'script', url: 'https://example.com/app.js', requestId: 'r-1' }))
+    // Stylesheet request
+    requireListener(
+      harness.listeners.beforeRequest,
+      'beforeRequest'
+    )(beforeRequest({ type: 'stylesheet', url: 'https://example.com/style.css', requestId: 'r-2' }))
+    // Image request
+    requireListener(
+      harness.listeners.beforeRequest,
+      'beforeRequest'
+    )(beforeRequest({ type: 'image', url: 'https://example.com/photo.png', requestId: 'r-3' }))
+    await flushStorageWrites()
+
+    const pending = harness.service.getPendingRequests()
+    expect(pending.length).toBe(0)
+  })
+
+  it('filters redirects when recordRedirects is false', async () => {
+    const harness = createServiceWithAdvanced({
+      ...DEFAULT_ADVANCED,
+      recordRedirects: false,
+    })
+
+    // Initial request
+    requireListener(
+      harness.listeners.beforeRequest,
+      'beforeRequest'
+    )(beforeRequest({ url: 'https://example.com/redirect', requestId: 'r-1' }))
+    // Response is a redirect
+    requireListener(
+      harness.listeners.responseStarted,
+      'responseStarted'
+    )(
+      responseStarted({
+        requestId: 'r-1',
+        statusCode: 302,
+        responseHeaders: [{ name: 'location', value: '/new' }],
+      })
+    )
+    // Completed redirect response
+    requireListener(
+      harness.listeners.completed,
+      'completed'
+    )(
+      completed({
+        requestId: 'r-1',
+        statusCode: 302,
+        responseHeaders: [{ name: 'location', value: '/new' }],
+      })
+    )
+    await flushStorageWrites()
+
+    // Redirect response should be filtered
+    expect(harness.requests.length).toBe(0)
+  })
+
+  it('captures redirects when recordRedirects is true', async () => {
+    const harness = createServiceWithAdvanced({
+      ...DEFAULT_ADVANCED,
+      recordRedirects: true,
+    })
+
+    // Initial request
+    requireListener(
+      harness.listeners.beforeRequest,
+      'beforeRequest'
+    )(beforeRequest({ url: 'https://example.com/redirect', requestId: 'r-1' }))
+    // Response is a redirect
+    requireListener(
+      harness.listeners.responseStarted,
+      'responseStarted'
+    )(
+      responseStarted({
+        requestId: 'r-1',
+        statusCode: 302,
+        responseHeaders: [{ name: 'location', value: '/new' }],
+      })
+    )
+    // Completed redirect response
+    requireListener(
+      harness.listeners.completed,
+      'completed'
+    )(
+      completed({
+        requestId: 'r-1',
+        statusCode: 302,
+        responseHeaders: [{ name: 'location', value: '/new' }],
+      })
+    )
+    await flushStorageWrites()
+
+    // Redirect response should be captured
+    expect(harness.requests.length).toBe(1)
+    expect(harness.requests[0]?.statusCode).toBe(302)
   })
 })

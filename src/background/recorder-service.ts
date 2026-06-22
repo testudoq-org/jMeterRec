@@ -3,6 +3,7 @@ import { buildHar } from '../har/har-builder'
 import { filterRequestsByDomains } from '../jmx/domains'
 import { buildPlaywrightResponse } from '../generators/playwright'
 import { JmxOptionsStore } from '../options/jmx-options'
+import { AdvancedOptionsStore } from '../options/advanced-options'
 import type { JmxOptions } from '../options/jmx-options'
 import { safeFilename } from '../utils/filename'
 import type { BackgroundRequest, BackgroundResponse, RecorderSnapshot } from '../messages'
@@ -27,6 +28,7 @@ export interface RecorderServiceOptions {
   trafficCapture?: TrafficCaptureService
   pendingStore?: PendingWebRequestStore
   jmxOptionsStore?: JmxOptionsStore
+  advancedOptionsStore?: AdvancedOptionsStore
 }
 
 export class RecorderService {
@@ -35,6 +37,7 @@ export class RecorderService {
   private readonly handlers: Record<BackgroundRequest['type'], MessageHandler>
   private pendingStore: PendingWebRequestStore | undefined
   private jmxOptionsStore: JmxOptionsStore | undefined
+  private advancedOptionsStore: AdvancedOptionsStore | undefined
   private responseBodyMatchingService = new ResponseBodyMatchingService()
   private initialized = false
 
@@ -43,6 +46,7 @@ export class RecorderService {
     this.trafficCapture = options.trafficCapture ?? new TrafficCaptureService(this.state)
     this.pendingStore = options.pendingStore
     this.jmxOptionsStore = options.jmxOptionsStore
+    this.advancedOptionsStore = options.advancedOptionsStore
     this.handlers = {
       START_RECORDING: (message) =>
         this.handleStartRecordingMessage(
@@ -174,6 +178,14 @@ export class RecorderService {
     return this.jmxOptionsStore
   }
 
+  private getAdvancedOptionsStore(): AdvancedOptionsStore {
+    if (this.advancedOptionsStore === undefined) {
+      this.advancedOptionsStore = new AdvancedOptionsStore()
+    }
+
+    return this.advancedOptionsStore
+  }
+
   private planNameForExport(options: JmxOptions): string {
     const snapshotPlanName = this.state.getSnapshot().planName
 
@@ -271,18 +283,30 @@ export class RecorderService {
       return { success: false, error: 'No requests match the selected domains.' }
     }
 
-    const options = await this.getJmxOptionsStore().load()
+    const jmxOptions = await this.getJmxOptionsStore().load()
+    const advancedOptions = await this.getAdvancedOptionsStore().load()
     const meta: PlanMeta = {
-      name: this.planNameForExport(options),
+      name: this.planNameForExport(jmxOptions),
       threadGroup: {
-        threads: options.threads,
-        rampUp: options.rampUp,
-        loops: options.loops,
+        threads: jmxOptions.threads,
+        rampUp: jmxOptions.rampUp,
+        loops: jmxOptions.loops,
       },
     }
 
     const har = buildHar(requests)
-    const jmx = convertHarToJmx(har, meta)
+    const jmx = convertHarToJmx(har, meta, {
+      thinkTime: {
+        enabled: jmxOptions.thinkTimeEnabled,
+        randomize: false,
+        rangePercent: jmxOptions.thinkTimeRangePercent,
+      },
+      assertion: jmxOptions.assertionsEnabled
+        ? { enabled: true, expectStatus: jmxOptions.assertionExpectStatus }
+        : undefined,
+      recordCookies: advancedOptions.recordCookies,
+      userAgent: advancedOptions.userAgent,
+    })
 
     return {
       success: true,

@@ -1,5 +1,5 @@
 import type { CapturedRequest, PlanMeta } from '../models/captured-request'
-import { buildJmx } from '../jmx/serializer'
+import { buildJmx, type JmxSerializerOptions } from '../jmx/serializer'
 
 export interface TrafficModel {
   entries: TrafficEntry[]
@@ -49,7 +49,11 @@ export interface TrafficMetadata {
   uniqueDomains: string[]
 }
 
-export function convertHarToJmx(har: HAR, meta: PlanMeta): string {
+export function convertHarToJmx(
+  har: HAR,
+  meta: PlanMeta,
+  serializerOptions?: JmxSerializerOptions
+): string {
   validateHar(har)
 
   const entries: TrafficEntry[] = har.log.entries.map((entry, idx) => {
@@ -122,7 +126,7 @@ export function convertHarToJmx(har: HAR, meta: PlanMeta): string {
     responseBodySize: entry.response.size,
   }))
 
-  return buildJmx(meta, requests)
+  return buildJmx(meta, requests, serializerOptions)
 }
 
 export interface HAR {

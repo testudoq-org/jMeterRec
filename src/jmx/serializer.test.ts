@@ -175,9 +175,9 @@ describe('buildJmx', () => {
     )
 
     expect(jmx).toContain('testname="Saved Plan"')
-    expect(jmx).toContain('<stringProp name="LoopController.loops">6</stringProp>')
     expect(jmx).toContain('<stringProp name="ThreadGroup.num_threads">4</stringProp>')
     expect(jmx).toContain('<stringProp name="ThreadGroup.ramp_time">5</stringProp>')
+    expect(jmx).toContain('<stringProp name="LoopController.loops">6</stringProp>')
   })
 
   it('handles missing optional fields gracefully', () => {
@@ -580,5 +580,81 @@ describe('buildJmx', () => {
 
     expect(jmx).toContain('UniformRandomTimer')
     expect(jmx).toContain('<stringProp name="UniformRandomTimer.delay">1600')
+  })
+
+  describe('recordCookies option', () => {
+    it('omits CookieManager when recordCookies is false', () => {
+      const requests: CapturedRequest[] = [
+        {
+          id: '1',
+          timestamp: '2024-01-01T00:00:00.000Z',
+          method: 'GET',
+          url: 'https://example.com/api',
+          headers: { cookie: 'session=abc123' },
+          queryParams: {},
+        },
+      ]
+
+      const jmx = buildJmx(meta, requests, { recordCookies: false })
+
+      expect(jmx).not.toContain('CookieManager')
+      // Cookie header should still be in sampler headers
+      expect(jmx).toContain('cookie')
+    })
+
+    it('includes CookieManager when recordCookies is true (default)', () => {
+      const requests: CapturedRequest[] = [
+        {
+          id: '1',
+          timestamp: '2024-01-01T00:00:00.000Z',
+          method: 'GET',
+          url: 'https://example.com/api',
+          headers: { cookie: 'session=abc123' },
+          queryParams: {},
+        },
+      ]
+
+      const jmx = buildJmx(meta, requests, { recordCookies: true })
+
+      expect(jmx).toContain('CookieManager')
+    })
+  })
+
+  describe('userAgent option', () => {
+    it('uses current User-Agent option (removes header from sampler)', () => {
+      const requests: CapturedRequest[] = [
+        {
+          id: '1',
+          timestamp: '2024-01-01T00:00:00.000Z',
+          method: 'GET',
+          url: 'https://example.com/api',
+          headers: { 'user-agent': 'original-agent' },
+          queryParams: {},
+        },
+      ]
+
+      const jmx = buildJmx(meta, requests, { userAgent: 'current' })
+
+      // User-Agent should not be in the sampler headers
+      expect(jmx).not.toContain('original-agent')
+    })
+
+    it('uses custom User-Agent option (adds header to sampler)', () => {
+      const requests: CapturedRequest[] = [
+        {
+          id: '1',
+          timestamp: '2024-01-01T00:00:00.000Z',
+          method: 'GET',
+          url: 'https://example.com/api',
+          headers: {},
+          queryParams: {},
+        },
+      ]
+
+      const jmx = buildJmx(meta, requests, { userAgent: 'chrome-win' })
+
+      expect(jmx).toContain('User-Agent')
+      expect(jmx).toContain('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+    })
   })
 })
