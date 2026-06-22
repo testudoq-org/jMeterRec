@@ -120,6 +120,50 @@ test.describe('Recorder UI state lifecycle', () => {
     await popup.locator('#stop').click()
     await context.close()
   })
+
+  test('advanced options section is collapsed by default and can be toggled', async () => {
+    const context = await launchExtensionContext()
+    const extensionId = await extensionIdFromContext(context)
+    const popup = await context.newPage()
+
+    await popup.setViewportSize({ width: 420, height: 760 })
+    await popup.goto(`chrome-extension://${extensionId}/src/popup/popup.html`)
+
+    const advancedSection = popup.locator('#advancedOptionsBody')
+    const toggleBtn = popup.locator('#toggleAdvancedOptions')
+
+    await expect(advancedSection).toBeHidden()
+    await expect(toggleBtn).toContainText('Show')
+
+    await toggleBtn.click()
+    await expect(advancedSection).toBeVisible()
+    await expect(toggleBtn).toContainText('Hide')
+
+    await toggleBtn.click()
+    await expect(advancedSection).toBeHidden()
+    await expect(toggleBtn).toContainText('Show')
+
+    await context.close()
+  })
+
+  test('advanced options controls are present in popup', async () => {
+    const context = await launchExtensionContext()
+    const extensionId = await extensionIdFromContext(context)
+    const popup = await context.newPage()
+
+    await popup.setViewportSize({ width: 420, height: 760 })
+    await popup.goto(`chrome-extension://${extensionId}/src/popup/popup.html`)
+
+    await expect(popup.locator('#filterPattern')).toBeVisible()
+    await expect(popup.locator('#recordCss')).toBeVisible()
+    await expect(popup.locator('#recordJs')).toBeVisible()
+    await expect(popup.locator('#recordImages')).toBeVisible()
+    await expect(popup.locator('#recordRedirects')).toBeVisible()
+    await expect(popup.locator('#userAgent')).toBeVisible()
+    await expect(popup.locator('#recordCookies')).toBeVisible()
+
+    await context.close()
+  })
 })
 
 async function launchExtensionContext(): Promise<BrowserContext> {

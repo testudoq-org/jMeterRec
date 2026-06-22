@@ -8,6 +8,9 @@ const storageSetCalls: Array<Record<string, unknown>> = []
 const runtimeMessageListeners = new Set<(message: unknown) => void>()
 let pendingGetStateResolve: ((value: unknown) => void) | undefined
 let delayGetStateResponse = false
+const storageOnChangedListeners = new Set<
+  (changes: Record<string, { newValue: unknown }>, areaName: string) => void
+>()
 
 const recordingSnapshot = {
   status: 'recording',
@@ -75,13 +78,20 @@ const chromeStub = {
   },
   storage: {
     local: {
-      get: vi.fn(async (keys: unknown) => {
-        storageGetCalls.push({ keys })
+      get: vi.fn(async (_keys: unknown) => {
+        storageGetCalls.push({ keys: _keys })
         return {}
       }),
       set: vi.fn(async (values: Record<string, unknown>) => {
         storageSetCalls.push({ ...values })
       }),
+    },
+    onChanged: {
+      addListener: vi.fn(
+        (listener: (changes: Record<string, { newValue: unknown }>, areaName: string) => void) => {
+          storageOnChangedListeners.add(listener)
+        }
+      ),
     },
   },
   windows: {
@@ -131,6 +141,38 @@ function buildPopupHtml(): string {
       <div id="transactionList"></div>
       <button id="openDetachedInspector"></button>
       <select id="themeMode"><option value="light">light</option><option value="dark">dark</option></select>
+      <section class="advanced-options">
+        <div class="advanced-options__header">
+          <h2 id="advancedOptionsTitle"></h2>
+          <button id="toggleAdvancedOptions">Show</button>
+        </div>
+        <div id="advancedOptionsBody" hidden>
+          <textarea id="filterPattern"></textarea>
+          <div id="filterPatternError" hidden></div>
+          <fieldset>
+            <legend></legend>
+            <label class="checkbox-row"><input id="recordCss" type="checkbox" /><span></span></label>
+            <label class="checkbox-row"><input id="recordJs" type="checkbox" /><span></span></label>
+            <label class="checkbox-row"><input id="recordImages" type="checkbox" /><span></span></label>
+            <label class="checkbox-row"><input id="recordRedirects" type="checkbox" /><span></span></label>
+          </fieldset>
+          <div id="resourceTypeError" hidden></div>
+          <select id="userAgent">
+            <option value="current">current</option>
+            <option value="chrome-win">chrome-win</option>
+            <option value="chrome-mac">chrome-mac</option>
+            <option value="chrome-linux">chrome-linux</option>
+            <option value="firefox-win">firefox-win</option>
+            <option value="firefox-mac">firefox-mac</option>
+            <option value="firefox-linux">firefox-linux</option>
+            <option value="edge-win">edge-win</option>
+            <option value="custom">custom</option>
+          </select>
+          <input id="customUserAgent" type="text" hidden />
+          <div id="userAgentError" hidden></div>
+          <label class="checkbox-row"><input id="recordCookies" type="checkbox" /><span></span></label>
+        </div>
+      </section>
       <div id="error"></div>
     </body>
   </html>`
@@ -139,6 +181,7 @@ function buildPopupHtml(): string {
 async function loadPopupModule() {
   vi.resetModules()
   runtimeMessageListeners.clear()
+  storageOnChangedListeners.clear()
   pendingGetStateResolve = undefined
   delayGetStateResponse = false
   storageGetCalls.length = 0
@@ -164,6 +207,10 @@ describe('popup timer and state contract', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     vi.setSystemTime('2026-01-01T00:00:00.000Z')
+    chromeStub.storage.local.get.mockImplementation(async (keys: unknown) => {
+      storageGetCalls.push({ keys })
+      return {}
+    })
   })
 
   afterEach(() => {
@@ -322,5 +369,320 @@ describe('popup timer and state contract', () => {
 
     vi.advanceTimersByTime(2000)
     expect(elapsedEl.textContent).toBe('Elapsed: 00:00')
+  })
+})
+
+describe('popup advanced options', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    chromeStub.storage.local.get.mockImplementation(async (keys: unknown) => {
+      storageGetCalls.push({ keys })
+      return {}
+    })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('collapses advanced options by default', async () => {
+    await loadPopupModule()
+    const body = document.getElementById('advancedOptionsBody') as HTMLElement
+    const toggle = document.getElementById('toggleAdvancedOptions') as HTMLButtonElement
+
+    expect(body.hidden).toBe(true)
+    expect(toggle.textContent).toBe('Show')
+  })
+
+  it('toggles advanced options section visibility', async () => {
+    await loadPopupModule()
+    const body = document.getElementById('advancedOptionsBody') as HTMLElement
+    const toggle = document.getElementById('toggleAdvancedOptions') as HTMLButtonElement
+
+    toggle.click()
+    expect(body.hidden).toBe(false)
+    expect(toggle.textContent).toBe('Hide')
+
+    toggle.click()
+    expect(body.hidden).toBe(true)
+    expect(toggle.textContent).toBe('Show')
+  })
+
+  it('loads advanced options from storage on startup', async () => {
+    chromeStub.storage.local.get.mockImplementation(async (keys: unknown) => {
+      if (Array.isArray(keys) && keys.includes('filterPattern')) {
+        return {
+          filterPattern: 'https://api.example.com/*',
+          recordCss: false,
+          recordJs: true,
+          recordImages: false,
+          recordRedirects: true,
+          recordCookies: false,
+          userAgent: 'firefox-win',
+        }
+      }
+      return {}
+    })
+
+    await loadPopupModule()
+
+    const filterPatternEl = document.getElementById('filterPattern') as HTMLTextAreaElement
+    const recordCssEl = document.getElementById('recordCss') as HTMLInputElement
+    const recordJsEl = document.getElementById('recordJs') as HTMLInputElement
+    const recordImagesEl = document.getElementById('recordImages') as HTMLInputElement
+    const recordRedirectsEl = document.getElementById('recordRedirects') as HTMLInputElement
+    const recordCookiesEl = document.getElementById('recordCookies') as HTMLInputElement
+    const userAgentEl = document.getElementById('userAgent') as HTMLSelectElement
+
+    expect(filterPatternEl.value).toBe('https://api.example.com/*')
+    expect(recordCssEl.checked).toBe(false)
+    expect(recordJsEl.checked).toBe(true)
+    expect(recordImagesEl.checked).toBe(false)
+    expect(recordRedirectsEl.checked).toBe(true)
+    expect(recordCookiesEl.checked).toBe(false)
+    expect(userAgentEl.value).toBe('firefox-win')
+  })
+
+  it('saves advanced options when controls change (debounced)', async () => {
+    await loadPopupModule()
+    const toggle = document.getElementById('toggleAdvancedOptions') as HTMLButtonElement
+    toggle.click()
+
+    const recordCssEl = document.getElementById('recordCss') as HTMLInputElement
+    recordCssEl.click()
+
+    expect(chromeStub.storage.local.set).not.toHaveBeenCalled()
+
+    vi.advanceTimersByTime(350)
+
+    expect(chromeStub.storage.local.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filterPattern: 'http://*/*, https://*/*',
+        recordCss: false,
+        recordJs: true,
+        recordImages: true,
+        recordRedirects: false,
+        recordCookies: true,
+        userAgent: 'current',
+      })
+    )
+  })
+
+  it('syncs advanced options from storage changes (individual key changes)', async () => {
+    chromeStub.storage.local.get.mockImplementation(async (keys: unknown) => {
+      if (Array.isArray(keys) && keys.includes('filterPattern')) {
+        return {
+          filterPattern: 'https://synced.example.com/*',
+          recordCss: false,
+          recordJs: true,
+          recordImages: false,
+          recordRedirects: false,
+          recordCookies: false,
+          userAgent: 'firefox-mac',
+        }
+      }
+      return {}
+    })
+
+    await loadPopupModule()
+    const toggle = document.getElementById('toggleAdvancedOptions') as HTMLButtonElement
+    toggle.click()
+
+    const filterPatternEl = document.getElementById('filterPattern') as HTMLTextAreaElement
+    const recordCookiesEl = document.getElementById('recordCookies') as HTMLInputElement
+    const userAgentEl = document.getElementById('userAgent') as HTMLSelectElement
+
+    expect(filterPatternEl.value).toBe('https://synced.example.com/*')
+    expect(recordCookiesEl.checked).toBe(false)
+    expect(userAgentEl.value).toBe('firefox-mac')
+  })
+
+  it('syncs advanced options when individual key changes in storage', async () => {
+    await loadPopupModule()
+    const toggle = document.getElementById('toggleAdvancedOptions') as HTMLButtonElement
+    toggle.click()
+
+    const filterPatternEl = document.getElementById('filterPattern') as HTMLTextAreaElement
+    const recordCookiesEl = document.getElementById('recordCookies') as HTMLInputElement
+
+    expect(filterPatternEl.value).toBe('http://*/*, https://*/*')
+    expect(recordCookiesEl.checked).toBe(true)
+
+    // Simulate individual key changes (as Chrome storage actually fires)
+    chromeStub.storage.local.get.mockImplementation(async (_keys: unknown) => {
+      return {
+        filterPattern: 'https://changed.example.com/*',
+        recordCss: true,
+        recordJs: false,
+        recordImages: true,
+        recordRedirects: true,
+        recordCookies: false,
+        userAgent: 'chrome-linux',
+      }
+    })
+
+    for (const listener of storageOnChangedListeners) {
+      listener(
+        {
+          filterPattern: { newValue: 'https://changed.example.com/*' },
+          recordCookies: { newValue: false },
+          userAgent: { newValue: 'chrome-linux' },
+        },
+        'local'
+      )
+    }
+
+    // Wait for async handler to process
+    await flushRuntimeResponse()
+
+    expect(filterPatternEl.value).toBe('https://changed.example.com/*')
+    expect(recordCookiesEl.checked).toBe(false)
+  })
+
+  it('shows custom user agent input when custom is selected', async () => {
+    await loadPopupModule()
+    const toggle = document.getElementById('toggleAdvancedOptions') as HTMLButtonElement
+    toggle.click()
+
+    const userAgentEl = document.getElementById('userAgent') as HTMLSelectElement
+    const customUserAgentEl = document.getElementById('customUserAgent') as HTMLInputElement
+
+    userAgentEl.value = 'custom'
+    const changeEvent = document.createEvent('HTMLEvents')
+    changeEvent.initEvent('change', true, false)
+    userAgentEl.dispatchEvent(changeEvent)
+
+    expect(customUserAgentEl.hidden).toBe(false)
+  })
+
+  it('hides custom user agent input when predefined agent is selected', async () => {
+    await loadPopupModule()
+    const toggle = document.getElementById('toggleAdvancedOptions') as HTMLButtonElement
+    toggle.click()
+
+    const userAgentEl = document.getElementById('userAgent') as HTMLSelectElement
+    const customUserAgentEl = document.getElementById('customUserAgent') as HTMLInputElement
+
+    userAgentEl.value = 'custom'
+    const changeEvent1 = document.createEvent('HTMLEvents')
+    changeEvent1.initEvent('change', true, false)
+    userAgentEl.dispatchEvent(changeEvent1)
+    expect(customUserAgentEl.hidden).toBe(false)
+
+    userAgentEl.value = 'chrome-win'
+    const changeEvent2 = document.createEvent('HTMLEvents')
+    changeEvent2.initEvent('change', true, false)
+    userAgentEl.dispatchEvent(changeEvent2)
+    expect(customUserAgentEl.hidden).toBe(true)
+  })
+
+  it('syncs custom user agent from storage changes and shows custom input', async () => {
+    await loadPopupModule()
+    const toggle = document.getElementById('toggleAdvancedOptions') as HTMLButtonElement
+    toggle.click()
+
+    const userAgentEl = document.getElementById('userAgent') as HTMLSelectElement
+    const customUserAgentEl = document.getElementById('customUserAgent') as HTMLInputElement
+
+    expect(userAgentEl.value).toBe('current')
+    expect(customUserAgentEl.hidden).toBe(true)
+
+    // Simulate individual key change with custom user agent
+    chromeStub.storage.local.get.mockImplementation(async (_keys: unknown) => {
+      return {
+        filterPattern: 'http://*/*, https://*/*',
+        recordCss: true,
+        recordJs: true,
+        recordImages: true,
+        recordRedirects: false,
+        recordCookies: true,
+        userAgent: 'custom:My Custom Agent',
+      }
+    })
+
+    for (const listener of storageOnChangedListeners) {
+      listener(
+        {
+          userAgent: { newValue: 'custom:My Custom Agent' },
+        },
+        'local'
+      )
+    }
+
+    // Wait for async handler to process
+    await flushRuntimeResponse()
+
+    expect(userAgentEl.value).toBe('custom')
+    expect(customUserAgentEl.hidden).toBe(false)
+    expect(customUserAgentEl.value).toBe('My Custom Agent')
+  })
+
+  it('handles storage read error gracefully in onChange listener', async () => {
+    await loadPopupModule()
+    const toggle = document.getElementById('toggleAdvancedOptions') as HTMLButtonElement
+    toggle.click()
+
+    const filterPatternEl = document.getElementById('filterPattern') as HTMLTextAreaElement
+    const originalValue = filterPatternEl.value
+
+    // Simulate storage read failure
+    chromeStub.storage.local.get.mockImplementation(async () => {
+      throw new Error('Storage read failed')
+    })
+
+    // Trigger onChange event
+    for (const listener of storageOnChangedListeners) {
+      listener(
+        {
+          filterPattern: { newValue: 'https://should-not-appear.example.com/*' },
+        },
+        'local'
+      )
+    }
+
+    await flushRuntimeResponse()
+
+    // Value should remain unchanged since the read failed
+    expect(filterPatternEl.value).toBe(originalValue)
+
+    // Error should be displayed via showError
+    const errorEl = document.getElementById('error') as HTMLDivElement
+    expect(errorEl.textContent).toBe('Storage read failed')
+  })
+
+  it('handles multiple rapid onChange events without issue', async () => {
+    await loadPopupModule()
+    const toggle = document.getElementById('toggleAdvancedOptions') as HTMLButtonElement
+    toggle.click()
+
+    const filterPatternEl = document.getElementById('filterPattern') as HTMLTextAreaElement
+
+    let getCallCount = 0
+    chromeStub.storage.local.get.mockImplementation(async () => {
+      getCallCount++
+      // Return different values on each call to simulate rapid changes
+      return {
+        filterPattern: `https://rapid-${getCallCount}.example.com/*`,
+        recordCss: getCallCount % 2 === 0,
+        recordJs: true,
+        recordImages: true,
+        recordRedirects: false,
+        recordCookies: true,
+        userAgent: 'current',
+      }
+    })
+
+    // Fire multiple onChange events in rapid succession
+    for (const listener of storageOnChangedListeners) {
+      listener({ filterPattern: { newValue: 'https://test1.example.com/*' } }, 'local')
+      await Promise.resolve()
+    }
+
+    // Wait for all async handlers to complete
+    await flushRuntimeResponse()
+    await flushRuntimeResponse()
+
+    // UI should reflect the last storage read
+    expect(filterPatternEl.value).toMatch(/https:\/\/rapid-\d\.example\.com\//)
   })
 })

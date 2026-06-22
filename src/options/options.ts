@@ -4,7 +4,7 @@ import {
   validateFilterPattern,
   validateResourceTypes,
   validateCustomUserAgent,
-  UserAgentSelection,
+  type UserAgentSelection,
   type UserAgentId,
 } from './advanced-options'
 
@@ -291,6 +291,54 @@ resetAdvancedOptions.addEventListener('click', () => {
   filterPatternError.style.display = 'none'
   resourceTypeError.style.display = 'none'
   userAgentError.style.display = 'none'
+})
+
+// Sync advanced options from storage changes (cross-window sync)
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== 'local') {
+    return
+  }
+
+  const advancedKeys = [
+    'filterPattern',
+    'recordCss',
+    'recordJs',
+    'recordImages',
+    'recordRedirects',
+    'recordCookies',
+    'userAgent',
+  ] as const
+
+  const hasAdvancedChange = advancedKeys.some((key) => changes[key] !== undefined)
+  if (!hasAdvancedChange) {
+    return
+  }
+
+  chrome.storage.local
+    .get({
+      filterPattern: 'http://*/*, https://*/*',
+      recordCss: true,
+      recordJs: true,
+      recordImages: true,
+      recordRedirects: false,
+      recordCookies: true,
+      userAgent: 'current',
+    })
+    .then((stored) => {
+      const opts = normalizeAdvancedOptions(stored)
+      filterPattern.value = opts.filterPattern
+      recordCss.checked = opts.recordCss
+      recordJs.checked = opts.recordJs
+      recordImages.checked = opts.recordImages
+      recordRedirects.checked = opts.recordRedirects
+      recordCookies.checked = opts.recordCookies
+      userAgent.value = isCustomUserAgent(opts.userAgent) ? 'custom' : opts.userAgent
+      customUserAgent.value = isCustomUserAgent(opts.userAgent) ? opts.userAgent.slice(7) : ''
+      updateCustomUserAgentVisibility()
+    })
+    .catch((err: unknown) => {
+      advancedSaved.textContent = `Sync error: ${toErrorMessage(err)}`
+    })
 })
 
 function updateCustomUserAgentVisibility(): void {
