@@ -365,4 +365,74 @@ describe('RecorderService', () => {
       expect(response.playwright).toContain('example.com')
     }
   })
+
+  // Hardening audit: background restart recovery tests
+  it('recovers active recording state after service-worker restart', async () => {
+    // Simulate state persistence across service-worker restart
+    const persistedState = {
+      status: 'recording',
+      recording: true,
+      planName: 'Restart Recovery Plan',
+      requestCount: 2,
+      startedAt: '2024-01-01T00:00:00.000Z',
+      tabId: 123,
+    }
+
+    const storedRequests = [
+      request('req-1', 'https://example.com/api/users'),
+      request('req-2', 'https://example.com/api/orders'),
+    ]
+
+    // Create a mock storage that simulates persisted state
+    const mockStorage = {
+      stored: { ...persistedState, requests: storedRequests, actions: [] },
+      get: vi.fn().mockResolvedValue({
+        ...persistedState,
+        requests: storedRequests,
+        actions: [],
+      }),
+      set: vi.fn().mockResolvedValue(undefined),
+    }
+
+    const RecordingState = (await import('./recorder-state')).RecorderState
+    const recoveredState = new RecordingState(mockStorage as never)
+
+    await recoveredState.load()
+
+    // Verify state recovered correctly after restart
+    expect(recoveredState.getSnapshot().status).toBe('recording')
+    expect(recoveredState.getSnapshot().planName).toBe('Restart Recovery Plan')
+    expect(recoveredState.getRequests()).toEqual(storedRequests)
+    expect(recoveredState.isCapturing()).toBe(true)
+  })
+
+  it('continues capturing requests after state recovery', async () => {
+    // Simulate a recovered state that can still capture new requests
+    const mockStorage = {
+      stored: {},
+      get: vi.fn().mockResolvedValue({
+        status: 'recording',
+        recording: true,
+        planName: 'Recovery Plan',
+        requestCount: 0,
+        startedAt: '2024-01-01T00:00:00.000Z',
+        requests: [],
+        actions: [],
+      }),
+      set: vi.fn().mockResolvedValue(undefined),
+    }
+
+    const RecordingState = (await import('./recorder-state')).RecorderState
+    const state = new RecordingState(mockStorage as never)
+
+    await state.load()
+    expect(state.isCapturing()).toBe(true)
+
+    // Add a new request after recovery (should be accepted since still recording)
+    const newRequest = request('new', 'https://example.com/api/new')
+    state.addRequest(newRequest)
+
+    const requests = state.getRequests()
+    expect(requests).toEqual([newRequest])
+  })
 })

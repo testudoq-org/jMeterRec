@@ -1,7 +1,14 @@
 import type { CapturedRequest, PlanMeta } from '../models/captured-request'
 import type { UserAgentId } from '../options/advanced-options'
 import { getUserAgentString } from '../options/user-agents'
-import { analyzeRequestDefaults, createHTTPRequestDefaults } from './element-model'
+import {
+  analyzeRequestDefaults,
+  createHTTPRequestDefaults,
+  xmlEsc,
+  escapeCdata,
+  supportsRequestBody,
+  parseCapturedUrl,
+} from './element-model'
 
 export interface JmxSerializerOptions {
   thinkTime?: { enabled: boolean; randomize: boolean; rangePercent: number }
@@ -98,10 +105,10 @@ function buildSampler(
   headers: Record<string, string>,
   defaults?: { domain: string; port: string; protocol: string }
 ): string {
-  const url = parseUrl(req.url)
+  const url = parseCapturedUrl(req.url)
   const host = url?.host ?? ''
   const path = url?.path ?? req.url
-  const protocol = (url?.protocol ?? 'http').replace(':', '')
+  const protocol = url?.protocol ?? 'http'
   const port = url?.port ?? ''
 
   const name = `${req.method} ${host}${path} #${idx}`
@@ -170,48 +177,6 @@ function buildHeaders(headers: Record<string, string>): string {
 ${headerElements}
              </collectionProp>
            </elementProp>`
-}
-
-function parseUrl(
-  rawUrl: string
-): { host: string; hostname: string; path: string; protocol: string; port: string } | undefined {
-  try {
-    const url = new URL(rawUrl)
-
-    return {
-      host: url.host,
-      hostname: url.hostname,
-      path: url.pathname,
-      protocol: url.protocol.replace(':', ''),
-      port: url.port,
-    }
-  } catch {
-    return undefined
-  }
-}
-
-function escapeCdata(value: string): string {
-  return value.replaceAll(']]>', ']]]]><![CDATA[>')
-}
-
-function supportsRequestBody(method: string): boolean {
-  switch (method.toUpperCase()) {
-    case 'POST':
-    case 'PUT':
-    case 'PATCH':
-    case 'DELETE':
-      return true
-    default:
-      return false
-  }
-}
-
-function xmlEsc(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
 }
 
 function processHeaders(

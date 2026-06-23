@@ -478,7 +478,7 @@ export function createHTTPSampler(
 /**
  * Parses a URL from a CapturedRequest, returning components needed for sampler creation.
  */
-function parseCapturedUrl(
+export function parseCapturedUrl(
   urlStr: string
 ): { host: string; hostname: string; path: string; protocol: string; port: string } | undefined {
   try {
@@ -513,7 +513,7 @@ function buildSamplerArguments(
   return args
 }
 
-function supportsRequestBody(method: string): boolean {
+export function supportsRequestBody(method: string): boolean {
   switch (method.toUpperCase()) {
     case 'POST':
     case 'PUT':
@@ -759,7 +759,7 @@ ${element.testStrings.map((s) => `<stringProp name="${element.testType}">${xmlEs
 // Utility functions (shared between serialization and existing serializer)
 // ============================================================================
 
-function xmlEsc(s: string): string {
+export function xmlEsc(s: string): string {
   return s
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -767,6 +767,6 @@ function xmlEsc(s: string): string {
     .replace(/"/g, '&quot;')
 }
 
-function escapeCdata(value: string): string {
+export function escapeCdata(value: string): string {
   return value.replaceAll(']]>', ']]]]><![CDATA[>')
 }
