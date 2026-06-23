@@ -557,6 +557,81 @@ select:focus-visible,
   border: 0;
 }
 
+.advanced-options {
+  margin-top: 12px;
+  border: 1px solid var(--color-glass-border);
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, var(--glass-highlight), var(--glass-surface));
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(10px) saturate(140%);
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
+}
+
+.advanced-options__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+}
+
+.advanced-options__header h2 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.advanced-options__header button {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.advanced-options__body {
+  padding: 0 12px 12px;
+  transition:
+    max-height 0.2s ease,
+    opacity 0.2s ease;
+  max-height: 800px;
+  opacity: 1;
+  overflow: hidden;
+}
+
+.advanced-options__body[hidden] {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  opacity: 0;
+}
+
+.advanced-options__body label {
+  margin: 8px 0 4px;
+}
+
+.advanced-options__body textarea,
+.advanced-options__body input,
+.advanced-options__body select {
+  margin: 0 0 8px;
+}
+
+.advanced-options__body fieldset {
+  margin: 0 0 8px;
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.advanced-options__body .checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.advanced-options__body .checkbox-row input {
+  width: auto;
+  margin: 0;
+}
+
 @keyframes ambientFloat {
   from {
     transform: translate3d(-2%, -1%, 0) scale(1);

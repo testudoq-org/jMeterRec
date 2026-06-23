@@ -1,11 +1,20 @@
 import { JmxOptionsStore } from '../options/jmx-options'
+import {
+  AdvancedOptionsStore,
+  validateFilterPattern,
+  validateResourceTypes,
+  validateCustomUserAgent,
+  type AdvancedOptions,
+  type UserAgentSelection,
+  type UserAgentId,
+} from '../options/advanced-options'
+import { applyTheme, boundedNumber, normalizeTheme, requireElement, toErrorMessage, type AppTheme } from '../shared/dom-utils'
 import type { BackgroundRequest, BackgroundResponse, RecorderSnapshot } from '../messages'
 import type { CapturedRequest } from '../models/captured-request'
 
 type ResponseWithSnapshot = Extract<BackgroundResponse, { snapshot?: RecorderSnapshot }>
 type TransactionRequest = CapturedRequest & { responseBody?: string }
 type RequestCapturedMessage = { type: 'REQUEST_CAPTURED'; request: TransactionRequest }
-type AppTheme = 'light' | 'dark'
 
 interface TransactionPanelOptions {
   maxTransactions: number
@@ -50,6 +59,24 @@ const transactionSearch = requireElement<HTMLInputElement>('transactionSearch')
 const transactionList = requireElement<HTMLDivElement>('transactionList')
 const openDetachedInspector = requireElement<HTMLButtonElement>('openDetachedInspector')
 const themeMode = requireElement<HTMLSelectElement>('themeMode')
+
+// Advanced options elements
+const toggleAdvancedOptions = requireElement<HTMLButtonElement>('toggleAdvancedOptions')
+const advancedOptionsBody = requireElement<HTMLDivElement>('advancedOptionsBody')
+const filterPattern = requireElement<HTMLTextAreaElement>('filterPattern')
+const recordCss = requireElement<HTMLInputElement>('recordCss')
+const recordJs = requireElement<HTMLInputElement>('recordJs')
+const recordImages = requireElement<HTMLInputElement>('recordImages')
+const recordRedirects = requireElement<HTMLInputElement>('recordRedirects')
+const recordCookies = requireElement<HTMLInputElement>('recordCookies')
+const userAgent = requireElement<HTMLSelectElement>('userAgent')
+const customUserAgent = requireElement<HTMLInputElement>('customUserAgent')
+const filterPatternError = requireElement<HTMLDivElement>('filterPatternError')
+const resourceTypeError = requireElement<HTMLDivElement>('resourceTypeError')
+const userAgentError = requireElement<HTMLDivElement>('userAgentError')
+
+let advancedOptionsExpanded = false
+let advancedOptionsSaveTimer: number | null = null
 
 let availableDomains: string[] = []
 let selectedDomains = new Set<string>()
@@ -194,6 +221,52 @@ void loadJmxOptions().catch((err: unknown) => {
   showError(toErrorMessage(err))
 })
 
+void loadAdvancedOptions().catch((err: unknown) => {
+  showError(toErrorMessage(err))
+})
+
+toggleAdvancedOptions.addEventListener('click', () => {
+  toggleAdvancedSection()
+})
+
+advancedOptionsBody.addEventListener('change', () => {
+  scheduleAdvancedOptionsSave()
+})
+
+userAgent.addEventListener('change', () => {
+  updateCustomUserAgentVisibility()
+})
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== 'local') {
+    return
+  }
+
+  const advancedKeys = [
+    'filterPattern',
+    'recordCss',
+    'recordJs',
+    'recordImages',
+    'recordRedirects',
+    'recordCookies',
+    'userAgent',
+  ] as const
+
+  const hasAdvancedChange = advancedKeys.some((key) => changes[key] !== undefined)
+  if (!hasAdvancedChange) {
+    return
+  }
+
+  void new AdvancedOptionsStore()
+    .load()
+    .then((opts) => {
+      applyAdvancedOptionsToUi(opts)
+    })
+    .catch((err: unknown) => {
+      showError(toErrorMessage(err))
+    })
+})
+
 elapsedTimer = globalThis.setInterval(updateElapsed, 250)
 
 chrome.runtime.onSuspend.addListener(cleanupTimer)
@@ -238,6 +311,97 @@ async function loadJmxOptions(): Promise<void> {
   if (planNameInput.value.trim().length === 0) {
     planNameInput.value = options.name
   }
+}
+
+async function loadAdvancedOptions(): Promise<void> {
+  const options = await new AdvancedOptionsStore().load()
+  applyAdvancedOptionsToUi(options)
+}
+
+function applyAdvancedOptionsToUi(options: AdvancedOptions): void {
+  filterPattern.value = options.filterPattern
+  recordCss.checked = options.recordCss
+  recordJs.checked = options.recordJs
+  recordImages.checked = options.recordImages
+  recordRedirects.checked = options.recordRedirects
+  recordCookies.checked = options.recordCookies
+  userAgent.value = isCustomUserAgent(options.userAgent) ? 'custom' : options.userAgent
+  customUserAgent.value = isCustomUserAgent(options.userAgent) ? options.userAgent.slice(7) : ''
+  updateCustomUserAgentVisibility()
+  clearAdvancedOptionsErrors()
+}
+
+function toggleAdvancedSection(): void {
+  advancedOptionsExpanded = !advancedOptionsExpanded
+  advancedOptionsBody.hidden = !advancedOptionsExpanded
+  toggleAdvancedOptions.textContent = advancedOptionsExpanded ? 'Hide' : 'Show'
+}
+
+function scheduleAdvancedOptionsSave(): void {
+  if (advancedOptionsSaveTimer !== null) {
+    globalThis.clearTimeout(advancedOptionsSaveTimer)
+  }
+
+  advancedOptionsSaveTimer = globalThis.setTimeout(() => {
+    advancedOptionsSaveTimer = null
+    void saveAdvancedOptions()
+  }, 300)
+}
+
+async function saveAdvancedOptions(): Promise<void> {
+  const filterValidation = validateFilterPattern(filterPattern.value)
+  const resourceValidation = validateResourceTypes({
+    recordCss: recordCss.checked,
+    recordJs: recordJs.checked,
+    recordImages: recordImages.checked,
+  })
+  const customValue = userAgent.value === 'custom' ? customUserAgent.value : ''
+  const userAgentValidation = validateCustomUserAgent(
+    userAgent.value as UserAgentSelection,
+    customValue
+  )
+
+  filterPatternError.hidden = filterValidation.valid
+  filterPatternError.textContent = filterValidation.error ?? ''
+  resourceTypeError.hidden = resourceValidation.valid
+  resourceTypeError.textContent = resourceValidation.error ?? ''
+  userAgentError.hidden = userAgentValidation.valid
+  userAgentError.textContent = userAgentValidation.error ?? ''
+
+  if (!filterValidation.valid || !resourceValidation.valid || !userAgentValidation.valid) {
+    return
+  }
+
+  const storedUserAgent: UserAgentId =
+    userAgent.value === 'custom'
+      ? (`custom:${customUserAgent.value.trim()}` as UserAgentId)
+      : (userAgent.value as UserAgentSelection as UserAgentId)
+
+  const next: AdvancedOptions = {
+    filterPattern: filterPattern.value.trim(),
+    recordCss: recordCss.checked,
+    recordJs: recordJs.checked,
+    recordImages: recordImages.checked,
+    recordRedirects: recordRedirects.checked,
+    recordCookies: recordCookies.checked,
+    userAgent: storedUserAgent,
+  }
+
+  await new AdvancedOptionsStore().save(next)
+}
+
+function updateCustomUserAgentVisibility(): void {
+  customUserAgent.hidden = userAgent.value !== 'custom'
+}
+
+function isCustomUserAgent(id: UserAgentId): boolean {
+  return id.startsWith('custom:')
+}
+
+function clearAdvancedOptionsErrors(): void {
+  filterPatternError.hidden = true
+  resourceTypeError.hidden = true
+  userAgentError.hidden = true
 }
 
 async function exportRecording(): Promise<void> {
@@ -745,14 +909,6 @@ function normalizeTransactionPanelOptions(
   }
 }
 
-function applyTheme(theme: AppTheme): void {
-  document.documentElement.dataset.theme = theme
-}
-
-function normalizeTheme(theme: unknown): AppTheme {
-  return theme === 'dark' ? 'dark' : 'light'
-}
-
 function openDetachedInspectorWindowIfEnabled(): void {
   if (transactionPanelOptions.openDetachedInspector) {
     openDetachedInspectorWindow()
@@ -833,16 +989,6 @@ function download(contents: string, filename: string): void {
   link.download = filename
   link.click()
   URL.revokeObjectURL(url)
-}
-
-function requireElement<T extends HTMLElement>(id: string): T {
-  const element = document.getElementById(id)
-
-  if (element === null) {
-    throw new Error(`Missing popup element: ${id}`)
-  }
-
-  return element as T
 }
 
 function showError(message: string): void {
@@ -930,18 +1076,4 @@ function truncate(value: string | undefined, maxLength: number): string | undefi
 
 function safeId(value: string): string {
   return value.replace(/[^a-z0-9_-]+/gi, '-')
-}
-
-function boundedNumber(value: unknown, min: number, max: number, fallback: number): number {
-  const parsed = typeof value === 'number' ? value : Number(value)
-
-  if (!Number.isFinite(parsed)) {
-    return fallback
-  }
-
-  return Math.min(max, Math.max(min, Math.trunc(parsed)))
-}
-
-function toErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : 'Unexpected error'
 }

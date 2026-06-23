@@ -1,6 +1,11 @@
 ### Backlog — newest first
 
 - [x] **009-post-impl-review** — Post-implementation review findings from `009-jmx-export-quality` delivery. High-priority items: gate the dead `redirectDedupEnabled` option, fix `as never` casts in `createRedirectFollowUp` tests, and add bounded eviction to the redirect map. Medium-priority items: revert formatting-only changes to committed files, and add edge-case tests for cross-tab isolation and disallowed-scheme `Location` headers. See dedicated section below for full action items and file references.
+- [~] **010-advanced-recorder-options** — Add advanced recorder options: URL filter pattern, resource type filtering, CookieManager output control, User-Agent override.
+   - Status: proposed
+   - Depends on: 009-jmx-export-quality stable
+   - Related spec: `specs/006-enhance-jmx-implementation.md` G21
+   - Key design: replace MV2 collapsible section with Options page section; defer backend-only options (concurrency, cache) to future iterations
 
 ### Spec 009-Post-Impl — 009 Post-Implementation Review Action Items
 
@@ -582,10 +587,10 @@ Popup:
 This keeps the existing captured-traffic export intact, reuses the existing HAR→JMX converter, and adds external HAR import as a clearly separate feature.
 
 - [~] **011-quality-uplift** — Full hardening, performance, and security review before the next enterprise-facing release.
-  - Status: proposed
-  - Depends on: core recording/export flows being stable
-  - Related specs: `specs/005-operational-hardening-roadmap.md`, `specs/006-enhance-jmx-implementation.md`, `specs/008-extension-permissions-refresh.md`
-  - Goal: identify and fix reliability, performance, privacy, and security gaps without changing the product contract.
+   - Status: proposed
+   - Depends on: core recording/export flows being stable
+   - Related specs: `specs/005-operational-hardening-roadmap.md`, `specs/006-enhance-jmx-implementation.md`, `specs/008-extension-permissions-refresh.md`
+   - Goal: identify and fix reliability, performance, privacy, and security gaps without changing the product contract.
 
 ### Spec 011 — Quality Uplift: Hardening, Performance, and Security Review
 

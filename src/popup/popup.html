@@ -68,6 +68,70 @@
 
     <div id="error" class="error" aria-live="polite"></div>
 
+    <section class="advanced-options" aria-labelledby="advancedOptionsTitle">
+      <div class="advanced-options__header">
+        <h2 id="advancedOptionsTitle">Advanced recording options</h2>
+        <button id="toggleAdvancedOptions" type="button" class="secondary">Show</button>
+      </div>
+
+      <div id="advancedOptionsBody" class="advanced-options__body" hidden>
+        <label for="filterPattern">URL filter pattern</label>
+        <textarea
+          id="filterPattern"
+          rows="2"
+          placeholder="e.g., https://api.example.com/*"
+        ></textarea>
+        <div id="filterPatternError" class="error" hidden></div>
+
+        <fieldset style="margin-top: 8px">
+          <legend style="font-size: 12px; font-weight: 700">Resource types</legend>
+          <label class="checkbox-row">
+            <input id="recordCss" type="checkbox" />
+            <span>Stylesheets/fonts</span>
+          </label>
+          <label class="checkbox-row">
+            <input id="recordJs" type="checkbox" />
+            <span>JS/XHR/navigation</span>
+          </label>
+          <label class="checkbox-row">
+            <input id="recordImages" type="checkbox" />
+            <span>Images</span>
+          </label>
+          <label class="checkbox-row">
+            <input id="recordRedirects" type="checkbox" />
+            <span>3xx redirects</span>
+          </label>
+        </fieldset>
+        <div id="resourceTypeError" class="error" hidden></div>
+
+        <label for="userAgent" style="margin-top: 8px">User-Agent</label>
+        <select id="userAgent">
+          <option value="current">Current Browser</option>
+          <option value="chrome-win">Chrome on Windows</option>
+          <option value="chrome-mac">Chrome on macOS</option>
+          <option value="chrome-linux">Chrome on Linux</option>
+          <option value="firefox-win">Firefox on Windows</option>
+          <option value="firefox-mac">Firefox on macOS</option>
+          <option value="firefox-linux">Firefox on Linux</option>
+          <option value="edge-win">Edge on Windows</option>
+          <option value="custom">Custom...</option>
+        </select>
+        <input
+          id="customUserAgent"
+          type="text"
+          placeholder="Custom User-Agent string"
+          hidden
+          style="margin-top: 4px"
+        />
+        <div id="userAgentError" class="error" hidden></div>
+
+        <label class="checkbox-row" style="margin-top: 8px">
+          <input id="recordCookies" type="checkbox" />
+          <span>Emit cookies in JMX</span>
+        </label>
+      </div>
+    </section>
+
     <section
       id="capultura-transaction-panel"
       class="transaction-panel"

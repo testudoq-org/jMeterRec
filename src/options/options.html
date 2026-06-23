@@ -92,6 +92,85 @@
       <div id="transactionPanelSaved" aria-live="polite"></div>
     </section>
 
+    <section class="options-section" aria-labelledby="advancedOptionsTitle">
+      <h2 id="advancedOptionsTitle">Advanced recording options</h2>
+      <p>Control what HTTP traffic is recorded and how it appears in exported JMX files.</p>
+
+      <label for="filterPattern">URL filter pattern</label>
+      <textarea
+        id="filterPattern"
+        rows="2"
+        placeholder="e.g., https://api.example.com/*"
+      ></textarea>
+      <div
+        id="filterPatternError"
+        class="error"
+        style="display: none; color: #dc2626; margin-top: 4px"
+      ></div>
+
+      <fieldset id="resourceTypeFilters" style="margin-top: 16px">
+        <legend style="font-weight: 700; margin-bottom: 8px">Resource types to record</legend>
+        <label class="checkbox-row">
+          <input id="recordCss" type="checkbox" />
+          <span>Stylesheets and font files</span>
+        </label>
+        <label class="checkbox-row">
+          <input id="recordJs" type="checkbox" />
+          <span>JavaScript, XHR/fetch, and page navigation</span>
+        </label>
+        <label class="checkbox-row">
+          <input id="recordImages" type="checkbox" />
+          <span>Images and favicons</span>
+        </label>
+        <label class="checkbox-row">
+          <input id="recordRedirects" type="checkbox" />
+          <span>3xx redirect responses</span>
+        </label>
+      </fieldset>
+      <div
+        id="resourceTypeError"
+        class="error"
+        style="display: none; color: #dc2626; margin-top: 4px"
+      ></div>
+
+      <label for="userAgent" style="margin-top: 16px">User-Agent override</label>
+      <select id="userAgent">
+        <option value="current">Current Browser</option>
+        <option value="chrome-win">Chrome on Windows</option>
+        <option value="chrome-mac">Chrome on macOS</option>
+        <option value="chrome-linux">Chrome on Linux</option>
+        <option value="firefox-win">Firefox on Windows</option>
+        <option value="firefox-mac">Firefox on macOS</option>
+        <option value="firefox-linux">Firefox on Linux</option>
+        <option value="edge-win">Edge on Windows</option>
+        <option value="custom">Custom...</option>
+      </select>
+      <input
+        id="customUserAgent"
+        type="text"
+        placeholder="Custom User-Agent string"
+        style="display: none; margin-top: 8px"
+      />
+      <div
+        id="userAgentError"
+        class="error"
+        style="display: none; color: #dc2626; margin-top: 4px"
+      ></div>
+
+      <label class="checkbox-row" style="margin-top: 16px">
+        <input id="recordCookies" type="checkbox" />
+        <span>Emit cookies via CookieManager in JMX output</span>
+      </label>
+
+      <button id="saveAdvancedOptions" type="button" style="margin-top: 20px">
+        Save advanced options
+      </button>
+      <button id="resetAdvancedOptions" type="button" style="margin-left: 8px; background: #64748b">
+        Reset to defaults
+      </button>
+      <div id="advancedSaved" aria-live="polite"></div>
+    </section>
+
     <script type="module" src="./options.ts"></script>
   </body>
 </html>

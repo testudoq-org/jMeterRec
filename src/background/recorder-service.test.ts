@@ -4,7 +4,9 @@ import type { RecorderState } from './recorder-state'
 import type { TrafficCaptureService } from './traffic-capture'
 import type { ActionStep, CapturedRequest } from '../models/captured-request'
 import type { JmxOptionsStore } from '../options/jmx-options'
+import type { AdvancedOptionsStore } from '../options/advanced-options'
 import { DEFAULT_JMX_OPTIONS } from '../options/jmx-options'
+import { DEFAULT_ADVANCED_OPTIONS } from '../options/advanced-options'
 
 const createMockState = (): RecorderState => {
   const actions: ActionStep[] = []
@@ -60,6 +62,14 @@ const createMockJmxOptionsStore = (options = DEFAULT_JMX_OPTIONS): JmxOptionsSto
   return {
     load: vi.fn(async () => ({ ...options })),
   } as unknown as JmxOptionsStore
+}
+
+const createMockAdvancedOptionsStore = (
+  options = DEFAULT_ADVANCED_OPTIONS
+): AdvancedOptionsStore => {
+  return {
+    load: vi.fn(async () => ({ ...options })),
+  } as unknown as AdvancedOptionsStore
 }
 
 function request(id: string, url: string): CapturedRequest {
@@ -131,6 +141,7 @@ describe('RecorderService', () => {
       state: mockState,
       trafficCapture: createMockTrafficCapture(),
       jmxOptionsStore: createMockJmxOptionsStore(),
+      advancedOptionsStore: createMockAdvancedOptionsStore(),
     })
 
     const response = await service.handleMessage({
@@ -181,6 +192,7 @@ describe('RecorderService', () => {
         assertionExpectStatus: 200,
         redirectDedupEnabled: false,
       }),
+      advancedOptionsStore: createMockAdvancedOptionsStore(),
     })
 
     const response = await service.handleMessage({
