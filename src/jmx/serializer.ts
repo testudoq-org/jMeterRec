@@ -1,6 +1,7 @@
 import type { CapturedRequest, PlanMeta } from '../models/captured-request'
 import type { UserAgentId } from '../options/advanced-options'
 import { getUserAgentString } from '../options/user-agents'
+import { analyzeRequestDefaults, createHTTPRequestDefaults } from './element-model'
 
 export interface JmxSerializerOptions {
   thinkTime?: { enabled: boolean; randomize: boolean; rangePercent: number }
@@ -22,6 +23,9 @@ export function buildJmx(
   requests: CapturedRequest[],
   options?: JmxSerializerOptions
 ): string {
+  const { primaryDomain, primaryPort, primaryProtocol } = analyzeRequestDefaults(requests)
+
+  // MODIFIED: Added inheritance flags from defaults analysis
   const samplers = requests
     .map((req, idx) => {
       const prev = idx > 0 ? requests[idx - 1] : undefined
@@ -37,7 +41,13 @@ export function buildJmx(
       // Prepare headers with cookie/user-agent handling
       const processedHeaders = processHeaders(req.headers, options)
 
-      return `${timerMarkup}${buildSampler(req, idx, processedHeaders)}${assertionMarkup}\n        <hashTree/>`
+      // NEW: Pass inheritance flags so buildSampler can omit defaulted properties
+      const defaults =
+        primaryDomain || primaryPort || primaryProtocol
+          ? { domain: primaryDomain, port: primaryPort, protocol: primaryProtocol }
+          : undefined
+
+      return `${timerMarkup}${buildSampler(req, idx, processedHeaders, defaults)}${assertionMarkup}\n        <hashTree/>`
     })
     .join('\n')
 
@@ -45,77 +55,92 @@ export function buildJmx(
   const cookieManager =
     options?.recordCookies !== false ? buildCookieManager(collectAllCookies(requests)) : ''
 
+  // NEW: Emit HTTPRequestDefaults before CookieManager and samplers in ThreadGroup
+  const httpRequestDefaults = buildHTTPRequestDefaults(primaryDomain, primaryPort, primaryProtocol)
+
   return `<?xml version="1.0" encoding="UTF-8"?>
- <jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
-  <hashTree>
-    <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="${xmlEsc(meta.name)}" enabled="true">
-      <stringProp name="TestPlan.comments"></stringProp>
-      <stringProp name="TestPlan.functional_mode">false</stringProp>
-      <boolProp name="TestPlan.serialize_threadgroups">false</boolProp>
-      <elementProp name="TestPlan.user_defined_variables" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
-        <collectionProp name="Arguments.arguments" />
-      </elementProp>
-    </TestPlan>
-    <hashTree>
-      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Thread Group" enabled="true">
-        <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
-        <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController" testname="Loop Controller" enabled="true">
-          <boolProp name="LoopController.continue_forever">false</boolProp>
-          <stringProp name="LoopController.loops">${meta.threadGroup.loops}</stringProp>
-        </elementProp>
-        <stringProp name="ThreadGroup.num_threads">${meta.threadGroup.threads}</stringProp>
-        <stringProp name="ThreadGroup.ramp_time">${meta.threadGroup.rampUp}</stringProp>
-        <boolProp name="ThreadGroup.scheduler">false</boolProp>
-        <stringProp name="ThreadGroup.duration"></stringProp>
-        <stringProp name="ThreadGroup.delay"></stringProp>
-        <boolProp name="ThreadGroup.same_user_on_next_iteration">true</boolProp>
-      </ThreadGroup>
-      <hashTree>
-${cookieManager}${samplers}
-      </hashTree>
-    </hashTree>
-  </hashTree>
- </jmeterTestPlan>`
+  <jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
+   <hashTree>
+     <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="${xmlEsc(meta.name)}" enabled="true">
+       <stringProp name="TestPlan.comments"></stringProp>
+       <stringProp name="TestPlan.functional_mode">false</stringProp>
+       <boolProp name="TestPlan.serialize_threadgroups">false</boolProp>
+       <elementProp name="TestPlan.user_defined_variables" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+         <collectionProp name="Arguments.arguments" />
+       </elementProp>
+     </TestPlan>
+     <hashTree>
+       <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Thread Group" enabled="true">
+         <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+         <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController" testname="Loop Controller" enabled="true">
+           <boolProp name="LoopController.continue_forever">false</boolProp>
+           <stringProp name="LoopController.loops">${meta.threadGroup.loops}</stringProp>
+         </elementProp>
+         <stringProp name="ThreadGroup.num_threads">${meta.threadGroup.threads}</stringProp>
+         <stringProp name="ThreadGroup.ramp_time">${meta.threadGroup.rampUp}</stringProp>
+         <boolProp name="ThreadGroup.scheduler">false</boolProp>
+         <stringProp name="ThreadGroup.duration"></stringProp>
+         <stringProp name="ThreadGroup.delay"></stringProp>
+         <boolProp name="ThreadGroup.same_user_on_next_iteration">true</boolProp>
+       </ThreadGroup>
+       <hashTree>
+${httpRequestDefaults}${cookieManager}${samplers}
+       </hashTree>
+     </hashTree>
+   </hashTree>
+  </jmeterTestPlan>`
 }
 
-function buildSampler(req: CapturedRequest, idx: number, headers: Record<string, string>): string {
+// MODIFIED: Added optional `defaults` parameter to support HTTPRequestDefaults inheritance
+function buildSampler(
+  req: CapturedRequest,
+  idx: number,
+  headers: Record<string, string>,
+  defaults?: { domain: string; port: string; protocol: string }
+): string {
   const url = parseUrl(req.url)
   const host = url?.host ?? ''
   const path = url?.path ?? req.url
-  const protocol = url?.protocol ?? 'http'
+  const protocol = (url?.protocol ?? 'http').replace(':', '')
   const port = url?.port ?? ''
+
   const name = `${req.method} ${host}${path} #${idx}`
 
   const body = req.responseBody ?? req.body ?? ''
   const bodyCdata = escapeCdata(body)
 
+  // NEW: Determine which properties are inherited from HTTPRequestDefaults
+  const omitDomain = defaults !== undefined && url?.hostname === defaults.domain
+  const omitProtocol = defaults !== undefined && protocol === defaults.protocol
+  const omitPort = defaults !== undefined && port === defaults.port
+
   return `        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="${xmlEsc(name)}" enabled="true">
-           <boolProp name="HTTPSampler.postBodyRaw">${supportsRequestBody(req.method)}</boolProp>
-           <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
-             <collectionProp name="Arguments.arguments">
-               <elementProp name="" elementType="HTTPArgument" guiclass="HTTPArgumentGui" testclass="HTTPArgument" testname="Argument" enabled="true">
-                 <boolProp name="HTTPArgument.always_encode">false</boolProp>
-                 <stringProp name="Argument.name"></stringProp>
-                 <stringProp name="Argument.value"><![CDATA[${bodyCdata}]]></stringProp>
-                 <stringProp name="Argument.metadata">=</stringProp>
-               </elementProp>
-${buildQueryParams(req.queryParams)}
-             </collectionProp>
-           </elementProp>
-           <stringProp name="HTTPSampler.domain">${xmlEsc(host)}</stringProp>
-           <stringProp name="HTTPSampler.port">${xmlEsc(port)}</stringProp>
-           <stringProp name="HTTPSampler.protocol">${xmlEsc(protocol)}</stringProp>
-           <stringProp name="HTTPSampler.path">${xmlEsc(path)}</stringProp>
-           <stringProp name="HTTPSampler.method">${xmlEsc(req.method)}</stringProp>
-           <boolProp name="HTTPSampler.follow_redirects">${req.followRedirects ?? true}</boolProp>
-           <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
-           <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
-           <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
-           <stringProp name="HTTPSampler.embedded_url_re"></stringProp>
-           <stringProp name="HTTPSampler.connect_timeout"></stringProp>
-           <stringProp name="HTTPSampler.response_timeout"></stringProp>
-   ${buildHeaders(headers)}
-         </HTTPSamplerProxy>`
+            <boolProp name="HTTPSampler.postBodyRaw">${supportsRequestBody(req.method)}</boolProp>
+            <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+              <collectionProp name="Arguments.arguments">
+                <elementProp name="" elementType="HTTPArgument" guiclass="HTTPArgumentGui" testclass="HTTPArgument" testname="Argument" enabled="true">
+                  <boolProp name="HTTPArgument.always_encode">false</boolProp>
+                  <stringProp name="Argument.name"></stringProp>
+                  <stringProp name="Argument.value"><![CDATA[${bodyCdata}]]></stringProp>
+                  <stringProp name="Argument.metadata">=</stringProp>
+                </elementProp>
+ ${buildQueryParams(req.queryParams)}
+              </collectionProp>
+            </elementProp>
+            ${!omitDomain ? `            <stringProp name="HTTPSampler.domain">${xmlEsc(host)}</stringProp>` : ''}
+            ${!omitPort ? `            <stringProp name="HTTPSampler.port">${xmlEsc(port)}</stringProp>` : ''}
+            ${!omitProtocol ? `            <stringProp name="HTTPSampler.protocol">${xmlEsc(protocol)}</stringProp>` : ''}
+            <stringProp name="HTTPSampler.path">${xmlEsc(path)}</stringProp>
+            <stringProp name="HTTPSampler.method">${xmlEsc(req.method)}</stringProp>
+            <boolProp name="HTTPSampler.follow_redirects">${req.followRedirects ?? true}</boolProp>
+            <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+            <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+            <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+            <stringProp name="HTTPSampler.embedded_url_re"></stringProp>
+            <stringProp name="HTTPSampler.connect_timeout"></stringProp>
+            <stringProp name="HTTPSampler.response_timeout"></stringProp>
+    ${buildHeaders(headers)}
+          </HTTPSamplerProxy>`
 }
 
 function buildHeaders(headers: Record<string, string>): string {
@@ -149,12 +174,13 @@ ${headerElements}
 
 function parseUrl(
   rawUrl: string
-): { host: string; path: string; protocol: string; port: string } | undefined {
+): { host: string; hostname: string; path: string; protocol: string; port: string } | undefined {
   try {
     const url = new URL(rawUrl)
 
     return {
       host: url.host,
+      hostname: url.hostname,
       path: url.pathname,
       protocol: url.protocol.replace(':', ''),
       port: url.port,
@@ -279,12 +305,24 @@ function buildCookieManager(cookies: Array<{ name: string; value: string }>): st
     .join('\n')
 
   return `          <CookieManager guiclass="CookiePanel" testclass="CookieManager" testname="HTTP Cookie Manager" enabled="true">
-             <collectionProp name="CookieManager.cookies">
-${entries}
-             </collectionProp>
-             <stringProp name="CookieManager.eachCookieIsolate">false</stringProp>
-           </CookieManager>
-           <hashTree/>\n`
+              <collectionProp name="CookieManager.cookies">
+ ${entries}
+              </collectionProp>
+              <stringProp name="CookieManager.eachCookieIsolate">false</stringProp>
+            </CookieManager>
+            <hashTree/>\n`
+}
+
+// NEW: Build HTTPRequestDefaults element to deduplicate host/protocol/port across samplers
+function buildHTTPRequestDefaults(domain: string, port: string, protocol: string): string {
+  const defaults = createHTTPRequestDefaults(domain, port, protocol)
+
+  return `          <${defaults.type} guiclass="${defaults.guiClass}" testclass="${defaults.testClass}" testname="${xmlEsc(defaults.name)}" enabled="true">
+            <stringProp name="HTTPSampler.domain">${xmlEsc(defaults.domain)}</stringProp>
+            <stringProp name="HTTPSampler.port">${xmlEsc(defaults.port)}</stringProp>
+            <stringProp name="HTTPSampler.protocol">${xmlEsc(defaults.protocol)}</stringProp>
+          </${defaults.type}>
+          <hashTree/>\n`
 }
 
 function buildQueryParams(queryParams: Record<string, string>): string {

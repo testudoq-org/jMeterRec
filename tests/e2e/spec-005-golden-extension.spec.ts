@@ -82,8 +82,9 @@ test('records a synthetic flow and exports deterministic JMX and Playwright gold
     expect(playwright).toContain("await page.fill('#username', 'alice')")
     expect(playwright).toContain("await page.fill('#password', 'secret')")
     expect(playwright).toContain("await page.click('#submit-login')")
-    expect(jmx).toContain('<stringProp name="HTTPSampler.domain">127.0.0.1:3144</stringProp>')
-    expect(jmx).toContain('<stringProp name="HTTPSampler.path">/api/search?term=gold</stringProp>')
+    expect(jmx).toContain('<stringProp name="HTTPSampler.domain">127.0.0.1</stringProp>')
+    expect(jmx).toContain('<stringProp name="HTTPSampler.port">3144</stringProp>')
+    expect(jmx).toContain('<stringProp name="HTTPSampler.path">/api/search</stringProp>')
     expect(jmx).toContain('<stringProp name="HTTPSampler.path">/api/login</stringProp>')
     expect(jmx).toContain(
       '<stringProp name="Argument.value"><![CDATA[{"username":"alice","password":"secret"}]]></stringProp>'

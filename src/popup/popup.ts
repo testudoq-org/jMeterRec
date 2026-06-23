@@ -8,7 +8,14 @@ import {
   type UserAgentSelection,
   type UserAgentId,
 } from '../options/advanced-options'
-import { applyTheme, boundedNumber, normalizeTheme, requireElement, toErrorMessage, type AppTheme } from '../shared/dom-utils'
+import {
+  applyTheme,
+  boundedNumber,
+  normalizeTheme,
+  requireElement,
+  toErrorMessage,
+  type AppTheme,
+} from '../shared/dom-utils'
 import type { BackgroundRequest, BackgroundResponse, RecorderSnapshot } from '../messages'
 import type { CapturedRequest } from '../models/captured-request'
 

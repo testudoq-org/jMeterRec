@@ -586,11 +586,12 @@ Popup:
 
 This keeps the existing captured-traffic export intact, reuses the existing HAR→JMX converter, and adds external HAR import as a clearly separate feature.
 
-- [~] **011-quality-uplift** — Full hardening, performance, and security review before the next enterprise-facing release.
+- [~] **011-quality-uplift** — Full hardening, performance, and security review before the next enterprise-facing release, including a comparative JMX architecture investigation against `EmanuelRico/jmeter-script-visualizer`.
    - Status: proposed
    - Depends on: core recording/export flows being stable
    - Related specs: `specs/005-operational-hardening-roadmap.md`, `specs/006-enhance-jmx-implementation.md`, `specs/008-extension-permissions-refresh.md`
-   - Goal: identify and fix reliability, performance, privacy, and security gaps without changing the product contract.
+   - Goal: identify and fix reliability, performance, privacy, and security gaps without changing the product contract; evaluate whether a lightweight JMX element model and typed serializer should replace the current template-literal generator.
+   - Dedicated spec: `specs/011-quality-uplift.md`
 
 ### Spec 011 — Quality Uplift: Hardening, Performance, and Security Review
 

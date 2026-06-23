@@ -15,8 +15,7 @@ export function toErrorMessage(err: unknown): string {
 }
 
 export function boundedNumber(value: unknown, min: number, max: number, fallback: number): number {
-  const parsed =
-    typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
+  const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
 
   if (!Number.isFinite(parsed)) {
     return fallback

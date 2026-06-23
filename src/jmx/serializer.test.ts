@@ -657,4 +657,138 @@ describe('buildJmx', () => {
       expect(jmx).toContain('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
     })
   })
+
+  describe('HTTPRequestDefaults', () => {
+    it('emits HTTPRequestDefaults when all requests share a host', () => {
+      const requests: CapturedRequest[] = [
+        {
+          id: '1',
+          timestamp: '2024-01-01T00:00:00Z',
+          method: 'GET',
+          url: 'https://api.example.com/users',
+          headers: {},
+          queryParams: {},
+        },
+        {
+          id: '2',
+          timestamp: '2024-01-01T00:00:01Z',
+          method: 'GET',
+          url: 'https://api.example.com/posts',
+          headers: {},
+          queryParams: {},
+        },
+      ]
+
+      const jmx = buildJmx(meta, requests)
+
+      expect(jmx).toContain('HTTP Request Defaults')
+      expect(jmx).toContain('HTTPSampler.domain">api.example.com')
+      expect(jmx).toContain('HTTPSampler.port">443')
+      expect(jmx).toContain('HTTPSampler.protocol">https')
+    })
+
+    it('omits inherited domain/port/protocol from individual samplers', () => {
+      const requests: CapturedRequest[] = [
+        {
+          id: '1',
+          timestamp: '2024-01-01T00:00:00Z',
+          method: 'GET',
+          url: 'https://api.example.com/users',
+          headers: {},
+          queryParams: {},
+        },
+      ]
+
+      const jmx = buildJmx(meta, requests)
+
+      // Defaults appears once
+      const defaultsMatches = jmx.match(/HTTPSampler\.domain/g) ?? []
+      expect(defaultsMatches.length).toBe(1)
+
+      // Sampler does not contain its own domain/port/protocol props
+      const samplerDomains = jmx.match(/<HTTPSamplerProxy[\s\S]*?HTTPSampler\.domain/g)
+      expect(samplerDomains?.length ?? 0).toBe(0)
+    })
+
+    it('allows cross-host samplers to override defaults', () => {
+      const requests: CapturedRequest[] = [
+        {
+          id: '1',
+          timestamp: '2024-01-01T00:00:00Z',
+          method: 'GET',
+          url: 'https://api.example.com/users',
+          headers: {},
+          queryParams: {},
+        },
+        {
+          id: '2',
+          timestamp: '2024-01-01T00:00:01Z',
+          method: 'GET',
+          url: 'https://cdn.other.com/image.png',
+          headers: {},
+          queryParams: {},
+        },
+      ]
+
+      const jmx = buildJmx(meta, requests)
+
+      // Defaults should be the most frequent host
+      expect(jmx).toContain('>api.example.com<')
+
+      // Second sampler should explicitly include its domain
+      const secondSampler = jmx.split('<HTTPSamplerProxy')[2] ?? ''
+      expect(secondSampler).toContain('>cdn.other.com<')
+    })
+
+    it('emits empty HTTPRequestDefaults for empty request list', () => {
+      const jmx = buildJmx(meta, [])
+
+      expect(jmx).toContain('HTTP Request Defaults')
+      expect(jmx).toContain('HTTPSampler.domain"></stringProp>')
+    })
+
+    it('handles malformed URLs gracefully', () => {
+      const requests: CapturedRequest[] = [
+        {
+          id: '1',
+          timestamp: '2024-01-01T00:00:00Z',
+          method: 'GET',
+          url: 'not-a-valid-url',
+          headers: {},
+          queryParams: {},
+        },
+      ]
+
+      const jmx = buildJmx(meta, requests)
+
+      // Should not throw; defaults fall back to empty strings
+      expect(jmx).toContain('HTTP Request Defaults')
+    })
+
+    it('defaults to empty strings for mixed valid and malformed URLs', () => {
+      const requests: CapturedRequest[] = [
+        {
+          id: '1',
+          timestamp: '2024-01-01T00:00:00Z',
+          method: 'GET',
+          url: 'not-a-valid-url',
+          headers: {},
+          queryParams: {},
+        },
+        {
+          id: '2',
+          timestamp: '2024-01-01T00:00:01Z',
+          method: 'GET',
+          url: 'https://api.example.com/users',
+          headers: {},
+          queryParams: {},
+        },
+      ]
+
+      const jmx = buildJmx(meta, requests)
+
+      expect(jmx).toContain('>api.example.com<')
+      expect(jmx).toContain('HTTP Request Defaults')
+    })
+  })
 })
