@@ -17,6 +17,7 @@ Implemented in the current branch:
 - Shared popup/options theme setting
 - Unit tests for serializer, recorder state, traffic normalizer, action recording, Playwright generation, popup state, and options normalization
 - Golden E2E extension export tests (`tests/e2e/spec-005-golden-extension.spec.ts`)
+- Cross-window sync E2E test validating popup ↔ options page state synchronization
 - Recorder state E2E tests (`tests/e2e/spec-001-extension.spec.ts`)
 - HAR 1.2 builder and HAR→JMX conversion pipeline
 - Permission refresh with `scripting` and `browsingData`
@@ -44,6 +45,14 @@ UPDATE_GOLDEN=1 npx playwright test
 E2E tests require Chromium and the fixture server. Tests live in `tests/e2e/` and use
 `playwright.config.ts`. Golden fixtures are in `tests/fixtures/golden/` and the local
 fixture server is `scripts/e2e-server.mjs`.
+
+## Code quality
+
+```bash
+npm run test:coverage   # unit tests with V8 coverage
+npm run dry             # duplicate code detection (dry4js)
+npm run crap            # CRAP risk analysis (crap4js)
+```
 
 ## Quick start
 

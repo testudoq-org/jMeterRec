@@ -7,6 +7,14 @@ import {
   type UserAgentSelection,
   type UserAgentId,
 } from './advanced-options'
+import {
+  applyTheme,
+  boundedNumber,
+  normalizeTheme,
+  requireElement,
+  toErrorMessage,
+  type AppTheme,
+} from '../shared/dom-utils'
 
 interface RecorderOptions {
   defaultPlanName: string
@@ -26,8 +34,6 @@ interface TransactionPanelOptions {
   openDetachedInspector: boolean
   captureResponseBody: boolean
 }
-
-type AppTheme = 'light' | 'dark'
 
 interface AppearanceOptions {
   theme: AppTheme
@@ -376,17 +382,9 @@ function normalizeOptions(options: StoredOptions): StoredOptions {
   }
 }
 
-function applyTheme(theme: AppTheme): void {
-  document.documentElement.dataset.theme = theme
-}
-
 function positiveNumber(value: unknown, fallback: number): number {
   const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
-}
-
-function normalizeTheme(theme: unknown): AppTheme {
-  return theme === 'dark' ? 'dark' : 'light'
 }
 
 function updateCaptureWarning(enabled: boolean): void {
@@ -396,28 +394,4 @@ function updateCaptureWarning(enabled: boolean): void {
   }
 
   el.style.display = enabled ? 'block' : 'none'
-}
-
-function boundedNumber(value: unknown, min: number, max: number, fallback: number): number {
-  const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
-
-  if (!Number.isFinite(parsed)) {
-    return fallback
-  }
-
-  return Math.min(max, Math.max(min, Math.trunc(parsed)))
-}
-
-function requireElement<T extends HTMLElement>(id: string): T {
-  const element = document.getElementById(id)
-
-  if (element === null) {
-    throw new Error(`Missing options element: ${id}`)
-  }
-
-  return element as T
-}
-
-function toErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : 'Unexpected error'
 }

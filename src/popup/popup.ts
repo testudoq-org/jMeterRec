@@ -8,13 +8,13 @@ import {
   type UserAgentSelection,
   type UserAgentId,
 } from '../options/advanced-options'
+import { applyTheme, boundedNumber, normalizeTheme, requireElement, toErrorMessage, type AppTheme } from '../shared/dom-utils'
 import type { BackgroundRequest, BackgroundResponse, RecorderSnapshot } from '../messages'
 import type { CapturedRequest } from '../models/captured-request'
 
 type ResponseWithSnapshot = Extract<BackgroundResponse, { snapshot?: RecorderSnapshot }>
 type TransactionRequest = CapturedRequest & { responseBody?: string }
 type RequestCapturedMessage = { type: 'REQUEST_CAPTURED'; request: TransactionRequest }
-type AppTheme = 'light' | 'dark'
 
 interface TransactionPanelOptions {
   maxTransactions: number
@@ -909,14 +909,6 @@ function normalizeTransactionPanelOptions(
   }
 }
 
-function applyTheme(theme: AppTheme): void {
-  document.documentElement.dataset.theme = theme
-}
-
-function normalizeTheme(theme: unknown): AppTheme {
-  return theme === 'dark' ? 'dark' : 'light'
-}
-
 function openDetachedInspectorWindowIfEnabled(): void {
   if (transactionPanelOptions.openDetachedInspector) {
     openDetachedInspectorWindow()
@@ -997,16 +989,6 @@ function download(contents: string, filename: string): void {
   link.download = filename
   link.click()
   URL.revokeObjectURL(url)
-}
-
-function requireElement<T extends HTMLElement>(id: string): T {
-  const element = document.getElementById(id)
-
-  if (element === null) {
-    throw new Error(`Missing popup element: ${id}`)
-  }
-
-  return element as T
 }
 
 function showError(message: string): void {
@@ -1094,18 +1076,4 @@ function truncate(value: string | undefined, maxLength: number): string | undefi
 
 function safeId(value: string): string {
   return value.replace(/[^a-z0-9_-]+/gi, '-')
-}
-
-function boundedNumber(value: unknown, min: number, max: number, fallback: number): number {
-  const parsed = typeof value === 'number' ? value : Number(value)
-
-  if (!Number.isFinite(parsed)) {
-    return fallback
-  }
-
-  return Math.min(max, Math.max(min, Math.trunc(parsed)))
-}
-
-function toErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : 'Unexpected error'
 }
