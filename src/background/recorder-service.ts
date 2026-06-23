@@ -269,6 +269,14 @@ export class RecorderService {
   private handleExportJmxMessage(
     message: Extract<BackgroundRequest, { type: 'EXPORT_JMX' }>
   ): Promise<BackgroundResponse> {
+    // Validate includedDomains is an array
+    if (!Array.isArray(message.includedDomains)) {
+      return Promise.resolve({
+        success: false,
+        error: 'Invalid includedDomains: expected an array.',
+      })
+    }
+
     return this.buildJmxExportResponse(message.includedDomains)
   }
 

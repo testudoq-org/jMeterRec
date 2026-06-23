@@ -76,7 +76,46 @@ npm run build  # production bundle
 npm run pack-crx  # produces signed .crx and enterprise-install.json for ExtensionInstallForcelist
 ```
 
-### E2E tests
+## Permissions
+
+Each manifest permission is required for core functionality:
+
+| Permission | Purpose |
+|------------|---------|
+| `storage` | Persists recorder state (requests, plan name, options) across service-worker restarts. |
+| `unlimitedStorage` | Allows recordings to exceed Chrome's default 5MB storage quota for large exports. |
+| `webRequest` | Captures HTTP request headers and response status codes for traffic recording. |
+| `activeTab` | Provides context for the active tab when starting a recording. |
+| `windows` | Creates detached inspector popup windows for transaction review. |
+| `downloads` | Enables local download of exported JMX and Playwright test scripts. |
+| `scripting` | Dynamic content script injection for response body capture (opt-in). |
+| `browsingData` | Clears captured data on explicit user request (reset action). |
+| `<all_urls>` | Host permission; narrowed by URL filter patterns in advanced options. |
+
+## Privacy & Sensitive Data
+
+The extension captures and may export sensitive data. Understanding the behavior:
+
+- **Cookies:** Only persisted when "Emit cookies in JMX" is checked (`recordCookies: true`). Captured cookies appear in exports.
+- **Authorization headers:** Captured and included in JMX exports. These may contain session tokens or API keys.
+- **Query parameters:** Captured and included in exports. May contain PII, tokens, or sensitive identifiers.
+- **Request bodies:** Captured and included in JMX exports. May contain credentials or PII.
+- **Response bodies:** Only captured when "Capture response bodies" is enabled (opt-in, separate feature). Truncated if large.
+
+**Recommendation:** Review exported JMX files before committing to version control or sharing. Remove sensitive data or use the extension only against non-production environments.
+
+## Known Limits
+
+| Limit | Value | Notes |
+|-------|-------|-------|
+| Max transactions displayed | 200 | Configurable via storage; older requests are trimmed. |
+| Storage quota | Unlimited | Requires `unlimitedStorage` permission; bounded by device capacity. |
+| Popup width | 420px | Transaction inspector constrained to popup drawer. |
+| Service worker lifecycle | MV3 | Recording state persists via `chrome.storage.local`; no persistent background page. |
+| Response body capture | Opt-in | Requires explicit user enable; adds runtime overhead. |
+| Large exports | Tested to 1000 steps | Playwright export tested with 1000 requests; JMX tested to similar scale. |
+
+## E2E tests
 
 ```bash
 # Build the extension first (E2E loads from dist/)

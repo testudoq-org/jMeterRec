@@ -19,9 +19,6 @@
     "scripting",
     "browsingData"
   ],
-  // `downloads`: save JMX / HAR files generated locally by the extension.
-  // `scripting`: dynamic content-script injection for app-frame lifecycle hooks.
-  // `browsingData`: reset-scope cookie/cache wipe for the extension's own session data.
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background/background.js",
