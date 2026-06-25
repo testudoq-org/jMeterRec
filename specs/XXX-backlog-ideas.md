@@ -151,7 +151,7 @@ npm test && npm run typecheck && npm run lint
 - [ ] New edge-case tests cover cross-tab, disallowed scheme, pre-completion follow-up, and relative Location.
 - [ ] `specs/009-jmx-export-quality.md` acceptance criteria reflects actual delivered assertion behavior.
 
-- [~] **012-external-har-import-and-convert-to-jmx** — Add a separate external HAR import path that reads a user-selected `.har` file, validates it, optionally filters by domain, and converts it to JMX using the existing `convertHarToJmx()` pipeline.
+- [x] **012-external-har-import-and-convert-to-jmx** (implemented) — Add a separate external HAR import path that reads a user-selected `.har` file, validates it, optionally filters by domain, and converts it to JMX using the existing `convertHarToJmx()` pipeline.
   - Status: proposed
   - Depends on: stable popup JMX export UI, `convertHarToJmx()`, `downloads` permission, HAR validation helpers
   - Related spec: `specs/008-extension-permissions-refresh.md` open question on HAR schema completeness
