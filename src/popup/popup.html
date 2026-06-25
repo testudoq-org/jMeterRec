@@ -61,6 +61,41 @@
         </fieldset>
       </div>
 
+      <!-- EXTERNAL HAR IMPORT: Parallel import path for HAR files -->
+      <div id="importHarSection" class="card" style="display: none; margin-bottom: 12px">
+        <div class="card-header">
+          <h2>Import HAR file</h2>
+        </div>
+        <p class="muted" style="font-size: 12px; margin: 0 0 8px">
+          Select a .har file exported from browser DevTools or other proxy tools. The file is
+          processed locally and never sent to any server.
+        </p>
+        <div
+          id="importHarPrivacyNotice"
+          class="status-warning"
+          style="font-size: 12px; padding: 6px 8px; margin-bottom: 8px; border-radius: 4px"
+        >
+          HAR files may contain cookies, authorization headers, query tokens, and request/response
+          bodies. This data will be included in the JMX output unless manually removed from the
+          file.
+        </div>
+        <div class="field">
+          <label for="importHarFile">HAR file</label>
+          <input id="importHarFile" type="file" accept=".har,application/json" />
+        </div>
+        <div id="importHarError" class="error" aria-live="polite"></div>
+
+        <fieldset id="importHarFieldset" hidden>
+          <legend>Domains to include</legend>
+          <div id="importHarDomains" class="domain-list"></div>
+          <div id="importHarDomainStatus" class="domain-status"></div>
+          <div id="importHarDomainError" class="error" aria-live="polite"></div>
+          <button id="convertHarToJmx" class="secondary" disabled type="button">
+            Convert HAR to JMX
+          </button>
+        </fieldset>
+      </div>
+
       <div class="row">
         <button id="clear" class="secondary" type="button">Clear</button>
       </div>

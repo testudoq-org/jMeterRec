@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { convertHarToJmx } from './har-to-jmx'
+import { convertHarToJmx, validateHar, extractHarDomains } from './har-to-jmx'
 import type { HAR } from './har-to-jmx'
 import type { PlanMeta } from '../models/captured-request'
 
@@ -184,11 +184,278 @@ describe('convertHarToJmx', () => {
     expect(jmx).toContain('Bearer token123')
   })
 
-  it('handles empty HAR entries array', () => {
+  it('throws on empty HAR entries array', () => {
     const har = buildMinimalHar([])
-    const jmx = convertHarToJmx(har, meta)
+    expect(() => validateHar(har)).toThrow('Invalid HAR: no entries found')
+  })
+})
 
-    expect(jmx).toContain('testname="Test Plan"')
-    expect(jmx).not.toContain('HTTPSamplerProxy')
+describe('validateHar', () => {
+  it('throws on missing log', () => {
+    expect(() => validateHar({ log: undefined as unknown as HAR['log'] })).toThrow(
+      'Invalid HAR: missing log object'
+    )
+  })
+
+  it('throws when log is null', () => {
+    expect(() => validateHar({ log: null as unknown as HAR['log'] })).toThrow(
+      'Invalid HAR: missing log object'
+    )
+  })
+
+  it('throws on unsupported HAR version', () => {
+    const har = buildMinimalHar([])
+    const badVersion = { ...har, log: { ...har.log, version: '1.1' } }
+    expect(() => validateHar(badVersion)).toThrow('Unsupported HAR version: 1.1')
+  })
+
+  it('throws when log.entries is not an array', () => {
+    const har = {
+      ...buildMinimalHar([]),
+      log: { ...buildMinimalHar([]).log, entries: null as unknown as HAR['log']['entries'] },
+    }
+    expect(() => validateHar(har)).toThrow('Invalid HAR: log.entries must be an array')
+  })
+
+  it('throws when entries is an empty array', () => {
+    const har = buildMinimalHar([])
+    expect(() => validateHar(har)).toThrow('Invalid HAR: no entries found')
+  })
+
+  it('throws when entry is missing request fields', () => {
+    const har: HAR = {
+      log: {
+        version: '1.2',
+        creator: { name: 'Test', version: '1.0' },
+        entries: [
+          {
+            startedDateTime: '2026-01-01T00:00:00.000Z',
+            response: {} as HAR['log']['entries'][number]['response'],
+            timings: {} as HAR['log']['entries'][number]['timings'],
+          } as unknown as HAR['log']['entries'][number],
+        ],
+      },
+    }
+    expect(() => validateHar(har)).toThrow('Invalid HAR entry at index 0: missing request object')
+  })
+
+  it('throws when entry is missing response fields', () => {
+    const har: HAR = {
+      log: {
+        version: '1.2',
+        creator: { name: 'Test', version: '1.0' },
+        entries: [
+          {
+            startedDateTime: '2026-01-01T00:00:00.000Z',
+            request: {
+              method: 'GET',
+              url: 'https://example.com',
+              headers: [],
+              queryString: [],
+              httpVersion: 'HTTP/1.1',
+              headersSize: -1,
+              bodySize: 0,
+            },
+            timings: { send: 0, wait: 0, receive: 0 } as HAR['log']['entries'][number]['timings'],
+          } as unknown as HAR['log']['entries'][number],
+        ],
+      },
+    }
+    expect(() => validateHar(har)).toThrow('Invalid HAR entry at index 0: missing response object')
+  })
+
+  it('throws when entry is missing timings', () => {
+    const har: HAR = {
+      log: {
+        version: '1.2',
+        creator: { name: 'Test', version: '1.0' },
+        entries: [
+          {
+            startedDateTime: '2026-01-01T00:00:00.000Z',
+            request: {
+              method: 'GET',
+              url: 'https://example.com',
+              headers: [],
+              queryString: [],
+              httpVersion: 'HTTP/1.1',
+              headersSize: -1,
+              bodySize: 0,
+            },
+            response: {
+              status: 200,
+              statusText: 'OK',
+              httpVersion: 'HTTP/1.1',
+              headers: [],
+              cookies: [],
+              content: { size: 0, mimeType: 'text/plain' },
+              redirectURL: '',
+              headersSize: -1,
+              bodySize: 0,
+            },
+          } as unknown as HAR['log']['entries'][number],
+        ],
+      },
+    }
+    expect(() => validateHar(har)).toThrow('Invalid HAR entry at index 0: missing timings')
+  })
+})
+
+describe('extractHarDomains', () => {
+  it('extracts unique sorted domains from HAR entries', () => {
+    const har: HAR = {
+      log: {
+        version: '1.2',
+        creator: { name: 'Test', version: '1.0' },
+        entries: [
+          {
+            startedDateTime: '2026-01-01T00:00:00.000Z',
+            time: 0,
+            request: {
+              method: 'GET',
+              url: 'https://example.com/a',
+              httpVersion: 'HTTP/1.1',
+              headers: [],
+              queryString: [],
+              headersSize: -1,
+              bodySize: 0,
+            },
+            response: {
+              status: 200,
+              statusText: 'OK',
+              httpVersion: 'HTTP/1.1',
+              headers: [],
+              cookies: [],
+              content: { size: 0, mimeType: 'text/plain' },
+              redirectURL: '',
+              headersSize: -1,
+              bodySize: 0,
+            },
+            cache: {},
+            timings: { send: 0, wait: 0, receive: 0 },
+          },
+          {
+            startedDateTime: '2026-01-01T00:00:00.000Z',
+            time: 0,
+            request: {
+              method: 'GET',
+              url: 'https://api.example.com/b',
+              httpVersion: 'HTTP/1.1',
+              headers: [],
+              queryString: [],
+              headersSize: -1,
+              bodySize: 0,
+            },
+            response: {
+              status: 200,
+              statusText: 'OK',
+              httpVersion: 'HTTP/1.1',
+              headers: [],
+              cookies: [],
+              content: { size: 0, mimeType: 'text/plain' },
+              redirectURL: '',
+              headersSize: -1,
+              bodySize: 0,
+            },
+            cache: {},
+            timings: { send: 0, wait: 0, receive: 0 },
+          },
+          {
+            startedDateTime: '2026-01-01T00:00:00.000Z',
+            time: 0,
+            request: {
+              method: 'GET',
+              url: 'https://other.com/c',
+              httpVersion: 'HTTP/1.1',
+              headers: [],
+              queryString: [],
+              headersSize: -1,
+              bodySize: 0,
+            },
+            response: {
+              status: 200,
+              statusText: 'OK',
+              httpVersion: 'HTTP/1.1',
+              headers: [],
+              cookies: [],
+              content: { size: 0, mimeType: 'text/plain' },
+              redirectURL: '',
+              headersSize: -1,
+              bodySize: 0,
+            },
+            cache: {},
+            timings: { send: 0, wait: 0, receive: 0 },
+          },
+        ],
+      },
+    }
+
+    const domains = extractHarDomains(har)
+    expect(domains).toEqual(['api.example.com', 'example.com', 'other.com'])
+  })
+
+  it('skips invalid URLs during extraction', () => {
+    const har: HAR = {
+      log: {
+        version: '1.2',
+        creator: { name: 'Test', version: '1.0' },
+        entries: [
+          {
+            startedDateTime: '2026-01-01T00:00:00.000Z',
+            time: 0,
+            request: {
+              method: 'GET',
+              url: 'not-a-valid-url',
+              httpVersion: 'HTTP/1.1',
+              headers: [],
+              queryString: [],
+              headersSize: -1,
+              bodySize: 0,
+            },
+            response: {
+              status: 200,
+              statusText: 'OK',
+              httpVersion: 'HTTP/1.1',
+              headers: [],
+              cookies: [],
+              content: { size: 0, mimeType: 'text/plain' },
+              redirectURL: '',
+              headersSize: -1,
+              bodySize: 0,
+            },
+            cache: {},
+            timings: { send: 0, wait: 0, receive: 0 },
+          },
+          {
+            startedDateTime: '2026-01-01T00:00:00.000Z',
+            time: 0,
+            request: {
+              method: 'GET',
+              url: 'https://valid.com/x',
+              httpVersion: 'HTTP/1.1',
+              headers: [],
+              queryString: [],
+              headersSize: -1,
+              bodySize: 0,
+            },
+            response: {
+              status: 200,
+              statusText: 'OK',
+              httpVersion: 'HTTP/1.1',
+              headers: [],
+              cookies: [],
+              content: { size: 0, mimeType: 'text/plain' },
+              redirectURL: '',
+              headersSize: -1,
+              bodySize: 0,
+            },
+            cache: {},
+            timings: { send: 0, wait: 0, receive: 0 },
+          },
+        ],
+      },
+    }
+
+    const domains = extractHarDomains(har)
+    expect(domains).toEqual(['valid.com'])
   })
 })

@@ -173,9 +173,15 @@ interface HAREntryRaw {
   }
 }
 
-function validateHar(har: HAR): void {
+export type HarEntries = HAR['log']['entries']
+
+export function validateHar(har: HAR): void {
   if (!har?.log) {
     throw new Error('Invalid HAR: missing log object')
+  }
+
+  if (typeof har.log !== 'object' || har.log === null) {
+    throw new Error('Invalid HAR: log must be an object')
   }
 
   if (har.log.version !== '1.2') {
@@ -185,6 +191,94 @@ function validateHar(har: HAR): void {
   if (!Array.isArray(har.log.entries)) {
     throw new Error('Invalid HAR: log.entries must be an array')
   }
+
+  if (har.log.entries.length === 0) {
+    throw new Error('Invalid HAR: no entries found')
+  }
+
+  validateHarEntries(har.log.entries)
+}
+
+function validateHarEntries(entries: HarEntries): void {
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i]
+
+    if (typeof entry !== 'object' || entry === null) {
+      throw new Error(`Invalid HAR entry at index ${i}: entry must be an object`)
+    }
+
+    if (typeof entry.startedDateTime !== 'string') {
+      throw new Error(`Invalid HAR entry at index ${i}: missing startedDateTime`)
+    }
+
+    if (typeof entry.request !== 'object' || entry.request === null) {
+      throw new Error(`Invalid HAR entry at index ${i}: missing request object`)
+    }
+
+    const req = entry.request
+
+    if (typeof req.method !== 'string') {
+      throw new Error(`Invalid HAR entry at index ${i}: missing request.method`)
+    }
+
+    if (typeof req.url !== 'string') {
+      throw new Error(`Invalid HAR entry at index ${i}: missing request.url`)
+    }
+
+    if (!Array.isArray(req.headers)) {
+      throw new Error(`Invalid HAR entry at index ${i}: request.headers must be an array`)
+    }
+
+    if (!Array.isArray(req.queryString)) {
+      throw new Error(`Invalid HAR entry at index ${i}: request.queryString must be an array`)
+    }
+
+    if (typeof entry.response !== 'object' || entry.response === null) {
+      throw new Error(`Invalid HAR entry at index ${i}: missing response object`)
+    }
+
+    const res = entry.response
+
+    if (typeof res.status !== 'number') {
+      throw new Error(`Invalid HAR entry at index ${i}: missing response.status`)
+    }
+
+    if (typeof res.headers !== 'object' || res.headers === null) {
+      throw new Error(`Invalid HAR entry at index ${i}: response.headers must be an object`)
+    }
+
+    if (!Array.isArray(res.headers)) {
+      throw new Error(`Invalid HAR entry at index ${i}: response.headers must be an array`)
+    }
+
+    if (typeof res.content !== 'object' || res.content === null) {
+      throw new Error(`Invalid HAR entry at index ${i}: missing response.content`)
+    }
+
+    if (typeof entry.timings !== 'object' || entry.timings === null) {
+      throw new Error(`Invalid HAR entry at index ${i}: missing timings`)
+    }
+  }
+}
+
+// EXTERNAL HAR IMPORT: Extract unique domains from HAR entries for the domain selector UI.
+// Invalid URLs during extraction are skipped (they'll be handled during conversion).
+export function extractHarDomains(har: HAR): string[] {
+  const domains = new Set<string>()
+
+  for (const entry of har.log.entries) {
+    try {
+      const url = new URL(entry.request.url)
+      const hostname = url.hostname.toLowerCase().trim()
+      if (hostname.length > 0) {
+        domains.add(hostname)
+      }
+    } catch {
+      // Skip invalid URLs during domain extraction
+    }
+  }
+
+  return [...domains].sort((left, right) => left.localeCompare(right))
 }
 
 function parseHarUrl(

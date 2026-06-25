@@ -442,18 +442,28 @@ export function createHTTPSampler(
   const hostname = url?.hostname ?? ''
   const path = url?.path ?? req.url
   const protocol = (url?.protocol ?? 'http').replace(':', '')
+
+  // Port computation mirrors the original buildSampler behaviour so that callers
+  // that don't pass defaults still get the effective JMeter port.
+  // When defaults ARE passed we intentionally leave port empty if there is no
+  // explicit URL port so that the sampler inherits from defaults regardless of
+  // the protocol default (443/80). An explicit URL port (e.g. :8080) is kept
+  // so that a mismatch against defaults can be detected in the factory caller.
+  const hasExplicitPort = url?.port && url.port.length > 0
   const defaultPort = protocol === 'https' ? '443' : '80'
-  const port = url?.port && url.port.length > 0 ? url.port : defaultPort
+  const port = hasExplicitPort ? url.port : defaults !== undefined ? '' : defaultPort
 
   const name = `${req.method} ${hostname}${path} #${index}`
   const body = req.responseBody ?? req.body ?? ''
 
-  // Determine which properties are inherited from HTTPRequestDefaults
-  const inheritDomain = defaults !== undefined && hostname === defaults.domain
-  const inheritProtocol = defaults !== undefined && protocol === defaults.protocol
-  // For port inheritance, compare with the effective port (either explicit or default)
-  const effectivePort = port
-  const inheritPort = defaults !== undefined && effectivePort === defaults.port
+  // Determine which properties are inherited from HTTPRequestDefaults.
+  // — Domain: inherited when hostname matches defaults.domain
+  // — Protocol: inherited when protocol matches defaults.protocol
+  // — Port:    inherited if defaults are provided AND (no explicit port OR explicit port === defaults.port)
+  const omitDomain = defaults !== undefined && hostname === defaults.domain
+  const omitProtocol = defaults !== undefined && protocol === defaults.protocol
+  const omitPort =
+    defaults !== undefined && (!hasExplicitPort || (hasExplicitPort && url.port === defaults.port))
 
   return {
     type: 'HTTPSamplerProxy',
@@ -461,9 +471,10 @@ export function createHTTPSampler(
     guiClass: ElementDefaults.HTTPSamplerProxy.guiClass,
     name,
     enabled: true,
-    domain: inheritDomain ? '' : hostname,
-    port: inheritPort ? '' : port,
-    protocol: inheritProtocol ? '' : protocol,
+    // Empty strings signal inheritance from HTTPRequestDefaults.
+    domain: omitDomain ? '' : hostname,
+    port: omitPort ? '' : port,
+    protocol: omitProtocol ? '' : protocol,
     path,
     method: req.method,
     followRedirects: req.followRedirects ?? true,
@@ -606,13 +617,25 @@ export function serializeThreadGroup(element: JmxThreadGroup): string {
 
 /**
  * Serializes a JmxHTTPRequestDefaults element to XML.
+ *
+ * JMeter uses ConfigTestElement as the element tag name with HttpDefaultsGui as the
+ * guiclass. The saveservice.properties maps "ConfigTestElement" -> "org.apache.jmeter.config.ConfigTestElement"
+ * and "HttpDefaultsGui" -> "org.apache.jmeter.protocol.http.config.gui.HttpDefaultsGui".
+ * Using "HTTPRequestDefaults" as the tag name causes CannotResolveClassException because
+ * there is no alias mapping for it in saveservice.properties.
+ *
+ * Also includes the HTTPSampler.Arguments elementProp (matching JMeter template) to ensure
+ * compatibility with all JMeter versions.
  */
 export function serializeHTTPRequestDefaults(element: JmxHTTPRequestDefaults): string {
-  return `<${element.type} guiclass="${element.guiClass}" testclass="${element.testClass}" testname="${xmlEsc(element.name)}" enabled="${element.enabled}">
+  return `<ConfigTestElement guiclass="org.apache.jmeter.protocol.http.config.gui.HttpDefaultsGui" testclass="org.apache.jmeter.config.ConfigTestElement" testname="${xmlEsc(element.name)}" enabled="${element.enabled}">
+<elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+<collectionProp name="Arguments.arguments" />
+</elementProp>
 <stringProp name="HTTPSampler.domain">${xmlEsc(element.domain)}</stringProp>
 <stringProp name="HTTPSampler.port">${xmlEsc(element.port)}</stringProp>
 <stringProp name="HTTPSampler.protocol">${xmlEsc(element.protocol)}</stringProp>
-</${element.type}>`
+</ConfigTestElement>`
 }
 
 /**
@@ -666,9 +689,9 @@ ${element.headers
 ${argsXml}
 </collectionProp>
 </elementProp>
-${element.domain ? `            <stringProp name="HTTPSampler.domain">${xmlEsc(element.domain)}</stringProp>` : ''}
-${element.port ? `            <stringProp name="HTTPSampler.port">${xmlEsc(element.port)}</stringProp>` : ''}
-${element.protocol ? `            <stringProp name="HTTPSampler.protocol">${xmlEsc(element.protocol)}</stringProp>` : ''}
+ ${element.domain ? `            <stringProp name="HTTPSampler.domain">${xmlEsc(element.domain)}</stringProp>` : ''}
+ ${element.port ? `            <stringProp name="HTTPSampler.port">${xmlEsc(element.port)}</stringProp>` : ''}
+ ${element.protocol ? `            <stringProp name="HTTPSampler.protocol">${xmlEsc(element.protocol)}</stringProp>` : ''}
 <stringProp name="HTTPSampler.path">${xmlEsc(element.path)}</stringProp>
 <stringProp name="HTTPSampler.method">${xmlEsc(element.method)}</stringProp>
 <boolProp name="HTTPSampler.follow_redirects">${element.followRedirects ? 'true' : 'false'}</boolProp>
@@ -740,9 +763,9 @@ export function serializeResponseAssertion(element: JmxResponseAssertion): strin
 <stringProp name="Assertion.test_type">${element.testType}</stringProp>
 <boolProp name="Assertion.assume_success">${element.ignoreResponseCode ? 'true' : 'false'}</boolProp>
 <stringProp name="Assertion.custom_message"></stringProp>
-<collectionProp name="Assertion.test_values">
-${element.testStrings.map((s) => `<stringProp name="${element.testType}">${xmlEsc(s)}</stringProp>`).join('\n')}
-</collectionProp>
+  <collectionProp name="Assertion.test_values">
+  ${element.testStrings.map((s) => `<stringProp name="200">${xmlEsc(s)}</stringProp>`).join('\n')}
+  </collectionProp>
 <collectionProp name="Asserter.test_configs">
 <elementProp name="0" elementType="field">
 <boolProp name="IncludeEquality">true</boolProp>

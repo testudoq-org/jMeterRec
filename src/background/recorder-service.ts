@@ -1,12 +1,13 @@
-import { convertHarToJmx } from '../jmx/har-to-jmx'
+import { convertHarToJmx, validateHar } from '../jmx/har-to-jmx'
 import { buildHar } from '../har/har-builder'
-import { filterRequestsByDomains } from '../jmx/domains'
+import { filterRequestsByDomains, filterHarEntriesByDomains } from '../jmx/domains'
 import { buildPlaywrightResponse } from '../generators/playwright'
 import { JmxOptionsStore } from '../options/jmx-options'
 import { AdvancedOptionsStore } from '../options/advanced-options'
 import type { JmxOptions } from '../options/jmx-options'
 import { safeFilename } from '../utils/filename'
 import type { BackgroundRequest, BackgroundResponse, RecorderSnapshot } from '../messages'
+import type { HAR } from '../jmx/har-to-jmx'
 import { PendingWebRequestStore } from './pending-web-request-store'
 import { ResponseBodyMatchingService } from './response-body-matching-service'
 import { applyCapturedResponseBody } from './traffic-normalizer'
@@ -82,6 +83,9 @@ export class RecorderService {
         this.handleResponseBodyCapturedMessage(
           message as Extract<BackgroundRequest, { type: 'RESPONSE_BODY_CAPTURED' }>
         ),
+      // EXTERNAL HAR IMPORT: Handler for importing HAR files and converting to JMX
+      IMPORT_HAR: (message) =>
+        this.handleImportHarMessage(message as Extract<BackgroundRequest, { type: 'IMPORT_HAR' }>),
     }
   }
 
@@ -278,6 +282,92 @@ export class RecorderService {
     }
 
     return this.buildJmxExportResponse(message.includedDomains)
+  }
+
+  // EXTERNAL HAR IMPORT: Handle IMPORT_HAR message - validate, filter, convert
+  private handleImportHarMessage(
+    message: Extract<BackgroundRequest, { type: 'IMPORT_HAR' }>
+  ): Promise<BackgroundResponse> {
+    // Validate HAR structure before conversion
+    try {
+      validateHar(message.har)
+    } catch (err) {
+      return Promise.resolve({
+        success: false,
+        error: toErrorMessage(err),
+      })
+    }
+
+    if (!Array.isArray(message.includedDomains)) {
+      return Promise.resolve({
+        success: false,
+        error: 'Invalid includedDomains: expected an array.',
+      })
+    }
+
+    if (message.includedDomains.length === 0) {
+      return Promise.resolve({
+        success: false,
+        error: 'Select at least one domain before exporting JMX.',
+      })
+    }
+
+    // Filter HAR entries by selected domains
+    const filteredEntries = filterHarEntriesByDomains(
+      message.har.log.entries,
+      message.includedDomains
+    )
+
+    if (filteredEntries.length === 0) {
+      return Promise.resolve({
+        success: false,
+        error: 'No requests match the selected domains.',
+      })
+    }
+
+    // Build a filtered HAR object for conversion
+    const filteredHar: HAR = {
+      log: {
+        ...message.har.log,
+        entries: filteredEntries,
+      },
+    }
+
+    return this.convertHarToJmxResponse(filteredHar)
+  }
+
+  private async convertHarToJmxResponse(har: HAR): Promise<BackgroundResponse> {
+    const jmxOptions = await this.getJmxOptionsStore().load()
+    const advancedOptions = await this.getAdvancedOptionsStore().load()
+
+    // EXTERNAL HAR IMPORT: Use plan name from options (no snapshot plan name available for external HAR)
+    const meta: PlanMeta = {
+      name: jmxOptions.name,
+      threadGroup: {
+        threads: jmxOptions.threads,
+        rampUp: jmxOptions.rampUp,
+        loops: jmxOptions.loops,
+      },
+    }
+
+    const jmx = convertHarToJmx(har, meta, {
+      thinkTime: {
+        enabled: jmxOptions.thinkTimeEnabled,
+        randomize: false,
+        rangePercent: jmxOptions.thinkTimeRangePercent,
+      },
+      assertion: jmxOptions.assertionsEnabled
+        ? { enabled: true, expectStatus: jmxOptions.assertionExpectStatus }
+        : undefined,
+      recordCookies: advancedOptions.recordCookies,
+      userAgent: advancedOptions.userAgent,
+    })
+
+    return {
+      success: true,
+      jmx,
+      filename: `${safeFilename(meta.name)}.jmx`,
+    }
   }
 
   private async buildJmxExportResponse(includedDomains: string[]): Promise<BackgroundResponse> {

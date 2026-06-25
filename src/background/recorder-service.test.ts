@@ -5,6 +5,7 @@ import type { TrafficCaptureService } from './traffic-capture'
 import type { ActionStep, CapturedRequest } from '../models/captured-request'
 import type { JmxOptionsStore } from '../options/jmx-options'
 import type { AdvancedOptionsStore } from '../options/advanced-options'
+import type { HAR } from '../jmx/har-to-jmx'
 import { DEFAULT_JMX_OPTIONS } from '../options/jmx-options'
 import { DEFAULT_ADVANCED_OPTIONS } from '../options/advanced-options'
 
@@ -163,6 +164,174 @@ describe('RecorderService', () => {
 
     expect(response.jmx).toContain('example.com')
     expect(response.jmx).not.toContain('www.google.com')
+  })
+
+  // EXTERNAL HAR IMPORT: Tests for IMPORT_HAR message handling
+  function buildTestHar(domains: string[]): HAR {
+    return {
+      log: {
+        version: '1.2',
+        creator: { name: 'Test', version: '1.0' },
+        entries: domains.map((domain, idx) => ({
+          startedDateTime: '2026-01-01T00:00:00.000Z',
+          time: 100,
+          request: {
+            method: 'GET',
+            url: `https://${domain}/path-${idx}`,
+            httpVersion: 'HTTP/1.1',
+            headers: [],
+            queryString: [],
+            headersSize: -1,
+            bodySize: 0,
+          },
+          response: {
+            status: 200,
+            statusText: 'OK',
+            httpVersion: 'HTTP/1.1',
+            headers: [],
+            cookies: [],
+            content: { size: 0, mimeType: 'text/plain' },
+            redirectURL: '',
+            headersSize: -1,
+            bodySize: 0,
+          },
+          cache: {},
+          timings: { send: 0, wait: 100, receive: 0 },
+        })),
+      },
+    }
+  }
+
+  it('converts imported HAR to JMX for selected domains', async () => {
+    const mockState = createMockState()
+    const service = new RecorderService({
+      state: mockState,
+      trafficCapture: createMockTrafficCapture(),
+      jmxOptionsStore: createMockJmxOptionsStore({
+        name: 'Imported Plan',
+        threads: 1,
+        rampUp: 1,
+        loops: 1,
+        thinkTimeEnabled: false,
+        thinkTimeRandomize: false,
+        thinkTimeRangePercent: 20,
+        assertionsEnabled: false,
+        assertionExpectStatus: 200,
+        redirectDedupEnabled: false,
+      }),
+      advancedOptionsStore: createMockAdvancedOptionsStore(),
+    })
+
+    const har = buildTestHar(['example.com', 'other.com'])
+    const response = await service.handleMessage({
+      type: 'IMPORT_HAR',
+      har,
+      includedDomains: ['example.com'],
+    })
+
+    expect(response.success).toBe(true)
+
+    if (!response.success || !('jmx' in response)) {
+      throw new Error('Expected successful JMX response')
+    }
+
+    expect(response.filename).toBe('Imported-Plan.jmx')
+    expect(response.jmx).toContain('example.com')
+    expect(response.jmx).not.toContain('other.com')
+  })
+
+  it('rejects IMPORT_HAR with invalid HAR structure', async () => {
+    const mockState = createMockState()
+    const service = new RecorderService({
+      state: mockState,
+      trafficCapture: createMockTrafficCapture(),
+      jmxOptionsStore: createMockJmxOptionsStore(),
+      advancedOptionsStore: createMockAdvancedOptionsStore(),
+    })
+
+    const response = await service.handleMessage({
+      type: 'IMPORT_HAR',
+      har: { log: undefined } as unknown as HAR,
+      includedDomains: ['example.com'],
+    })
+
+    expect(response.success).toBe(false)
+    if (!response.success && 'error' in response) {
+      expect(response.error).toContain('Invalid HAR')
+    }
+  })
+
+  it('rejects IMPORT_HAR with unsupported HAR version', async () => {
+    const mockState = createMockState()
+    const service = new RecorderService({
+      state: mockState,
+      trafficCapture: createMockTrafficCapture(),
+      jmxOptionsStore: createMockJmxOptionsStore(),
+      advancedOptionsStore: createMockAdvancedOptionsStore(),
+    })
+
+    const har: HAR = {
+      log: {
+        version: '1.1',
+        creator: { name: 'Test', version: '1.0' },
+        entries: [],
+      },
+    }
+
+    const response = await service.handleMessage({
+      type: 'IMPORT_HAR',
+      har,
+      includedDomains: ['example.com'],
+    })
+
+    expect(response.success).toBe(false)
+    if (!response.success && 'error' in response) {
+      expect(response.error).toContain('Unsupported HAR version')
+    }
+  })
+
+  it('rejects IMPORT_HAR when no domains match', async () => {
+    const mockState = createMockState()
+    const service = new RecorderService({
+      state: mockState,
+      trafficCapture: createMockTrafficCapture(),
+      jmxOptionsStore: createMockJmxOptionsStore(),
+      advancedOptionsStore: createMockAdvancedOptionsStore(),
+    })
+
+    const har = buildTestHar(['example.com'])
+    const response = await service.handleMessage({
+      type: 'IMPORT_HAR',
+      har,
+      includedDomains: ['nonexistent.example'],
+    })
+
+    expect(response.success).toBe(false)
+    if (!response.success && 'error' in response) {
+      expect(response.error).toBe('No requests match the selected domains.')
+    }
+  })
+
+  it('rejects IMPORT_HAR with empty domain filter', async () => {
+    const mockState = createMockState()
+    const service = new RecorderService({
+      state: mockState,
+      trafficCapture: createMockTrafficCapture(),
+      jmxOptionsStore: createMockJmxOptionsStore(),
+      advancedOptionsStore: createMockAdvancedOptionsStore(),
+    })
+
+    const har = buildTestHar(['example.com'])
+    const response = await service.handleMessage({
+      type: 'IMPORT_HAR',
+      har,
+      includedDomains: [],
+    })
+
+    expect(response.success).toBe(false)
+    if (!response.success && 'error' in response) {
+      expect(response.error).toBe('Select at least one domain before exporting JMX.')
+    }
   })
 
   it('uses saved JMX options for export metadata', async () => {

@@ -790,5 +790,44 @@ describe('buildJmx', () => {
       expect(jmx).toContain('>api.example.com<')
       expect(jmx).toContain('HTTP Request Defaults')
     })
+
+    it('uses ConfigTestElement as element tag (not HTTPRequestDefaults) for JMeter compatibility', () => {
+      const requests: CapturedRequest[] = [
+        {
+          id: '1',
+          timestamp: '2024-01-01T00:00:00Z',
+          method: 'GET',
+          url: 'https://api.example.com/users',
+          headers: {},
+          queryParams: {},
+        },
+        {
+          id: '2',
+          timestamp: '2024-01-01T00:00:01Z',
+          method: 'GET',
+          url: 'https://api.example.com/posts',
+          headers: {},
+          queryParams: {},
+        },
+      ]
+
+      const jmx = buildJmx(meta, requests)
+
+      // Must use ConfigTestElement tag name (mapped in saveservice.properties)
+      // HTTPRequestDefaults is NOT a valid alias in JMeter 5.6.3
+      expect(jmx).toContain('<ConfigTestElement guiclass="org.apache.jmeter.protocol.http.config.gui.HttpDefaultsGui"')
+      expect(jmx).not.toContain('<HTTPRequestDefaults')
+
+      // ConfigTestElement must be followed by a hashTree before the next sampler
+      // (JMeter expects each element to be followed by its child hashTree)
+      const configEnd = jmx.indexOf('</ConfigTestElement>')
+      const nextSampler = jmx.indexOf('<HTTPSamplerProxy', configEnd)
+      const hashTreeAfterConfig = jmx.indexOf('<hashTree', configEnd + 1)
+
+      expect(configEnd).toBeGreaterThan(-1)
+      expect(nextSampler).toBeGreaterThan(-1)
+      expect(hashTreeAfterConfig).toBeGreaterThan(-1)
+      expect(hashTreeAfterConfig).toBeLessThan(nextSampler)
+    })
   })
 })

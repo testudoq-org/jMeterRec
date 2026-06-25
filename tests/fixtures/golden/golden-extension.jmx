@@ -24,13 +24,16 @@
 <boolProp name="ThreadGroup.same_user_on_next_iteration">true</boolProp>
 </ThreadGroup>
 <hashTree>
-<HTTPRequestDefaults guiclass="org.apache.jmeter.protocol.http.config.gui.HttpDefaultsGui" testclass="org.apache.jmeter.config.ConfigTestElement" testname="HTTP Request Defaults" enabled="true">
+<ConfigTestElement guiclass="org.apache.jmeter.protocol.http.config.gui.HttpDefaultsGui" testclass="org.apache.jmeter.config.ConfigTestElement" testname="HTTP Request Defaults" enabled="true">
+<elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+<collectionProp name="Arguments.arguments" />
+</elementProp>
 <stringProp name="HTTPSampler.domain">127.0.0.1</stringProp>
 <stringProp name="HTTPSampler.port">3144</stringProp>
 <stringProp name="HTTPSampler.protocol">http</stringProp>
-</HTTPRequestDefaults>
+</ConfigTestElement>
 <hashTree/>
-<HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="GET 127.0.0.1:3144/golden-page.html #0" enabled="true">
+<HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="GET 127.0.0.1/golden-page.html #0" enabled="true">
 <boolProp name="HTTPSampler.postBodyRaw">false</boolProp>
 <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
 <collectionProp name="Arguments.arguments">
@@ -40,7 +43,12 @@
 <stringProp name="Argument.value"><![CDATA[]]></stringProp>
 <stringProp name="Argument.metadata">=</stringProp>
 </elementProp>
-
+<elementProp name="" elementType="HTTPArgument" guiclass="HTTPArgumentGui" testclass="HTTPArgument" testname="Argument" enabled="true">
+<boolProp name="HTTPArgument.always_encode">false</boolProp>
+<stringProp name="Argument.name"></stringProp>
+<stringProp name="Argument.value"><![CDATA[]]></stringProp>
+<stringProp name="Argument.metadata">=</stringProp>
+</elementProp>
 </collectionProp>
 </elementProp>
 
@@ -69,9 +77,9 @@
 </elementProp>
 </collectionProp>
 </elementProp>
-</HTTPSamplerProxy>
-<hashTree/>
-<HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="GET 127.0.0.1:3144/api/search #1" enabled="true">
+</HTTPSamplerProxy><hashTree/>
+
+<HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="GET 127.0.0.1/api/search #1" enabled="true">
 <boolProp name="HTTPSampler.postBodyRaw">false</boolProp>
 <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
 <collectionProp name="Arguments.arguments">
@@ -81,14 +89,18 @@
 <stringProp name="Argument.value"><![CDATA[]]></stringProp>
 <stringProp name="Argument.metadata">=</stringProp>
 </elementProp>
-
+<elementProp name="" elementType="HTTPArgument" guiclass="HTTPArgumentGui" testclass="HTTPArgument" testname="Argument" enabled="true">
+<boolProp name="HTTPArgument.always_encode">false</boolProp>
+<stringProp name="Argument.name"></stringProp>
+<stringProp name="Argument.value"><![CDATA[]]></stringProp>
+<stringProp name="Argument.metadata">=</stringProp>
+</elementProp>
 <elementProp name="" elementType="HTTPArgument" guiclass="HTTPArgumentGui" testclass="HTTPArgument" testname="Argument" enabled="true">
 <boolProp name="HTTPArgument.always_encode">false</boolProp>
 <stringProp name="Argument.name">term</stringProp>
 <stringProp name="Argument.value"><![CDATA[gold]]></stringProp>
 <stringProp name="Argument.metadata">=</stringProp>
 </elementProp>
-
 </collectionProp>
 </elementProp>
 
@@ -115,9 +127,9 @@
 </elementProp>
 </collectionProp>
 </elementProp>
-</HTTPSamplerProxy>
-<hashTree/>
-<HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="POST 127.0.0.1:3144/api/login #2" enabled="true">
+</HTTPSamplerProxy><hashTree/>
+
+<HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="POST 127.0.0.1/api/login #2" enabled="true">
 <boolProp name="HTTPSampler.postBodyRaw">true</boolProp>
 <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
 <collectionProp name="Arguments.arguments">
@@ -127,7 +139,12 @@
 <stringProp name="Argument.value"><![CDATA[{"username":"alice","password":"secret"}]]></stringProp>
 <stringProp name="Argument.metadata">=</stringProp>
 </elementProp>
-
+<elementProp name="" elementType="HTTPArgument" guiclass="HTTPArgumentGui" testclass="HTTPArgument" testname="Argument" enabled="true">
+<boolProp name="HTTPArgument.always_encode">false</boolProp>
+<stringProp name="Argument.name"></stringProp>
+<stringProp name="Argument.value"><![CDATA[{"username":"alice","password":"secret"}]]></stringProp>
+<stringProp name="Argument.metadata">=</stringProp>
+</elementProp>
 </collectionProp>
 </elementProp>
 
@@ -159,8 +176,8 @@
 </elementProp>
 </collectionProp>
 </elementProp>
-</HTTPSamplerProxy>
-<hashTree/>
+</HTTPSamplerProxy><hashTree/>
+
 </hashTree>
 </hashTree>
 </hashTree>

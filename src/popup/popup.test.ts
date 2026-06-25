@@ -1,5 +1,6 @@
 import { JSDOM } from 'jsdom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createMockHarFile, createValidHarJson } from '../../tests/shared/har-test-utils'
 
 type RuntimeMessage = Record<string, unknown>
 
@@ -64,6 +65,18 @@ const chromeStub = {
 
       if (record.type === 'STOP_RECORDING') {
         return Promise.resolve({ success: true, requestCount: 0 })
+      }
+
+      if (record.type === 'RESET') {
+        return Promise.resolve({ success: true, snapshot: idleSnapshot })
+      }
+
+      if (record.type === 'IMPORT_HAR') {
+        return Promise.resolve({
+          success: true,
+          jmx: '<?xml version="1.0"?><jmeterTestPlan><hashTree><TestPlan guiclass="TestPlanGui">...</TestPlan></hashTree></jmeterTestPlan>',
+          filename: 'Untitled-Plan.jmx',
+        })
       }
 
       return Promise.resolve({ success: true })
@@ -132,6 +145,17 @@ function buildPopupHtml(): string {
       <div id="jmxDomainStatus"></div>
       <div id="jmxDomainError"></div>
       <button id="exportJmxSelected"></button>
+      <!-- EXTERNAL HAR IMPORT -->
+      <div id="importHarSection">
+        <input id="importHarFile" type="file" accept=".har,application/json" />
+        <div id="importHarError"></div>
+        <fieldset id="importHarFieldset">
+          <div id="importHarDomains"></div>
+          <div id="importHarDomainStatus"></div>
+          <div id="importHarDomainError"></div>
+          <button id="convertHarToJmx"></button>
+        </fieldset>
+      </div>
       <div id="playwrightOptions"></div>
       <input id="baseUrl" />
       <p id="transactionSummary"></p>
@@ -768,5 +792,278 @@ describe('popup transaction rendering performance', () => {
 
     // Test that undefined values fall back
     expect(boundedNumber(undefined, 20, 500, 200)).toBe(200)
+  })
+})
+
+// EXTERNAL HAR IMPORT: Tests for HAR file import functionality
+describe('popup HAR import', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime('2026-01-01T00:00:00.000Z')
+    chromeStub.storage.local.get.mockImplementation(async (keys: unknown) => {
+      storageGetCalls.push({ keys })
+      return {}
+    })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    // Prevent file input mock leaking into the next test
+    const fileInput = document.getElementById('importHarFile') as HTMLInputElement | null
+    if (fileInput) {
+      Object.defineProperty(fileInput, 'files', {
+        value: null,
+        writable: true,
+      })
+    }
+  })
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  interface HarContext {
+    fileInput: HTMLInputElement
+    fieldset: HTMLElement
+    errorEl: HTMLElement
+    domainsEl: HTMLElement
+    domainStatusEl: HTMLElement
+    domainErrorEl: HTMLElement
+    convertBtn: HTMLButtonElement
+  }
+
+  async function setupHarImportTest(): Promise<HarContext> {
+    await loadPopupModule()
+    return {
+      fileInput: document.getElementById('importHarFile') as HTMLInputElement,
+      fieldset: document.getElementById('importHarFieldset') as HTMLElement,
+      errorEl: document.getElementById('importHarError') as HTMLElement,
+      domainsEl: document.getElementById('importHarDomains') as HTMLElement,
+      domainStatusEl: document.getElementById('importHarDomainStatus') as HTMLElement,
+      domainErrorEl: document.getElementById('importHarDomainError') as HTMLElement,
+      convertBtn: document.getElementById('convertHarToJmx') as HTMLButtonElement,
+    }
+  }
+
+  async function loadHarFile(
+    fileInput: HTMLInputElement,
+    harContent: string,
+    filename = 'test.har'
+  ): Promise<void> {
+    const mockFile = createMockHarFile(harContent, filename)
+    Object.defineProperty(fileInput, 'files', {
+      value: { 0: mockFile, length: 1, item: (i: number) => (i === 0 ? mockFile : null) },
+      writable: true,
+    })
+    const event = document.createEvent('HTMLEvents')
+    event.initEvent('change', true, false)
+    fileInput.dispatchEvent(event)
+    await flushRuntimeResponse()
+  }
+
+  /** Polls until `condition` returns true, or throws after `timeoutMs`. */
+  async function until(
+    condition: () => boolean,
+    timeoutMs = 1000,
+    label = 'condition'
+  ): Promise<void> {
+    const start = Date.now()
+    while (!condition()) {
+      if (Date.now() - start > timeoutMs) {
+        throw new Error(`${label} not satisfied within ${timeoutMs}ms`)
+      }
+      await Promise.resolve()
+    }
+  }
+
+  // ── Mode visibility ───────────────────────────────────────────────────────
+
+  describe('mode visibility', () => {
+    it('shows import HAR section when JMX mode is selected', async () => {
+      await setupHarImportTest()
+      const exportModeEl = document.getElementById('exportMode') as HTMLSelectElement
+      const importSection = document.getElementById('importHarSection') as HTMLElement
+
+      exportModeEl.value = 'jmx'
+      const event = document.createEvent('HTMLEvents')
+      event.initEvent('change', true, false)
+      exportModeEl.dispatchEvent(event)
+
+      expect(importSection.style.display).not.toBe('none')
+    })
+
+    it('hides import HAR section when Playwright mode is selected', async () => {
+      await setupHarImportTest()
+      const exportModeEl = document.getElementById('exportMode') as HTMLSelectElement
+      const importSection = document.getElementById('importHarSection') as HTMLElement
+
+      exportModeEl.value = 'playwright'
+      const event = document.createEvent('HTMLEvents')
+      event.initEvent('change', true, false)
+      exportModeEl.dispatchEvent(event)
+
+      expect(importSection.style.display).toBe('none')
+    })
+  })
+
+  // ── File parsing ──────────────────────────────────────────────────────────
+
+  describe('file parsing', () => {
+    it('parses a valid HAR file and extracts domains', async () => {
+      const { fileInput, domainsEl, fieldset } = await setupHarImportTest()
+      await loadHarFile(
+        fileInput,
+        createValidHarJson([
+          { url: 'https://example.com/api' },
+          { url: 'https://api.example.com/users' },
+        ])
+      )
+
+      expect(fieldset.hidden).toBe(false)
+      expect(domainsEl.children.length).toBe(2)
+    })
+
+    it('shows error when no file is selected', async () => {
+      const { fileInput, errorEl, fieldset } = await setupHarImportTest()
+
+      // Clear the file input to simulate rejection
+      Object.defineProperty(fileInput, 'files', { value: null, writable: true })
+
+      const event = document.createEvent('HTMLEvents')
+      event.initEvent('change', true, false)
+      fileInput.dispatchEvent(event)
+
+      await flushRuntimeResponse()
+
+      expect(errorEl.textContent).toContain('Empty HAR file')
+      expect(fieldset.hidden).toBe(true)
+    })
+    it('shows error for zero-byte file', async () => {
+      const { fileInput, errorEl, fieldset } = await setupHarImportTest()
+
+      const emptyFile = new File([''], 'empty.har', { type: 'application/json' })
+      Object.defineProperty(fileInput, 'files', {
+        value: { 0: emptyFile, length: 1, item: (i: number) => (i === 0 ? emptyFile : null) },
+        writable: true,
+      })
+
+      const event = document.createEvent('HTMLEvents')
+      event.initEvent('change', true, false)
+      fileInput.dispatchEvent(event)
+
+      await flushRuntimeResponse()
+
+      expect(errorEl.textContent).toContain('Empty HAR file')
+      expect(fieldset.hidden).toBe(true)
+    })
+
+    it('shows error for invalid JSON', async () => {
+      const { fileInput, errorEl, fieldset } = await setupHarImportTest()
+      await loadHarFile(fileInput, 'not valid json {{{')
+
+      expect(errorEl.textContent).toContain('Invalid HAR')
+      expect(fieldset.hidden).toBe(true)
+    })
+
+    it('shows error for missing log object', async () => {
+      const { fileInput, errorEl, fieldset } = await setupHarImportTest()
+      await loadHarFile(fileInput, JSON.stringify({ version: '1.2' }))
+
+      expect(errorEl.textContent).toContain('missing log object')
+      expect(fieldset.hidden).toBe(true)
+    })
+
+    it('shows error for unsupported HAR version', async () => {
+      const { fileInput, errorEl, fieldset } = await setupHarImportTest()
+      await loadHarFile(
+        fileInput,
+        JSON.stringify({
+          log: { version: '1.1', creator: { name: 'Test', version: '1.0' }, entries: [] },
+        })
+      )
+
+      expect(errorEl.textContent).toContain('Unsupported HAR version')
+      expect(fieldset.hidden).toBe(true)
+    })
+
+    it('shows error for empty entries', async () => {
+      const { fileInput, errorEl, fieldset } = await setupHarImportTest()
+      await loadHarFile(
+        fileInput,
+        JSON.stringify({
+          log: { version: '1.2', creator: { name: 'Test', version: '1.0' }, entries: [] },
+        })
+      )
+
+      expect(errorEl.textContent).toContain('no entries found')
+      expect(fieldset.hidden).toBe(true)
+    })
+  })
+
+  // ── Domain selection ──────────────────────────────────────────────────────
+
+  describe('domain selection', () => {
+    it('disables convert button when no domains are selected', async () => {
+      const { fileInput, convertBtn, domainsEl } = await setupHarImportTest()
+      await loadHarFile(fileInput, createValidHarJson([{ url: 'https://only.example.com/api' }]))
+
+      expect(convertBtn.disabled).toBe(false)
+
+      const checkbox = domainsEl.querySelector('input[type="checkbox"]') as HTMLInputElement
+      checkbox.checked = false
+      const checkEvent = document.createEvent('HTMLEvents')
+      checkEvent.initEvent('change', true, false)
+      checkbox.dispatchEvent(checkEvent)
+
+      expect(convertBtn.disabled).toBe(true)
+    })
+  })
+
+  // ── Clear and reset ───────────────────────────────────────────────────────
+
+  describe('clear and reset', () => {
+    it('clears import HAR state on Clear button', async () => {
+      const { fileInput, fieldset, errorEl } = await setupHarImportTest()
+      await loadHarFile(fileInput, createValidHarJson([{ url: 'https://example.com/api' }]))
+
+      expect(fieldset.hidden).toBe(false)
+
+      // Verify the send mock was cleared from loadPopupModule
+      chromeStub.runtime.sendMessage.mockClear()
+
+      // clearBtn may be disabled via snapshot; dispatch click directly
+      // to exercise the handler logic for state cleanup.
+      const clearBtn = document.getElementById('clear') as HTMLButtonElement
+      const clickEvent = document.createEvent('MouseEvents')
+      clickEvent.initEvent('click', true, true)
+      clearBtn.dispatchEvent(clickEvent)
+
+      await until(() => fieldset.hidden === true, 1000, 'fieldset.hidden === true')
+
+      expect(errorEl.textContent).toBe('')
+    })
+  })
+
+  // ── Conversion and download ───────────────────────────────────────────────
+
+  describe('conversion and download', () => {
+    it('triggers download on successful conversion', async () => {
+      const { fileInput, convertBtn } = await setupHarImportTest()
+      await loadHarFile(fileInput, createValidHarJson([{ url: 'https://example.com/api' }]))
+
+      const originalCreateObjectURL = URL.createObjectURL
+      let createdUrl: string | null = null
+
+      URL.createObjectURL = vi.fn((_blob: Blob) => {
+        createdUrl = 'blob:test-url'
+        return createdUrl
+      })
+
+      convertBtn.click()
+      await flushRuntimeResponse()
+
+      expect(createdUrl).not.toBeNull()
+      expect(URL.createObjectURL).toHaveBeenCalled()
+
+      URL.createObjectURL = originalCreateObjectURL
+    })
   })
 })

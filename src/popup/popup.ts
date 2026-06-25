@@ -18,6 +18,8 @@ import {
 } from '../shared/dom-utils'
 import type { BackgroundRequest, BackgroundResponse, RecorderSnapshot } from '../messages'
 import type { CapturedRequest } from '../models/captured-request'
+import type { HAR } from '../jmx/har-to-jmx'
+import { validateHar, extractHarDomains } from '../jmx/har-to-jmx'
 
 type ResponseWithSnapshot = Extract<BackgroundResponse, { snapshot?: RecorderSnapshot }>
 type TransactionRequest = CapturedRequest & { responseBody?: string }
@@ -57,6 +59,15 @@ const jmxDomains = requireElement<HTMLDivElement>('jmxDomains')
 const jmxDomainStatus = requireElement<HTMLDivElement>('jmxDomainStatus')
 const jmxDomainError = requireElement<HTMLDivElement>('jmxDomainError')
 const exportJmxSelected = requireElement<HTMLButtonElement>('exportJmxSelected')
+// EXTERNAL HAR IMPORT: New DOM elements for HAR import section
+const importHarSection = requireElement<HTMLDivElement>('importHarSection')
+const importHarFile = requireElement<HTMLInputElement>('importHarFile')
+const importHarError = requireElement<HTMLDivElement>('importHarError')
+const importHarFieldset = requireElement<HTMLFieldSetElement>('importHarFieldset')
+const importHarDomains = requireElement<HTMLDivElement>('importHarDomains')
+const importHarDomainStatus = requireElement<HTMLDivElement>('importHarDomainStatus')
+const importHarDomainError = requireElement<HTMLDivElement>('importHarDomainError')
+const convertHarToJmx = requireElement<HTMLButtonElement>('convertHarToJmx')
 const playwrightOptions = document.getElementById('playwrightOptions') as HTMLDivElement | null
 const baseUrlInput = document.getElementById('baseUrl') as HTMLInputElement | null
 const transactionSummary = requireElement<HTMLParagraphElement>('transactionSummary')
@@ -90,6 +101,11 @@ let selectedDomains = new Set<string>()
 let transactionPanelOptions = defaultTransactionPanelOptions
 let planNameEdited = false
 
+// EXTERNAL HAR IMPORT: State for the imported HAR file and domain selection
+let importedHar: HAR | null = null
+let importedHarDomains: string[] = []
+let selectedImportedHarDomains = new Set<string>()
+
 const transactions: CapturedRequest[] = []
 
 let snapshot: RecorderSnapshot = {
@@ -122,10 +138,12 @@ exportMode.addEventListener('change', () => {
   const isJmx = exportMode.value === 'jmx'
 
   jmxOptions.style.display = isJmx ? 'block' : 'none'
+  importHarSection.style.display = isJmx ? 'block' : 'none'
   if (playwrightOptions !== null) {
     playwrightOptions.style.display = exportMode.value === 'playwright' ? 'block' : 'none'
   }
   clearJmxDomainError()
+  clearImportHarError()
 })
 
 start.addEventListener('click', () => {
@@ -174,6 +192,12 @@ clear.addEventListener('click', () => {
       transactions.splice(0, transactions.length)
       availableDomains = []
       selectedDomains.clear()
+      importedHar = null
+      importedHarDomains = []
+      selectedImportedHarDomains.clear()
+      importHarFieldset.hidden = true
+      importHarDomains.replaceChildren()
+      clearImportHarError()
       renderTransactions()
     }
   })
@@ -185,6 +209,15 @@ exportBtn.addEventListener('click', () => {
 
 exportJmxSelected.addEventListener('click', () => {
   void exportSelectedJmxDomains()
+})
+
+// EXTERNAL HAR IMPORT: File input handler for selecting and parsing HAR files
+importHarFile.addEventListener('change', () => {
+  void handleImportHarFile()
+})
+
+convertHarToJmx.addEventListener('click', () => {
+  void convertImportedHarToJmx()
 })
 
 openDetachedInspector.addEventListener('click', () => {
@@ -511,6 +544,195 @@ async function exportJmx(includedDomains: string[]): Promise<void> {
   }
 
   download(response.jmx, response.filename)
+}
+
+// EXTERNAL HAR IMPORT: Handle file selection, parsing, and validation
+async function handleImportHarFile(): Promise<void> {
+  const file = importHarFile.files?.[0]
+
+  if (!file) {
+    showImportHarError('Empty HAR file: please select a file.')
+    importedHar = null
+    importedHarDomains = []
+    selectedImportedHarDomains.clear()
+    importHarFieldset.hidden = true
+    return
+  }
+
+  if (file.size === 0) {
+    showImportHarError('Empty HAR file: file has no content.')
+    importedHar = null
+    importedHarDomains = []
+    selectedImportedHarDomains.clear()
+    importHarFieldset.hidden = true
+    return
+  }
+
+  clearImportHarError()
+  importedHar = null
+  importedHarDomains = []
+  selectedImportedHarDomains.clear()
+  importHarFieldset.hidden = true
+
+  try {
+    const text = await file.text()
+
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(text)
+    } catch {
+      throw new Error('Invalid HAR file: file is not valid JSON')
+    }
+
+    // Client-side validation (fast feedback before sending to background)
+    if (typeof parsed !== 'object' || parsed === null) {
+      throw new Error('Invalid HAR file: file is not a valid object')
+    }
+
+    const record = parsed as Record<string, unknown>
+
+    if (!('log' in record)) {
+      throw new Error('Invalid HAR file: missing log object')
+    }
+
+    const log = record.log as Record<string, unknown>
+
+    if (typeof log !== 'object' || log === null) {
+      throw new Error('Invalid HAR file: log must be an object')
+    }
+
+    if (log.version !== '1.2') {
+      throw new Error('Unsupported HAR version: expected 1.2')
+    }
+
+    if (!Array.isArray(log.entries)) {
+      throw new Error('Invalid HAR file: log.entries must be an array')
+    }
+
+    if (log.entries.length === 0) {
+      throw new Error('Invalid HAR file: no entries found')
+    }
+
+    // Type-cast to HAR after structural validation
+    const har = parsed as HAR
+    validateHar(har)
+
+    importedHar = har
+    importedHarDomains = extractHarDomains(har)
+    selectedImportedHarDomains = new Set(importedHarDomains)
+
+    renderImportHarDomainSelector()
+    importHarFieldset.hidden = false
+  } catch (err) {
+    showImportHarError(toErrorMessage(err))
+    importedHar = null
+    importedHarDomains = []
+    selectedImportedHarDomains.clear()
+    importHarFieldset.hidden = true
+  }
+}
+
+// EXTERNAL HAR IMPORT: Render domain checkboxes mirroring the JMX domain selector UI
+function renderImportHarDomainSelector(): void {
+  importHarDomains.replaceChildren()
+
+  for (const domain of importedHarDomains) {
+    const label = document.createElement('label')
+    const checkbox = document.createElement('input')
+    const name = document.createElement('span')
+
+    label.className = 'domain-option'
+    checkbox.type = 'checkbox'
+    checkbox.value = domain
+    checkbox.checked = selectedImportedHarDomains.has(domain)
+    checkbox.addEventListener('change', () => {
+      if (checkbox.checked) {
+        selectedImportedHarDomains.add(domain)
+      } else {
+        selectedImportedHarDomains.delete(domain)
+      }
+
+      updateImportHarDomainSelectionState()
+    })
+    name.textContent = domain
+
+    label.append(checkbox, name)
+    importHarDomains.append(label)
+  }
+
+  updateImportHarDomainSelectionState()
+}
+
+function updateImportHarDomainSelectionState(): void {
+  const selectedCount = selectedImportedHarDomains.size
+
+  convertHarToJmx.disabled = selectedCount === 0
+  importHarDomainStatus.textContent = `${selectedCount} of ${importedHarDomains.length} domains selected`
+  clearImportHarDomainError()
+}
+
+// EXTERNAL HAR IMPORT: Convert imported HAR to JMX via background message
+async function convertImportedHarToJmx(): Promise<void> {
+  if (importedHar === null) {
+    showImportHarError('No HAR file loaded.')
+    return
+  }
+
+  if (selectedImportedHarDomains.size === 0) {
+    showImportHarDomainError('Select at least one domain.')
+    return
+  }
+
+  clearImportHarError()
+  clearImportHarDomainError()
+  convertHarToJmx.disabled = true
+  convertHarToJmx.textContent = 'Converting…'
+
+  try {
+    const response = await send({
+      type: 'IMPORT_HAR',
+      har: importedHar,
+      includedDomains: [...selectedImportedHarDomains],
+    })
+
+    if (!response.success) {
+      showImportHarError(response.error)
+      return
+    }
+
+    // Check for JMX response shape
+    const jmxResponse = response as BackgroundResponse & { jmx?: string; filename?: string }
+
+    if (!('jmx' in jmxResponse) || !jmxResponse.jmx) {
+      showImportHarError('Conversion failed: no JMX output received.')
+      return
+    }
+
+    const filename = jmxResponse.filename ?? 'Untitled-Plan.jmx'
+    download(jmxResponse.jmx, filename)
+  } catch (err) {
+    showImportHarError(toErrorMessage(err))
+  } finally {
+    convertHarToJmx.disabled = selectedImportedHarDomains.size === 0
+    convertHarToJmx.textContent = 'Convert HAR to JMX'
+  }
+}
+
+function showImportHarError(message: string): void {
+  importHarError.textContent = message
+}
+
+function showImportHarDomainError(message: string): void {
+  importHarDomainError.textContent = message
+}
+
+function clearImportHarError(): void {
+  importHarError.textContent = ''
+  clearImportHarDomainError()
+}
+
+function clearImportHarDomainError(): void {
+  importHarDomainError.textContent = ''
 }
 
 async function send(message: BackgroundRequest): Promise<BackgroundResponse> {

@@ -1,4 +1,5 @@
 import type { ActionStep } from './models/captured-request'
+import type { HAR } from './jmx/har-to-jmx'
 
 export type RecorderStatus = 'idle' | 'recording' | 'paused'
 
@@ -25,6 +26,8 @@ export type BackgroundRequest =
   | { type: 'EXPORT_JMX'; includedDomains: string[] }
   | { type: 'EXPORT_PLAYWRIGHT'; baseUrl?: string; suiteName?: string; testCaseName?: string }
   | { type: 'RESPONSE_BODY_CAPTURED'; payload: ResponseBodyPayload }
+  // EXTERNAL HAR IMPORT: New message type for importing HAR files and converting to JMX
+  | { type: 'IMPORT_HAR'; har: HAR; includedDomains: string[] }
 
 export type BackgroundResponse =
   | { success: true; snapshot?: RecorderSnapshot; requests?: unknown[] }

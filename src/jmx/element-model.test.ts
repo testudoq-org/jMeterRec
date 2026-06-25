@@ -399,9 +399,13 @@ describe('Serialization functions', () => {
 
     const xml = serializeHTTPRequestDefaults(defaults)
 
+    // The element tag must be ConfigTestElement (not HTTPRequestDefaults) for JMeter compatibility
+    expect(xml).toContain('<ConfigTestElement guiclass="org.apache.jmeter.protocol.http.config.gui.HttpDefaultsGui"')
     expect(xml).toContain('HTTPSampler.domain">api.example.com')
     expect(xml).toContain('HTTPSampler.port">443')
     expect(xml).toContain('HTTPSampler.protocol">https')
+    // Verify the Arguments element is present (matches JMeter template)
+    expect(xml).toContain('HTTPsampler.Arguments')
   })
 
   it('serializeHTTPSampler omits inherited properties when empty', () => {
@@ -585,7 +589,7 @@ describe('Serialization functions', () => {
     expect(xml).toContain('testclass="ResponseAssertion"')
     expect(xml).toContain('Assertion.test_field">Assertion.response_code')
     expect(xml).toContain('test_values">')
-    expect(xml).toContain('stringProp name="8">200')
+    expect(xml).toContain('stringProp name="200">200')
   })
 })
 
