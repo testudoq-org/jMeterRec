@@ -36,7 +36,7 @@ try {
 }
 
 const installManifest = {
-  name: "BM JMX Recorder",
+  name: "capyultura",
   version: PACKAGE_VERSION,
   extension_id: process.env.EXTENSION_ID ?? "placeholder",
   update_url: "https://clients2.google.com/service/update2/crx",
