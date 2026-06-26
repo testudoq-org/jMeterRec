@@ -308,10 +308,8 @@ This spec should be implemented after `010-advanced-recorder-options` is stable,
 | 013-A5 | ✅ Completed | `src/options/jmx-options.ts` — persist `cacheEnabled`, `durationAssertionEnabled`, `durationAssertionThresholdMs`, `extractorsJson` |
 | 013-A6 | ✅ Completed | `src/options/options.html` / `options.ts` — UI controls for CacheManager, DurationAssertion, extractor definitions |
 | 013-A7 | ✅ Completed | `src/options/options.test.ts` — UI wiring tests, extractor validation |
-| 013-A8 | ⏳ Pending | Golden JMX fixture and E2E test update for new elements |
+| 013-A8 | ✅ Completed | Golden JMX fixture (`tests/fixtures/golden/golden-extension.jmx`) and E2E tests updated for new elements |
 
 ### Verification
 
-All 013 unit tests pass (367 tests). Backward compatibility preserved: default options produce identical JMX output to pre-013 behaviour when new options are disabled.
-| 013-A7 | ⏳ Planned | `src/options/options.test.ts` — UI wiring tests |
-| 013-A8 | ⏳ Planned | Golden JMX fixture and E2E test update for new elements |
+All 013 unit tests pass (379 tests). Backward compatibility preserved: default options produce identical JMX output to pre-013 behaviour when new options are disabled.
