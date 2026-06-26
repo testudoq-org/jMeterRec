@@ -815,7 +815,9 @@ describe('buildJmx', () => {
 
       // Must use ConfigTestElement tag name (mapped in saveservice.properties)
       // HTTPRequestDefaults is NOT a valid alias in JMeter 5.6.3
-      expect(jmx).toContain('<ConfigTestElement guiclass="org.apache.jmeter.protocol.http.config.gui.HttpDefaultsGui"')
+      expect(jmx).toContain(
+        '<ConfigTestElement guiclass="org.apache.jmeter.protocol.http.config.gui.HttpDefaultsGui"'
+      )
       expect(jmx).not.toContain('<HTTPRequestDefaults')
 
       // ConfigTestElement must be followed by a hashTree before the next sampler
@@ -829,5 +831,287 @@ describe('buildJmx', () => {
       expect(hashTreeAfterConfig).toBeGreaterThan(-1)
       expect(hashTreeAfterConfig).toBeLessThan(nextSampler)
     })
+  })
+
+  it('emits CacheManager under ThreadGroup when cacheEnabled is true', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests, { cacheEnabled: true })
+
+    expect(jmx).toContain('CacheManager')
+    expect(jmx).toContain('testname="Cache Manager"')
+    expect(jmx).toContain('maxNumberOfResults">500')
+  })
+
+  it('does not emit CacheManager when cacheEnabled is false or undefined', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    expect(buildJmx(meta, requests)).not.toContain('CacheManager')
+    expect(buildJmx(meta, requests, { cacheEnabled: false })).not.toContain('CacheManager')
+  })
+
+  it('emits DurationAssertion after sampler when enabled', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests, {
+      durationAssertion: { enabled: true, thresholdMs: 5000 },
+    })
+
+    expect(jmx).toContain('DurationAssertion')
+    expect(jmx).toContain('duration">5000')
+  })
+
+  it('does not emit DurationAssertion when disabled', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    expect(buildJmx(meta, requests)).not.toContain('DurationAssertion')
+    expect(
+      buildJmx(meta, requests, { durationAssertion: { enabled: false, thresholdMs: 5000 } })
+    ).not.toContain('DurationAssertion')
+  })
+
+  it('emits JSONPostProcessor after sampler when extractors include JSON', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests, {
+      extractors: [
+        {
+          type: 'json',
+          testClass: 'JSONPostProcessor',
+          guiClass: 'JSONPostProcessorGui',
+          name: 'JSON Post Processor',
+          enabled: true,
+          refNames: 'token',
+          jsonPathExpressions: '$.token',
+          defaultValues: '',
+          matchNumbers: '1',
+        },
+      ],
+    })
+
+    expect(jmx).toContain('JSONPostProcessor')
+    expect(jmx).toContain('referenceNames">token')
+    expect(jmx).toContain('jsonPathExpressions">$.token')
+  })
+
+  it('emits RegexExtractor after sampler when extractors include regex', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests, {
+      extractors: [
+        {
+          type: 'regex',
+          testClass: 'RegexExtractor',
+          guiClass: 'RegexExtractorGui',
+          name: 'Regular Expression Extractor',
+          enabled: true,
+          refname: 'orderId',
+          regex: 'Order #(\\d+)',
+          defaultValue: '',
+          matchNumber: '1',
+          template: '$1$',
+        },
+      ],
+    })
+
+    expect(jmx).toContain('RegexExtractor')
+    expect(jmx).toContain('refname">orderId')
+    expect(jmx).toContain('<![CDATA[Order #(\\d+)]]>')
+  })
+
+  it('does not emit extractors when extractors array is empty', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests, { extractors: [] })
+
+    expect(jmx).not.toContain('JSONPostProcessor')
+    expect(jmx).not.toContain('RegexExtractor')
+  })
+
+  it('emits multiple extractors after a single sampler', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests, {
+      extractors: [
+        {
+          type: 'json',
+          testClass: 'JSONPostProcessor',
+          guiClass: 'JSONPostProcessorGui',
+          name: 'JSON Post Processor',
+          enabled: true,
+          refNames: 'token',
+          jsonPathExpressions: '$.token',
+          defaultValues: '',
+          matchNumbers: '1',
+        },
+        {
+          type: 'regex',
+          testClass: 'RegexExtractor',
+          guiClass: 'RegexExtractorGui',
+          name: 'Regular Expression Extractor',
+          enabled: true,
+          refname: 'orderId',
+          regex: 'Order #(\\d+)',
+          defaultValue: '',
+          matchNumber: '1',
+          template: '$1$',
+        },
+      ],
+    })
+
+    expect(jmx).toContain('JSONPostProcessor')
+    expect(jmx).toContain('RegexExtractor')
+    const samplerEnd = jmx.indexOf('</HTTPSamplerProxy>')
+    const firstHashTree = jmx.indexOf('<hashTree/>', samplerEnd)
+    const jsonPos = jmx.indexOf('JSONPostProcessor')
+    const regexPos = jmx.indexOf('RegexExtractor')
+    expect(jsonPos).toBeGreaterThan(firstHashTree)
+    expect(regexPos).toBeGreaterThan(jsonPos)
+  })
+
+  it('escapes regex special characters in CDATA for RegexExtractor', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests, {
+      extractors: [
+        {
+          type: 'regex',
+          testClass: 'RegexExtractor',
+          guiClass: 'RegexExtractorGui',
+          name: 'Regular Expression Extractor',
+          enabled: true,
+          refname: 'complex',
+          regex: '<html>.*?</html>',
+          defaultValue: '',
+          matchNumber: '1',
+          template: '$1$',
+        },
+      ],
+    })
+
+    expect(jmx).toContain('<![CDATA[<html>.*?</html>]]>')
+    expect(jmx).not.toContain('&lt;html&gt;')
+  })
+
+  it('renders extractors alongside DurationAssertion without interfering with hashTree ordering', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests, {
+      durationAssertion: { enabled: true, thresholdMs: 5000 },
+      extractors: [
+        {
+          type: 'json',
+          testClass: 'JSONPostProcessor',
+          guiClass: 'JSONPostProcessorGui',
+          name: 'JSON Post Processor',
+          enabled: true,
+          refNames: 'token',
+          jsonPathExpressions: '$.token',
+          defaultValues: '',
+          matchNumbers: '1',
+        },
+      ],
+    })
+
+    expect(jmx).toContain('DurationAssertion')
+    expect(jmx).toContain('JSONPostProcessor')
+
+    // DurationAssertion comes before sampler, JSONPostProcessor comes after sampler's hashTree
+    const durationPos = jmx.indexOf('DurationAssertion')
+    const samplerEnd = jmx.indexOf('</HTTPSamplerProxy>')
+    const firstHashTree = jmx.indexOf('<hashTree/>', samplerEnd)
+    const jsonPos = jmx.indexOf('JSONPostProcessor')
+    expect(durationPos).toBeLessThan(samplerEnd)
+    expect(jsonPos).toBeGreaterThan(firstHashTree)
   })
 })

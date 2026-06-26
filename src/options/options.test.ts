@@ -86,6 +86,10 @@ const chromeStub = {
           recordRedirects: false,
           recordCookies: true,
           userAgent: 'current',
+          cacheEnabled: false,
+          durationAssertionEnabled: false,
+          durationAssertionThresholdMs: 5000,
+          extractorsJson: '[]',
         }
       }),
       set: vi.fn(async () => {}),
@@ -104,48 +108,53 @@ vi.stubGlobal('chrome', chromeStub)
 
 function buildOptionsHtml(): string {
   return `<!doctype html>
-  <html lang="en">
-    <body>
-      <input id="defaultPlanName" />
-      <input id="threads" />
-      <input id="rampUp" />
-      <input id="loops" />
-      <input id="thinkTimeEnabled" type="checkbox" />
-      <input id="thinkTimeRandomize" type="checkbox" />
-      <input id="thinkTimeRangePercent" />
-      <input id="assertionsEnabled" type="checkbox" />
-      <input id="assertionExpectStatus" />
-      <input id="redirectDedupEnabled" type="checkbox" />
-      <button id="save"></button>
-      <div id="saved"></div>
-      <input id="maxTransactions" />
-      <input id="openDetachedInspector" type="checkbox" />
-      <input id="captureResponseBody" type="checkbox" />
-      <button id="saveTransactionPanelOptions"></button>
-      <div id="transactionPanelSaved"></div>
-      <textarea id="filterPattern"></textarea>
-      <input id="recordCss" type="checkbox" />
-      <input id="recordJs" type="checkbox" />
-      <input id="recordImages" type="checkbox" />
-      <input id="recordRedirects" type="checkbox" />
-      <input id="recordCookies" type="checkbox" />
-      <select id="userAgent">
-        <option value="current">current</option>
-        <option value="custom">custom</option>
-      </select>
-      <input id="customUserAgent" type="text" />
-      <button id="saveAdvancedOptions"></button>
-      <button id="resetAdvancedOptions"></button>
-      <div id="filterPatternError"></div>
-      <div id="resourceTypeError"></div>
-      <div id="userAgentError"></div>
-      <div id="advancedSaved"></div>
-      <select id="themeMode">
-        <option value="light">light</option>
-        <option value="dark">dark</option>
-      </select>
-    </body>
-  </html>`
+    <html lang="en">
+      <body>
+        <input id="defaultPlanName" />
+        <input id="threads" />
+        <input id="rampUp" />
+        <input id="loops" />
+        <input id="thinkTimeEnabled" type="checkbox" />
+        <input id="thinkTimeRandomize" type="checkbox" />
+        <input id="thinkTimeRangePercent" />
+        <input id="assertionsEnabled" type="checkbox" />
+        <input id="assertionExpectStatus" />
+        <input id="redirectDedupEnabled" type="checkbox" />
+        <input id="cacheEnabled" type="checkbox" />
+        <input id="durationAssertionEnabled" type="checkbox" />
+        <input id="durationAssertionThresholdMs" />
+        <textarea id="extractorsJson"></textarea>
+        <div id="extractorsJsonError"></div>
+        <button id="save"></button>
+        <div id="saved"></div>
+        <input id="maxTransactions" />
+        <input id="openDetachedInspector" type="checkbox" />
+        <input id="captureResponseBody" type="checkbox" />
+        <button id="saveTransactionPanelOptions"></button>
+        <div id="transactionPanelSaved"></div>
+        <textarea id="filterPattern"></textarea>
+        <input id="recordCss" type="checkbox" />
+        <input id="recordJs" type="checkbox" />
+        <input id="recordImages" type="checkbox" />
+        <input id="recordRedirects" type="checkbox" />
+        <input id="recordCookies" type="checkbox" />
+        <select id="userAgent">
+          <option value="current">current</option>
+          <option value="custom">custom</option>
+        </select>
+        <input id="customUserAgent" type="text" />
+        <button id="saveAdvancedOptions"></button>
+        <button id="resetAdvancedOptions"></button>
+        <div id="filterPatternError"></div>
+        <div id="resourceTypeError"></div>
+        <div id="userAgentError"></div>
+        <div id="advancedSaved"></div>
+        <select id="themeMode">
+          <option value="light">light</option>
+          <option value="dark">dark</option>
+        </select>
+      </body>
+    </html>`
 }
 
 async function loadOptionsModule() {
@@ -250,6 +259,10 @@ describe('options advanced options storage sync', () => {
           recordRedirects: false,
           recordCookies: true,
           userAgent: 'current',
+          cacheEnabled: false,
+          durationAssertionEnabled: false,
+          durationAssertionThresholdMs: 5000,
+          extractorsJson: '[]',
         }
       }
       // Subsequent calls (from onChange handler) return updated values
@@ -261,6 +274,10 @@ describe('options advanced options storage sync', () => {
         recordRedirects: true,
         recordCookies: false,
         userAgent: 'firefox-linux',
+        cacheEnabled: false,
+        durationAssertionEnabled: false,
+        durationAssertionThresholdMs: 5000,
+        extractorsJson: '[]',
       }
     })
 
@@ -351,6 +368,10 @@ describe('options advanced options storage sync', () => {
           recordRedirects: false,
           recordCookies: true,
           userAgent: 'current',
+          cacheEnabled: false,
+          durationAssertionEnabled: false,
+          durationAssertionThresholdMs: 5000,
+          extractorsJson: '[]',
         }
       }
       // Return custom user agent on sync
@@ -362,6 +383,10 @@ describe('options advanced options storage sync', () => {
         recordRedirects: false,
         recordCookies: true,
         userAgent: 'custom:My Test Agent',
+        cacheEnabled: false,
+        durationAssertionEnabled: false,
+        durationAssertionThresholdMs: 5000,
+        extractorsJson: '[]',
       }
     })
 
@@ -407,6 +432,10 @@ describe('options advanced options storage sync', () => {
           recordRedirects: false,
           recordCookies: true,
           userAgent: 'current',
+          cacheEnabled: false,
+          durationAssertionEnabled: false,
+          durationAssertionThresholdMs: 5000,
+          extractorsJson: '[]',
         }
       }
       // Throw on onChange handler call
@@ -449,6 +478,10 @@ describe('options advanced options storage sync', () => {
         recordRedirects: false,
         recordCookies: true,
         userAgent: 'current',
+        cacheEnabled: false,
+        durationAssertionEnabled: false,
+        durationAssertionThresholdMs: 5000,
+        extractorsJson: '[]',
       }
     })
 

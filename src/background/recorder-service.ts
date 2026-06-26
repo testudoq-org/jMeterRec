@@ -5,6 +5,7 @@ import { buildPlaywrightResponse } from '../generators/playwright'
 import { JmxOptionsStore } from '../options/jmx-options'
 import { AdvancedOptionsStore } from '../options/advanced-options'
 import type { JmxOptions } from '../options/jmx-options'
+import { parseExtractors } from '../options/jmx-options'
 import { safeFilename } from '../utils/filename'
 import type { BackgroundRequest, BackgroundResponse, RecorderSnapshot } from '../messages'
 import type { HAR } from '../jmx/har-to-jmx'
@@ -361,6 +362,11 @@ export class RecorderService {
         : undefined,
       recordCookies: advancedOptions.recordCookies,
       userAgent: advancedOptions.userAgent,
+      durationAssertion: jmxOptions.durationAssertionEnabled
+        ? { enabled: true, thresholdMs: jmxOptions.durationAssertionThresholdMs }
+        : undefined,
+      cacheEnabled: jmxOptions.cacheEnabled,
+      extractors: parseExtractors(jmxOptions.extractorsJson),
     })
 
     return {
@@ -404,6 +410,11 @@ export class RecorderService {
         : undefined,
       recordCookies: advancedOptions.recordCookies,
       userAgent: advancedOptions.userAgent,
+      durationAssertion: jmxOptions.durationAssertionEnabled
+        ? { enabled: true, thresholdMs: jmxOptions.durationAssertionThresholdMs }
+        : undefined,
+      cacheEnabled: jmxOptions.cacheEnabled,
+      extractors: parseExtractors(jmxOptions.extractorsJson),
     })
 
     return {
@@ -553,3 +564,4 @@ function toErrorMessage(err: unknown): string {
 function unreachable(value: never): BackgroundResponse {
   return { success: false, error: `Unsupported message type: ${String(value)}` }
 }
+

@@ -7,6 +7,10 @@ import {
   createConstantTimer,
   createUniformRandomTimer,
   createResponseAssertion,
+  createDurationAssertion,
+  createCacheManager,
+  createJSONPostProcessor,
+  createRegexExtractor,
   isValidElementNesting,
   ELEMENT_HIERARCHY,
   serializeTestPlan,
@@ -17,6 +21,10 @@ import {
   serializeConstantTimer,
   serializeUniformRandomTimer,
   serializeResponseAssertion,
+  serializeDurationAssertion,
+  serializeCacheManager,
+  serializeJSONPostProcessor,
+  serializeRegexExtractor,
   createTestPlan,
   createThreadGroup,
   createHTTPSampler,
@@ -305,6 +313,64 @@ describe('JmxResponseAssertion factory', () => {
   })
 })
 
+describe('JmxDurationAssertion factory', () => {
+  it('creates an assertion with given duration', () => {
+    const assertion = createDurationAssertion(5000)
+
+    expect(assertion.type).toBe('DurationAssertion')
+    expect(assertion.durationMs).toBe(5000)
+  })
+})
+
+describe('JmxCacheManager factory', () => {
+  it('creates a cache manager with default values', () => {
+    const mgr = createCacheManager()
+
+    expect(mgr.type).toBe('CacheManager')
+    expect(mgr.clearEachIteration).toBe(false)
+    expect(mgr.maxNumberOfResults).toBe(500)
+  })
+
+  it('accepts custom values', () => {
+    const mgr = createCacheManager(true, 1000)
+
+    expect(mgr.clearEachIteration).toBe(true)
+    expect(mgr.maxNumberOfResults).toBe(1000)
+  })
+})
+
+describe('JmxJSONPostProcessor factory', () => {
+  it('creates a JSON extractor with given expressions', () => {
+    const extractor = createJSONPostProcessor('token', '$.token')
+
+    expect(extractor.type).toBe('json')
+    expect(extractor.refNames).toBe('token')
+    expect(extractor.jsonPathExpressions).toBe('$.token')
+    expect(extractor.defaultValues).toBe('')
+    expect(extractor.matchNumbers).toBe('1')
+  })
+})
+
+describe('JmxRegexExtractor factory', () => {
+  it('creates a regex extractor with default template', () => {
+    const extractor = createRegexExtractor('orderId', 'Order #(\\d+)')
+
+    expect(extractor.type).toBe('regex')
+    expect(extractor.refname).toBe('orderId')
+    expect(extractor.regex).toBe('Order #(\\d+)')
+    expect(extractor.template).toBe('$1$')
+    expect(extractor.matchNumber).toBe('1')
+  })
+
+  it('accepts custom template and match number', () => {
+    const extractor = createRegexExtractor('id', 'id=(\\w+)', 'fallback', '2', '$2$')
+
+    expect(extractor.template).toBe('$2$')
+    expect(extractor.matchNumber).toBe('2')
+    expect(extractor.defaultValue).toBe('fallback')
+  })
+})
+
 describe('ELEMENT_HIERARCHY', () => {
   it('defines valid children for TestPlan', () => {
     expect(ELEMENT_HIERARCHY.TestPlan).toContain('ThreadGroup')
@@ -319,14 +385,35 @@ describe('ELEMENT_HIERARCHY', () => {
     expect(ELEMENT_HIERARCHY.HTTPSamplerProxy).toContain('ResponseAssertion')
   })
 
+  it('allows DurationAssertion inside HTTPSamplerProxy', () => {
+    expect(ELEMENT_HIERARCHY.HTTPSamplerProxy).toContain('DurationAssertion')
+  })
+
+  it('allows JSONPostProcessor inside HTTPSamplerProxy', () => {
+    expect(ELEMENT_HIERARCHY.HTTPSamplerProxy).toContain('JSONPostProcessor')
+  })
+
+  it('allows RegexExtractor inside HTTPSamplerProxy', () => {
+    expect(ELEMENT_HIERARCHY.HTTPSamplerProxy).toContain('RegexExtractor')
+  })
+
+  it('allows CacheManager inside ThreadGroup', () => {
+    expect(ELEMENT_HIERARCHY.ThreadGroup).toContain('CacheManager')
+  })
+
   it('rejects invalid nesting', () => {
     expect(isValidElementNesting('HTTPRequestDefaults', 'HTTPSamplerProxy')).toBe(false)
     expect(isValidElementNesting('TestPlan', 'ResponseAssertion')).toBe(false)
+    expect(isValidElementNesting('HTTPSamplerProxy', 'ThreadGroup')).toBe(false)
   })
 
   it('validates valid nesting', () => {
     expect(isValidElementNesting('ThreadGroup', 'HTTPSamplerProxy')).toBe(true)
     expect(isValidElementNesting('HTTPSamplerProxy', 'ResponseAssertion')).toBe(true)
+    expect(isValidElementNesting('ThreadGroup', 'CacheManager')).toBe(true)
+    expect(isValidElementNesting('HTTPSamplerProxy', 'DurationAssertion')).toBe(true)
+    expect(isValidElementNesting('HTTPSamplerProxy', 'JSONPostProcessor')).toBe(true)
+    expect(isValidElementNesting('HTTPSamplerProxy', 'RegexExtractor')).toBe(true)
   })
 })
 
@@ -400,7 +487,9 @@ describe('Serialization functions', () => {
     const xml = serializeHTTPRequestDefaults(defaults)
 
     // The element tag must be ConfigTestElement (not HTTPRequestDefaults) for JMeter compatibility
-    expect(xml).toContain('<ConfigTestElement guiclass="org.apache.jmeter.protocol.http.config.gui.HttpDefaultsGui"')
+    expect(xml).toContain(
+      '<ConfigTestElement guiclass="org.apache.jmeter.protocol.http.config.gui.HttpDefaultsGui"'
+    )
     expect(xml).toContain('HTTPSampler.domain">api.example.com')
     expect(xml).toContain('HTTPSampler.port">443')
     expect(xml).toContain('HTTPSampler.protocol">https')
@@ -590,6 +679,48 @@ describe('Serialization functions', () => {
     expect(xml).toContain('Assertion.test_field">Assertion.response_code')
     expect(xml).toContain('test_values">')
     expect(xml).toContain('stringProp name="200">200')
+  })
+
+  it('serializeDurationAssertion produces valid XML', () => {
+    const assertion = createDurationAssertion(5000)
+
+    const xml = serializeDurationAssertion(assertion)
+
+    expect(xml).toContain('testclass="DurationAssertion"')
+    expect(xml).toContain('duration">5000')
+  })
+
+  it('serializeCacheManager produces valid XML', () => {
+    const mgr = createCacheManager()
+
+    const xml = serializeCacheManager(mgr)
+
+    expect(xml).toContain('testclass="CacheManager"')
+    expect(xml).toContain('clearEachIteration">false')
+    expect(xml).toContain('maxNumberOfResults">500')
+  })
+
+  it('serializeJSONPostProcessor produces valid XML', () => {
+    const extractor = createJSONPostProcessor('token', '$.token', '', '1')
+
+    const xml = serializeJSONPostProcessor(extractor)
+
+    expect(xml).toContain('testclass="JSONPostProcessor"')
+    expect(xml).toContain('referenceNames">token')
+    expect(xml).toContain('jsonPathExpressions">$.token')
+    expect(xml).toContain('match_numbers">1')
+  })
+
+  it('serializeRegexExtractor produces valid XML and escapes regex as CDATA', () => {
+    const extractor = createRegexExtractor('orderId', 'Order #(\\d+)')
+
+    const xml = serializeRegexExtractor(extractor)
+
+    expect(xml).toContain('testclass="RegexExtractor"')
+    expect(xml).toContain('refname">orderId')
+    expect(xml).toContain('<![CDATA[Order #(\\d+)]]>')
+    expect(xml).toContain('template">$1$')
+    expect(xml).toContain('match_number">1')
   })
 })
 

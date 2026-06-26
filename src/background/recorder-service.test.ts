@@ -218,6 +218,10 @@ describe('RecorderService', () => {
         assertionsEnabled: false,
         assertionExpectStatus: 200,
         redirectDedupEnabled: false,
+        cacheEnabled: false,
+        durationAssertionEnabled: false,
+        durationAssertionThresholdMs: 5000,
+        extractorsJson: '[]',
       }),
       advancedOptionsStore: createMockAdvancedOptionsStore(),
     })
@@ -360,6 +364,10 @@ describe('RecorderService', () => {
         assertionsEnabled: false,
         assertionExpectStatus: 200,
         redirectDedupEnabled: false,
+        cacheEnabled: false,
+        durationAssertionEnabled: false,
+        durationAssertionThresholdMs: 5000,
+        extractorsJson: '[]',
       }),
       advancedOptionsStore: createMockAdvancedOptionsStore(),
     })
@@ -603,5 +611,108 @@ describe('RecorderService', () => {
 
     const requests = state.getRequests()
     expect(requests).toEqual([newRequest])
+  })
+
+
+  it('passes cacheEnabled option to convertHarToJmx in EXPORT_JMX', async () => {
+    const mockState = createMockState()
+    const requests = [request('example', 'https://example.com/api')]
+    mockState.getRequests = vi.fn(() => [...requests])
+    mockState.getSnapshot = vi.fn(() => ({
+      status: 'idle' as const,
+      recording: false,
+      planName: 'Cache Test',
+      requestCount: requests.length,
+    }))
+
+    const service = new RecorderService({
+      state: mockState,
+      trafficCapture: createMockTrafficCapture(),
+      jmxOptionsStore: createMockJmxOptionsStore({
+        ...DEFAULT_JMX_OPTIONS,
+        cacheEnabled: true,
+      }),
+      advancedOptionsStore: createMockAdvancedOptionsStore(),
+    })
+
+    const response = await service.handleMessage({
+      type: 'EXPORT_JMX',
+      includedDomains: ['example.com'],
+    })
+
+    expect(response.success).toBe(true)
+    if (!response.success || !('jmx' in response)) {
+      throw new Error('Expected successful JMX')
+    }
+    expect(response.jmx).toContain('CacheManager')
+  })
+
+  it('passes durationAssertion option to convertHarToJmx in EXPORT_JMX', async () => {
+    const mockState = createMockState()
+    const requests = [request('example', 'https://example.com/api')]
+    mockState.getRequests = vi.fn(() => [...requests])
+    mockState.getSnapshot = vi.fn(() => ({
+      status: 'idle' as const,
+      recording: false,
+      planName: 'Duration Test',
+      requestCount: requests.length,
+    }))
+
+    const service = new RecorderService({
+      state: mockState,
+      trafficCapture: createMockTrafficCapture(),
+      jmxOptionsStore: createMockJmxOptionsStore({
+        ...DEFAULT_JMX_OPTIONS,
+        durationAssertionEnabled: true,
+        durationAssertionThresholdMs: 3000,
+      }),
+      advancedOptionsStore: createMockAdvancedOptionsStore(),
+    })
+
+    const response = await service.handleMessage({
+      type: 'EXPORT_JMX',
+      includedDomains: ['example.com'],
+    })
+
+    expect(response.success).toBe(true)
+    if (!response.success || !('jmx' in response)) {
+      throw new Error('Expected successful JMX')
+    }
+    expect(response.jmx).toContain('DurationAssertion')
+    expect(response.jmx).toContain('duration">3000')
+  })
+
+  it('passes extractors option to convertHarToJmx in EXPORT_JMX', async () => {
+    const mockState = createMockState()
+    const requests = [request('example', 'https://example.com/api')]
+    mockState.getRequests = vi.fn(() => [...requests])
+    mockState.getSnapshot = vi.fn(() => ({
+      status: 'idle' as const,
+      recording: false,
+      planName: 'Extractor Test',
+      requestCount: requests.length,
+    }))
+
+    const service = new RecorderService({
+      state: mockState,
+      trafficCapture: createMockTrafficCapture(),
+      jmxOptionsStore: createMockJmxOptionsStore({
+        ...DEFAULT_JMX_OPTIONS,
+        extractorsJson: '[{"type":"json","refNames":"token","jsonPathExpressions":"$.token"}]',
+      }),
+      advancedOptionsStore: createMockAdvancedOptionsStore(),
+    })
+
+    const response = await service.handleMessage({
+      type: 'EXPORT_JMX',
+      includedDomains: ['example.com'],
+    })
+
+    expect(response.success).toBe(true)
+    if (!response.success || !('jmx' in response)) {
+      throw new Error('Expected successful JMX')
+    }
+    expect(response.jmx).toContain('JSONPostProcessor')
+    expect(response.jmx).toContain('referenceNames">token')
   })
 })

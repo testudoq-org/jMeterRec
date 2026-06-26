@@ -27,6 +27,10 @@ interface RecorderOptions {
   assertionsEnabled: boolean
   assertionExpectStatus: number
   redirectDedupEnabled: boolean
+  cacheEnabled: boolean
+  durationAssertionEnabled: boolean
+  durationAssertionThresholdMs: number
+  extractorsJson: string
 }
 
 interface TransactionPanelOptions {
@@ -52,6 +56,10 @@ const defaults: StoredOptions = {
   assertionsEnabled: false,
   assertionExpectStatus: 200,
   redirectDedupEnabled: false,
+  cacheEnabled: false,
+  durationAssertionEnabled: false,
+  durationAssertionThresholdMs: 5000,
+  extractorsJson: '[]',
   maxTransactions: 200,
   openDetachedInspector: false,
   captureResponseBody: false,
@@ -69,6 +77,13 @@ const thinkTimeRangePercent = requireElement<HTMLInputElement>('thinkTimeRangePe
 const assertionsEnabled = requireElement<HTMLInputElement>('assertionsEnabled')
 const assertionExpectStatus = requireElement<HTMLInputElement>('assertionExpectStatus')
 const redirectDedupEnabled = requireElement<HTMLInputElement>('redirectDedupEnabled')
+const cacheEnabled = requireElement<HTMLInputElement>('cacheEnabled')
+const durationAssertionEnabled = requireElement<HTMLInputElement>('durationAssertionEnabled')
+const durationAssertionThresholdMs = requireElement<HTMLInputElement>(
+  'durationAssertionThresholdMs'
+)
+const extractorsJson = requireElement<HTMLTextAreaElement>('extractorsJson')
+const extractorsJsonError = requireElement<HTMLDivElement>('extractorsJsonError')
 const save = requireElement<HTMLButtonElement>('save')
 const saved = requireElement<HTMLDivElement>('saved')
 
@@ -118,6 +133,10 @@ chrome.storage.local
     assertionsEnabled.checked = normalizedOptions.assertionsEnabled
     assertionExpectStatus.value = String(normalizedOptions.assertionExpectStatus)
     redirectDedupEnabled.checked = normalizedOptions.redirectDedupEnabled
+    cacheEnabled.checked = normalizedOptions.cacheEnabled
+    durationAssertionEnabled.checked = normalizedOptions.durationAssertionEnabled
+    durationAssertionThresholdMs.value = String(normalizedOptions.durationAssertionThresholdMs)
+    extractorsJson.value = normalizedOptions.extractorsJson
     maxTransactions.value = String(normalizedOptions.maxTransactions)
     openDetachedInspector.checked = normalizedOptions.openDetachedInspector
     captureResponseBody.checked = normalizedOptions.captureResponseBody
@@ -130,6 +149,7 @@ chrome.storage.local
   })
 
 save.addEventListener('click', () => {
+  const extractorsValidation = validateExtractorsJson(extractorsJson.value)
   const normalizedJmxOptions = normalizeJmxOptions({
     defaultPlanName: defaultPlanName.value.trim(),
     threads: threads.value,
@@ -147,6 +167,13 @@ save.addEventListener('click', () => {
       DEFAULT_JMX_OPTIONS.assertionExpectStatus
     ),
     redirectDedupEnabled: redirectDedupEnabled.checked,
+    cacheEnabled: cacheEnabled.checked,
+    durationAssertionEnabled: durationAssertionEnabled.checked,
+    durationAssertionThresholdMs: positiveNumber(
+      durationAssertionThresholdMs.value,
+      DEFAULT_JMX_OPTIONS.durationAssertionThresholdMs
+    ),
+    extractorsJson: extractorsJson.value,
   })
   const options: RecorderOptions & AppearanceOptions = {
     defaultPlanName: normalizedJmxOptions.name,
@@ -159,7 +186,18 @@ save.addEventListener('click', () => {
     assertionsEnabled: assertionsEnabled.checked,
     assertionExpectStatus: normalizedJmxOptions.assertionExpectStatus,
     redirectDedupEnabled: redirectDedupEnabled.checked,
+    cacheEnabled: cacheEnabled.checked,
+    durationAssertionEnabled: durationAssertionEnabled.checked,
+    durationAssertionThresholdMs: normalizedJmxOptions.durationAssertionThresholdMs,
+    extractorsJson: normalizedJmxOptions.extractorsJson,
     theme: normalizeTheme(themeMode.value),
+  }
+
+  extractorsJsonError.style.display = extractorsValidation.valid ? 'none' : 'block'
+  extractorsJsonError.textContent = extractorsValidation.error ?? ''
+
+  if (!extractorsValidation.valid) {
+    return
   }
 
   chrome.storage.local
@@ -375,6 +413,13 @@ function normalizeOptions(options: StoredOptions): StoredOptions {
       DEFAULT_JMX_OPTIONS.assertionExpectStatus
     ),
     redirectDedupEnabled: options.redirectDedupEnabled === true,
+    cacheEnabled: options.cacheEnabled === true,
+    durationAssertionEnabled: options.durationAssertionEnabled === true,
+    durationAssertionThresholdMs: positiveNumber(
+      options.durationAssertionThresholdMs,
+      DEFAULT_JMX_OPTIONS.durationAssertionThresholdMs
+    ),
+    extractorsJson: options.extractorsJson ?? '[]',
     maxTransactions: boundedNumber(options.maxTransactions, 20, 500, defaults.maxTransactions),
     openDetachedInspector: options.openDetachedInspector === true,
     captureResponseBody: options.captureResponseBody === true,
@@ -387,6 +432,48 @@ function positiveNumber(value: unknown, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
 }
 
+function validateExtractorsJson(value: string): { valid: boolean; error?: string } {
+  const trimmed = value.trim()
+  if (trimmed.length === 0) {
+    return { valid: true }
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(trimmed)
+  } catch {
+    return { valid: false, error: "Invalid JSON format for extractors" }
+  }
+  if (!Array.isArray(parsed)) {
+    return { valid: false, error: "Extractors must be a JSON array" }
+  }
+  for (let i = 0; i < parsed.length; i++) {
+    const item = parsed[i]
+    if (typeof item !== "object" || item === null) {
+      return { valid: false, error: "Extractor at index " + i + " must be an object" }
+    }
+    const record = item as Record<string, unknown>
+    if (record.type !== "json" && record.type !== "regex") {
+      return { valid: false, error: "Extractor at index " + i + " has invalid type: " + String(record.type) + ". Must be json or regex" }
+    }
+    if (record.type === "json") {
+      if (typeof record.refNames !== "string" || record.refNames.length === 0) {
+        return { valid: false, error: "JSON extractor at index " + i + " must have refNames" }
+      }
+      if (typeof record.jsonPathExpressions !== "string" || record.jsonPathExpressions.length === 0) {
+        return { valid: false, error: "JSON extractor at index " + i + " must have jsonPathExpressions" }
+      }
+    } else {
+      if (typeof record.refname !== "string" || record.refname.length === 0) {
+        return { valid: false, error: "Regex extractor at index " + i + " must have refname" }
+      }
+      if (typeof record.regex !== "string" || record.regex.length === 0) {
+        return { valid: false, error: "Regex extractor at index " + i + " must have regex" }
+      }
+    }
+  }
+  return { valid: true }
+}
+
 function updateCaptureWarning(enabled: boolean): void {
   const el = document.getElementById('captureResponseBodyWarning')
   if (el === null) {
@@ -395,3 +482,4 @@ function updateCaptureWarning(enabled: boolean): void {
 
   el.style.display = enabled ? 'block' : 'none'
 }
+

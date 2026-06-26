@@ -61,6 +61,31 @@
         <span>Deduplicate redirect chains (collapse 3xx + follow-up into one sampler)</span>
       </label>
 
+      <label class="checkbox-row" style="margin-top: 16px">
+        <input id="cacheEnabled" type="checkbox" />
+        <span>Enable CacheManager in JMX output</span>
+      </label>
+
+      <label class="checkbox-row" style="margin-top: 16px">
+        <input id="durationAssertionEnabled" type="checkbox" />
+        <span>Enable DurationAssertion for response-time validation</span>
+      </label>
+
+      <label for="durationAssertionThresholdMs">Duration threshold (ms)</label>
+      <input id="durationAssertionThresholdMs" type="number" min="100" step="100" />
+
+      <label for="extractorsJson" style="margin-top: 16px">Extractors (JSON array)</label>
+      <textarea
+        id="extractorsJson"
+        rows="3"
+        placeholder='[{"type":"json","refNames":"token","jsonPathExpressions":"$.token"}]'
+      ></textarea>
+      <div
+        id="extractorsJsonError"
+        class="error"
+        style="display: none; color: #dc2626; margin-top: 4px"
+      ></div>
+
       <button id="save" type="button">Save options</button>
       <div id="saved" aria-live="polite"></div>
     </section>

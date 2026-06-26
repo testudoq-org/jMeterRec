@@ -287,6 +287,44 @@ export interface JmxResponseAssertion extends JmxElement {
   readonly ignoreResponseCode: boolean
 }
 
+export interface JmxDurationAssertion extends JmxElement {
+  readonly type: 'DurationAssertion'
+  readonly testClass: 'DurationAssertion'
+  readonly guiClass: 'DurationAssertionGui'
+  readonly durationMs: number
+}
+
+export interface JmxCacheManager extends JmxElement {
+  readonly type: 'CacheManager'
+  readonly testClass: 'CacheManager'
+  readonly guiClass: 'CacheManagerGui'
+  readonly clearEachIteration: boolean
+  readonly maxNumberOfResults: number
+}
+
+export interface JmxJSONPostProcessor extends JmxElement {
+  readonly type: 'json'
+  readonly testClass: 'JSONPostProcessor'
+  readonly guiClass: 'JSONPostProcessorGui'
+  readonly refNames: string
+  readonly jsonPathExpressions: string
+  readonly defaultValues: string
+  readonly matchNumbers: string
+}
+
+export interface JmxRegexExtractor extends JmxElement {
+  readonly type: 'regex'
+  readonly testClass: 'RegexExtractor'
+  readonly guiClass: 'RegexExtractorGui'
+  readonly refname: string
+  readonly regex: string
+  readonly template: string
+  readonly defaultValue: string
+  readonly matchNumber: string
+}
+
+export type JmxExtractor = JmxJSONPostProcessor | JmxRegexExtractor
+
 // ============================================================================
 // Factory functions for MVP elements
 // ============================================================================
@@ -385,6 +423,78 @@ export function createResponseAssertion(
     testType: 8, // Equals (JMeter default)
     testStrings: [String(expectStatus)],
     ignoreResponseCode: false,
+  }
+}
+
+export function createDurationAssertion(
+  durationMs: number,
+  name = 'Duration Assertion'
+): JmxDurationAssertion {
+  return {
+    type: 'DurationAssertion',
+    testClass: 'DurationAssertion',
+    guiClass: 'DurationAssertionGui',
+    name,
+    enabled: true,
+    durationMs,
+  }
+}
+
+export function createCacheManager(
+  clearEachIteration = false,
+  maxNumberOfResults = 500,
+  name = 'Cache Manager'
+): JmxCacheManager {
+  return {
+    type: 'CacheManager',
+    testClass: 'CacheManager',
+    guiClass: 'CacheManagerGui',
+    name,
+    enabled: true,
+    clearEachIteration,
+    maxNumberOfResults,
+  }
+}
+
+export function createJSONPostProcessor(
+  refNames: string,
+  jsonPathExpressions: string,
+  defaultValues = '',
+  matchNumbers = '1',
+  name = 'JSON Post Processor'
+): JmxJSONPostProcessor {
+  return {
+    type: 'json',
+    testClass: 'JSONPostProcessor',
+    guiClass: 'JSONPostProcessorGui',
+    name,
+    enabled: true,
+    refNames,
+    jsonPathExpressions,
+    defaultValues,
+    matchNumbers,
+  }
+}
+
+export function createRegexExtractor(
+  refname: string,
+  regex: string,
+  defaultValue = '',
+  matchNumber = '1',
+  template = '$1$',
+  name = 'Regular Expression Extractor'
+): JmxRegexExtractor {
+  return {
+    type: 'regex',
+    testClass: 'RegexExtractor',
+    guiClass: 'RegexExtractorGui',
+    name,
+    enabled: true,
+    refname,
+    regex,
+    template,
+    defaultValue,
+    matchNumber,
   }
 }
 
@@ -545,25 +655,42 @@ export function supportsRequestBody(method: string): boolean {
  * Used by serializer to validate element nesting.
  */
 export const ELEMENT_HIERARCHY: Record<string, string[]> = {
-  TestPlan: ['ThreadGroup', 'HTTPRequestDefaults', 'HeaderManager', 'CookieManager'],
+  TestPlan: [
+    'ThreadGroup',
+    'HTTPRequestDefaults',
+    'HeaderManager',
+    'CookieManager',
+    'CacheManager',
+  ],
   ThreadGroup: [
     'LoopController',
     'HTTPSamplerProxy',
     'ConstantTimer',
     'UniformRandomTimer',
     'ResponseAssertion',
+    'DurationAssertion',
     'HTTPRequestDefaults',
     'HeaderManager',
     'CookieManager',
+    'CacheManager',
   ],
   LoopController: [],
   HTTPRequestDefaults: [],
   HeaderManager: [],
   CookieManager: [],
-  HTTPSamplerProxy: ['ResponseAssertion'],
+  HTTPSamplerProxy: [
+    'ResponseAssertion',
+    'DurationAssertion',
+    'JSONPostProcessor',
+    'RegexExtractor',
+  ],
   ConstantTimer: [],
   UniformRandomTimer: [],
   ResponseAssertion: [],
+  DurationAssertion: [],
+  CacheManager: [],
+  JSONPostProcessor: [],
+  RegexExtractor: [],
 } as const
 
 /**
@@ -775,6 +902,38 @@ export function serializeResponseAssertion(element: JmxResponseAssertion): strin
 <stringProp name="not">false</stringProp>
 </elementProp>
 </collectionProp>
+</${element.type}>`
+}
+
+export function serializeDurationAssertion(element: JmxDurationAssertion): string {
+  return `<${element.type} guiclass="${element.guiClass}" testclass="${element.testClass}" testname="${xmlEsc(element.name)}" enabled="${element.enabled}">
+<stringProp name="DurationAssertion.duration">${element.durationMs}</stringProp>
+</${element.type}>`
+}
+
+export function serializeCacheManager(element: JmxCacheManager): string {
+  return `<${element.type} guiclass="${element.guiClass}" testclass="${element.testClass}" testname="${xmlEsc(element.name)}" enabled="${element.enabled}">
+<boolProp name="clearEachIteration">${element.clearEachIteration ? 'true' : 'false'}</boolProp>
+<intProp name="maxNumberOfResults">${element.maxNumberOfResults}</intProp>
+</${element.type}>`
+}
+
+export function serializeJSONPostProcessor(element: JmxJSONPostProcessor): string {
+  return `<${element.type} guiclass="${element.guiClass}" testclass="${element.testClass}" testname="${xmlEsc(element.name)}" enabled="${element.enabled}">
+<stringProp name="${element.type}.referenceNames">${xmlEsc(element.refNames)}</stringProp>
+<stringProp name="${element.type}.jsonPathExpressions">${xmlEsc(element.jsonPathExpressions)}</stringProp>
+<stringProp name="${element.type}.defaultValues">${xmlEsc(element.defaultValues)}</stringProp>
+<stringProp name="${element.type}.match_numbers">${xmlEsc(element.matchNumbers)}</stringProp>
+</${element.type}>`
+}
+
+export function serializeRegexExtractor(element: JmxRegexExtractor): string {
+  return `<${element.type} guiclass="${element.guiClass}" testclass="${element.testClass}" testname="${xmlEsc(element.name)}" enabled="${element.enabled}">
+<stringProp name="${element.type}.refname">${xmlEsc(element.refname)}</stringProp>
+<stringProp name="${element.type}.regex"><![CDATA[${escapeCdata(element.regex)}]]></stringProp>
+<stringProp name="${element.type}.template">${xmlEsc(element.template)}</stringProp>
+<stringProp name="${element.type}.default">${xmlEsc(element.defaultValue)}</stringProp>
+<stringProp name="${element.type}.match_number">${xmlEsc(element.matchNumber)}</stringProp>
 </${element.type}>`
 }
 

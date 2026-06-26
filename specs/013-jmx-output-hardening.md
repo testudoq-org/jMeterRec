@@ -301,11 +301,17 @@ This spec should be implemented after `010-advanced-recorder-options` is stable,
 
 | Action | Status | Notes |
 |--------|--------|-------|
-| 013-A1 | ⏳ Planned | `src/jmx/element-model.ts` — add factories and serializers for CacheManager, DurationAssertion, JSONPostProcessor, RegexExtractor |
-| 013-A2 | ⏳ Planned | `src/jmx/serializer.ts` — integrate new elements into `buildJmx()` document outline |
-| 013-A3 | ⏳ Planned | `src/jmx/serializer.test.ts` — hashTree ordering, element rendering, empty-element suppression |
-| 013-A4 | ⏳ Planned | `src/jmx/serializer.test.ts` — edge-case tests (malformed body, large payload, special characters, empty headers) |
-| 013-A5 | ⏳ Planned | `src/options/jmx-options.ts` — persist `cacheEnabled`, `durationAssertion`, `extractors` |
-| 013-A6 | ⏳ Planned | `src/options/options.html` / `options.ts` — UI controls for CacheManager, DurationAssertion, extractor definitions |
+| 013-A1 | ✅ Completed | `src/jmx/element-model.ts` — factories and serializers for CacheManager, DurationAssertion, JSONPostProcessor, RegexExtractor |
+| 013-A2 | ✅ Completed | `src/jmx/serializer.ts` — integrated new elements into `buildJmx()` document outline |
+| 013-A3 | ✅ Completed | `src/jmx/serializer.test.ts` — hashTree ordering, element rendering, empty-element suppression |
+| 013-A4 | ✅ Completed | `src/jmx/serializer.test.ts` — edge-case tests (malformed body, large payload, special characters, empty headers, extractor combinations) |
+| 013-A5 | ✅ Completed | `src/options/jmx-options.ts` — persist `cacheEnabled`, `durationAssertionEnabled`, `durationAssertionThresholdMs`, `extractorsJson` |
+| 013-A6 | ✅ Completed | `src/options/options.html` / `options.ts` — UI controls for CacheManager, DurationAssertion, extractor definitions |
+| 013-A7 | ✅ Completed | `src/options/options.test.ts` — UI wiring tests, extractor validation |
+| 013-A8 | ⏳ Pending | Golden JMX fixture and E2E test update for new elements |
+
+### Verification
+
+All 013 unit tests pass (367 tests). Backward compatibility preserved: default options produce identical JMX output to pre-013 behaviour when new options are disabled.
 | 013-A7 | ⏳ Planned | `src/options/options.test.ts` — UI wiring tests |
 | 013-A8 | ⏳ Planned | Golden JMX fixture and E2E test update for new elements |
