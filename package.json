@@ -1,6 +1,6 @@
 {
-  "name": "Capyultura",
-  "version": "0.1.0",
+  "name": "capyultura",
+  "version": "0.0.5",
   "description": "MV3 Chrome extension that captures HTTP traffic and exports JMX",
   "type": "module",
   "scripts": {
