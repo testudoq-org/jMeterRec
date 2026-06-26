@@ -353,8 +353,28 @@ Given recording completed before this spec:
 
 ---
 
-**Status:** Proposed
+**Status:** Implemented
 
 **Target Milestone:** Post-009 stable release
 
-**Estimated Effort:** Medium (requires traffic capture modification and JMX serializer updates)
+**Estimated Effort:** Medium (completed)
+
+## 13. Implementation Progress
+
+| Action | Status | Notes |
+|--------|--------|-------|
+| 010-A1 | ✅ Completed | `src/options/advanced-options.ts` — schema, defaults, normalization, validation helpers, and storage store |
+| 010-A2 | ✅ Completed | `src/options/user-agents.json` — predefined User-Agent strings |
+| 010-A3 | ✅ Completed | `src/options/user-agents.ts` — `getUserAgentString()` helper |
+| 010-A4 | ✅ Completed | `src/options/options.html` — advanced options section markup: `filterPattern`, `recordCss`, `recordJs`, `recordImages`, `recordRedirects`, `recordCookies`, `userAgent`, `customUserAgent`, `saveAdvancedOptions`, `resetAdvancedOptions` |
+| 010-A5 | ✅ Completed | `src/options/options.ts` — advanced options UI handlers, validation, save/reset logic, load from storage |
+| 010-A6 | ✅ Completed | `src/options/options.test.ts` — options page integration tests |
+| 010-A7 | ✅ Completed | `src/options/advanced-options.test.ts` — unit tests for normalization, validation, and storage |
+| 010-A8 | ✅ Completed | `src/background/traffic-capture.ts` — URL and resource-type filtering during capture |
+| 010-A9 | ✅ Completed | `src/background/recorder-service.ts` — loads advanced options for capture and export |
+| 010-A10 | ✅ Completed | `src/jmx/serializer.ts` — applies CookieManager and User-Agent header behavior |
+| 010-A11 | ✅ Completed | Validation rules prevent invalid saves: filter patterns, resource-type minimums, custom UA constraints |
+
+### Verification
+
+All 010 acceptance criteria (AC1–AC7) satisfied. Code merged to master via PR #5. Existing JMX export flows remain unaffected when advanced options are left at defaults.

@@ -1,8 +1,8 @@
 ### Backlog — newest first
 
 - [x] **009-post-impl-review** — Post-implementation review findings from `009-jmx-export-quality` delivery. High-priority items: gate the dead `redirectDedupEnabled` option, fix `as never` casts in `createRedirectFollowUp` tests, and add bounded eviction to the redirect map. Medium-priority items: revert formatting-only changes to committed files, and add edge-case tests for cross-tab isolation and disallowed-scheme `Location` headers. See dedicated section below for full action items and file references.
-- [~] **010-advanced-recorder-options** — Add advanced recorder options: URL filter pattern, resource type filtering, CookieManager output control, User-Agent override.
-   - Status: proposed
+- [x] **010-advanced-recorder-options** — Add advanced recorder options: URL filter pattern, resource type filtering, CookieManager output control, User-Agent override.
+   - Status: implemented
    - Depends on: 009-jmx-export-quality stable
    - Related spec: `specs/006-enhance-jmx-implementation.md` G21
    - Key design: replace MV2 collapsible section with Options page section; defer backend-only options (concurrency, cache) to future iterations
