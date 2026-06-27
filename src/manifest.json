@@ -2,10 +2,9 @@
   "manifest_version": 3,
   "name": "Capultura BETA",
   "version": "0.1.0",
-  "description": "Capultura BETA - Record, script and scale real browser flows (JMX, Playwright) for reliable performance testing. THIS EXTENSION IS FOR BETA TESTING.",
+  "description": "Record, script and scale real browser flows (JMX, Playwright) for reliable performance testing. THIS EXTENSION IS FOR BETA TESTING.",
   "homepage_url": "https://github.com/testudoq-org/jMeterRec",
   "minimum_chrome_version": "88",
-  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAoxnkZ50oXOcD5m+42kyQUCQUoCz9Uaf2JSED0Bujd4F354TBiwPS73s/Cs4tOJqA0NaqXkxJPzOZssFavJzsnsF2m/hGfZYhQ/d2Y6QZl/wQkzIdbuGlvbA8sIYLpIv397PqrZxCddvrmnxZw699+h79PtNczG40qD9ukUXNHy4RRdQQdSAxalLQfePdN5C1SyoJj0pTGhxSx70rVunKNx5GtyKP7XF4gI7CynabqpvPjZb8F/tk/+KRDe9y6/8p33/1O3fThNANLOTDaNqelvxterb8Y9RixZ7pS4cjL/bD/t1LGscVL9NNcdyvX/WhB4izo4gSDaHUqUo0uZxV0wIDAQAB",
   "icons": {
     "16": "src/icons/icon-16.png",
     "32": "src/icons/icon-32.png",
