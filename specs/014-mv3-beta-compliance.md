@@ -76,7 +76,7 @@ Add "BETA" to name and BETA notice to description per Chrome guide:
 
 ```json
 "name": "Capultura BETA",
-"description": "Capultura BETA - Record, script and scale real browser flows (Selenium, JMX, Playwright) for reliable performance testing. THIS EXTENSION IS FOR BETA TESTING."
+"description": "Capultura BETA - Record, script and scale real browser flows (JMX, Playwright) for reliable performance testing. THIS EXTENSION IS FOR BETA TESTING."
 ```
 
 **Files**: src/manifest.json

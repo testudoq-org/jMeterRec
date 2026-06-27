@@ -68,7 +68,6 @@ describe('normalizeJmxOptions', () => {
   })
 })
 
-
 describe('parseExtractors', () => {
   it('returns empty array for empty string', () => {
     expect(parseExtractors('')).toEqual([])
@@ -100,38 +99,48 @@ describe('parseExtractors', () => {
   })
 
   it('parses valid JSON extractor', () => {
-    const result = parseExtractors('[{"type":"json","refNames":" token ","jsonPathExpressions":"$.token"}]')
-    expect(result).toEqual([{
-      type: 'json',
-      testClass: 'JSONPostProcessor',
-      guiClass: 'JSONPostProcessorGui',
-      name: 'JSON Post Processor',
-      enabled: true,
-      refNames: ' token ',
-      jsonPathExpressions: '$.token',
-      defaultValues: '',
-      matchNumbers: '1',
-    }])
+    const result = parseExtractors(
+      '[{"type":"json","refNames":" token ","jsonPathExpressions":"$.token"}]'
+    )
+    expect(result).toEqual([
+      {
+        type: 'json',
+        testClass: 'JSONPostProcessor',
+        guiClass: 'JSONPostProcessorGui',
+        name: 'JSON Post Processor',
+        enabled: true,
+        refNames: ' token ',
+        jsonPathExpressions: '$.token',
+        defaultValues: '',
+        matchNumbers: '1',
+      },
+    ])
   })
 
   it('parses valid regex extractor', () => {
-    const result = parseExtractors('[{"type":"regex","refname":" orderId ","regex":"Order ##(d+)"}]')
-    expect(result).toEqual([{
-      type: 'regex',
-      testClass: 'RegexExtractor',
-      guiClass: 'RegexExtractorGui',
-      name: 'Regular Expression Extractor',
-      enabled: true,
-      refname: ' orderId ',
-      regex: 'Order ##(d+)',
-      template: '$1$',
-      defaultValue: '',
-      matchNumber: '1',
-    }])
+    const result = parseExtractors(
+      '[{"type":"regex","refname":" orderId ","regex":"Order ##(d+)"}]'
+    )
+    expect(result).toEqual([
+      {
+        type: 'regex',
+        testClass: 'RegexExtractor',
+        guiClass: 'RegexExtractorGui',
+        name: 'Regular Expression Extractor',
+        enabled: true,
+        refname: ' orderId ',
+        regex: 'Order ##(d+)',
+        template: '$1$',
+        defaultValue: '',
+        matchNumber: '1',
+      },
+    ])
   })
 
   it('parses multiple extractors', () => {
-    const result = parseExtractors('[{"type":"json","refNames":"t","jsonPathExpressions":"$.t"},{"type":"regex","refname":"o","regex":"#(d+)"}]')
+    const result = parseExtractors(
+      '[{"type":"json","refNames":"t","jsonPathExpressions":"$.t"},{"type":"regex","refname":"o","regex":"#(d+)"}]'
+    )
     expect(result).toHaveLength(2)
     expect(result[0]?.type).toBe('json')
     expect(result[1]?.type).toBe('regex')

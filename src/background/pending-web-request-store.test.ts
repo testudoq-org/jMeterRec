@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createPendingRequest } from './traffic-normalizer'
-import { PendingWebRequestStore } from './pending-web-request-store'
+import { PendingWebRequestStore, PENDING_FRAGMENT_MAX_AGE_MS } from './pending-web-request-store'
 import { isPendingWebRequestState } from '../models/pending-web-request'
 
 class MemoryStorage {
@@ -101,19 +101,59 @@ describe('PendingWebRequestStore', () => {
     })
   })
 
-  it('prunes stale pending request fragments', async () => {
+  it('prunes stale pending request fragments older than 5 minutes', async () => {
     const storage = new MemoryStorage()
     const store = new PendingWebRequestStore(storage)
     const fresh = createPendingRequest(beforeRequest({ requestId: 'fresh' }))
+    // Stale timestamp: more than 5 minutes (PENDING_FRAGMENT_MAX_AGE_MS) in the past
+    const staleTimestamp = NOW_MS - PENDING_FRAGMENT_MAX_AGE_MS - 10_000
     const stale = createPendingRequest(
-      beforeRequest({ requestId: 'stale', timeStamp: 1_000_000_000_000 })
+      beforeRequest({ requestId: 'stale', timeStamp: staleTimestamp })
     )
 
-    await store.upsert(fresh, new Date('2024-01-01T00:00:00.000Z'))
-    await store.upsert(stale, new Date('2023-01-01T00:00:00.000Z'))
-    await store.prune(10 * 60 * 1000, new Date('2024-01-01T00:00:00.000Z'))
+    await store.upsert(fresh, NOW)
+    await store.upsert(stale, NOW)
 
-    await expect(store.load(new Date('2024-01-01T00:00:00.000Z'))).resolves.toEqual({
+    await expect(store.load(NOW)).resolves.toEqual({
+      [fresh.id]: {
+        ...fresh,
+        updatedAt: '2024-01-01T00:00:00.000Z',
+      },
+    })
+  })
+
+  it('evicts fragments for closed tabs when using loadExcludingClosedTabs', async () => {
+    const storage = new MemoryStorage()
+    const store = new PendingWebRequestStore(storage)
+    const tab10 = createPendingRequest(beforeRequest({ requestId: 'tab-10', tabId: 10 }))
+    const tab20 = createPendingRequest(beforeRequest({ requestId: 'tab-20', tabId: 20 }))
+
+    await store.upsert(tab10, NOW)
+    await store.upsert(tab20, NOW)
+
+    // Only tab 10 is open; tab 20's fragment should be evicted
+    await expect(store.loadExcludingClosedTabs([10], NOW)).resolves.toEqual({
+      [tab10.id]: {
+        ...tab10,
+        updatedAt: '2024-01-01T00:00:00.000Z',
+      },
+    })
+  })
+
+  it('evicts stale fragments even when all tabs are open', async () => {
+    const storage = new MemoryStorage()
+    const store = new PendingWebRequestStore(storage)
+    const fresh = createPendingRequest(beforeRequest({ requestId: 'fresh', tabId: 10 }))
+    const staleTimestamp = NOW_MS - PENDING_FRAGMENT_MAX_AGE_MS - 10_000
+    const stale = createPendingRequest(
+      beforeRequest({ requestId: 'stale', tabId: 10, timeStamp: staleTimestamp })
+    )
+
+    await store.upsert(fresh, NOW)
+    await store.upsert(stale, NOW)
+
+    // Both tabs open, but stale should still be evicted
+    await expect(store.loadExcludingClosedTabs([10], NOW)).resolves.toEqual({
       [fresh.id]: {
         ...fresh,
         updatedAt: '2024-01-01T00:00:00.000Z',

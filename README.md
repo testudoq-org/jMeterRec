@@ -102,6 +102,8 @@ The extension captures and may export sensitive data. Understanding the behavior
 - **Request bodies:** Captured and included in JMX exports. May contain credentials or PII.
 - **Response bodies:** Only captured when "Capture response bodies" is enabled (opt-in, separate feature). Truncated if large.
 
+See [PRIVACY.md](./PRIVACY.md) for the complete privacy policy.
+
 **Recommendation:** Review exported JMX files before committing to version control or sharing. Remove sensitive data or use the extension only against non-production environments.
 
 ## Known Limits

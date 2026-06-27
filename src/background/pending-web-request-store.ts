@@ -11,6 +11,11 @@ export interface PendingWebRequestStorage {
   set(values: Record<string, unknown>): Promise<void>
 }
 
+/**
+ * Max age for stale fragments before eviction (5 minutes as per spec 014-L)
+ */
+export const PENDING_FRAGMENT_MAX_AGE_MS = 5 * 60 * 1000
+
 export class PendingWebRequestStore {
   constructor(
     private readonly storage: PendingWebRequestStorage = chrome.storage.local,
@@ -51,8 +56,26 @@ export class PendingWebRequestStore {
 
   async prune(maxAgeMs = DEFAULT_PENDING_REQUEST_MAX_AGE_MS, now = new Date()): Promise<void> {
     const state = await this.load(now)
-    const pruned = this.pruneFragments(state, now, maxAgeMs)
+    const pruned = this.pruneFragments(state, now, maxAgeMs, undefined)
     await this.save(pruned, now)
+  }
+
+  /**
+   * Evict fragments for closed tabs on load.
+   * Pass openTabIds to filter out fragments from closed tabs.
+   */
+  async loadExcludingClosedTabs(
+    openTabIds: number[],
+    now = new Date()
+  ): Promise<Record<string, PendingRequest>> {
+    const state = await this.storage.get([PENDING_WEB_REQUESTS_STORAGE_KEY])
+    const persisted = state[PENDING_WEB_REQUESTS_STORAGE_KEY]
+
+    if (!this.isState(persisted)) {
+      return {}
+    }
+
+    return this.pruneFragments(persisted.fragments, now, PENDING_FRAGMENT_MAX_AGE_MS, openTabIds)
   }
 
   private async save(fragments: Record<string, PendingRequest>, now = new Date()): Promise<void> {
@@ -86,15 +109,30 @@ export class PendingWebRequestStore {
   private pruneFragments(
     fragments: Record<string, PendingRequest>,
     now: Date,
-    maxAgeMs = DEFAULT_PENDING_REQUEST_MAX_AGE_MS
+    maxAgeMs = PENDING_FRAGMENT_MAX_AGE_MS,
+    openTabIds?: number[]
   ): Record<string, PendingRequest> {
     const pruned: Record<string, PendingRequest> = {}
     const nowMs = now.getTime()
 
     for (const [id, fragment] of Object.entries(fragments)) {
-      if (isPendingRequest(fragment) && nowMs - fragment.startedAtMs <= maxAgeMs) {
-        pruned[id] = fragment
+      if (!isPendingRequest(fragment)) {
+        continue
       }
+
+      // TTL-based eviction: stale fragments older than maxAgeMs are discarded
+      if (nowMs - fragment.startedAtMs > maxAgeMs) {
+        continue
+      }
+
+      // Tab-mismatch eviction: discard fragments for closed tabs
+      if (openTabIds !== undefined && fragment.tabId !== undefined) {
+        if (!openTabIds.includes(fragment.tabId)) {
+          continue
+        }
+      }
+
+      pruned[id] = fragment
     }
 
     return pruned

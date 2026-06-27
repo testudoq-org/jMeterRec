@@ -564,4 +564,3 @@ function toErrorMessage(err: unknown): string {
 function unreachable(value: never): BackgroundResponse {
   return { success: false, error: `Unsupported message type: ${String(value)}` }
 }
-

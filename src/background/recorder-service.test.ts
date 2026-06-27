@@ -613,7 +613,6 @@ describe('RecorderService', () => {
     expect(requests).toEqual([newRequest])
   })
 
-
   it('passes cacheEnabled option to convertHarToJmx in EXPORT_JMX', async () => {
     const mockState = createMockState()
     const requests = [request('example', 'https://example.com/api')]

@@ -441,33 +441,47 @@ function validateExtractorsJson(value: string): { valid: boolean; error?: string
   try {
     parsed = JSON.parse(trimmed)
   } catch {
-    return { valid: false, error: "Invalid JSON format for extractors" }
+    return { valid: false, error: 'Invalid JSON format for extractors' }
   }
   if (!Array.isArray(parsed)) {
-    return { valid: false, error: "Extractors must be a JSON array" }
+    return { valid: false, error: 'Extractors must be a JSON array' }
   }
   for (let i = 0; i < parsed.length; i++) {
     const item = parsed[i]
-    if (typeof item !== "object" || item === null) {
-      return { valid: false, error: "Extractor at index " + i + " must be an object" }
+    if (typeof item !== 'object' || item === null) {
+      return { valid: false, error: 'Extractor at index ' + i + ' must be an object' }
     }
     const record = item as Record<string, unknown>
-    if (record.type !== "json" && record.type !== "regex") {
-      return { valid: false, error: "Extractor at index " + i + " has invalid type: " + String(record.type) + ". Must be json or regex" }
-    }
-    if (record.type === "json") {
-      if (typeof record.refNames !== "string" || record.refNames.length === 0) {
-        return { valid: false, error: "JSON extractor at index " + i + " must have refNames" }
+    if (record.type !== 'json' && record.type !== 'regex') {
+      return {
+        valid: false,
+        error:
+          'Extractor at index ' +
+          i +
+          ' has invalid type: ' +
+          String(record.type) +
+          '. Must be json or regex',
       }
-      if (typeof record.jsonPathExpressions !== "string" || record.jsonPathExpressions.length === 0) {
-        return { valid: false, error: "JSON extractor at index " + i + " must have jsonPathExpressions" }
+    }
+    if (record.type === 'json') {
+      if (typeof record.refNames !== 'string' || record.refNames.length === 0) {
+        return { valid: false, error: 'JSON extractor at index ' + i + ' must have refNames' }
+      }
+      if (
+        typeof record.jsonPathExpressions !== 'string' ||
+        record.jsonPathExpressions.length === 0
+      ) {
+        return {
+          valid: false,
+          error: 'JSON extractor at index ' + i + ' must have jsonPathExpressions',
+        }
       }
     } else {
-      if (typeof record.refname !== "string" || record.refname.length === 0) {
-        return { valid: false, error: "Regex extractor at index " + i + " must have refname" }
+      if (typeof record.refname !== 'string' || record.refname.length === 0) {
+        return { valid: false, error: 'Regex extractor at index ' + i + ' must have refname' }
       }
-      if (typeof record.regex !== "string" || record.regex.length === 0) {
-        return { valid: false, error: "Regex extractor at index " + i + " must have regex" }
+      if (typeof record.regex !== 'string' || record.regex.length === 0) {
+        return { valid: false, error: 'Regex extractor at index ' + i + ' must have regex' }
       }
     }
   }
@@ -482,4 +496,3 @@ function updateCaptureWarning(enabled: boolean): void {
 
   el.style.display = enabled ? 'block' : 'none'
 }
-

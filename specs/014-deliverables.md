@@ -15,18 +15,18 @@ The extension is structurally Manifest V3 compliant:
 
 ## Gaps vs Chrome BETA Publishing Guide
 
-| Gap                                                                     | Severity |
-| ----------------------------------------------------------------------- | -------- |
-| No BETA label in `name` or `description`                                | Must-fix |
-| Version mismatch: `package.json` 0.0.5 vs `manifest.json` 0.1.0         | Must-fix |
-| No stable extension `key` for enterprise force-install                  | High     |
-| No `minimum_chrome_version`                                             | Medium   |
-| README uses stale "capyultura" branding                                 | High     |
-| `pack-crx.mjs` emits broken placeholder `.crx` when Chrome is absent    | High     |
-| `enterprise-install.json` contains unmapped `file://` placeholder paths | High     |
-| No privacy policy or support URLs for Chrome Web Store listing          | Must-fix |
-| Icon paths and Vite dist layout unverified                              | Medium   |
-| Golden E2E tests exist but unvalidated against current build            | Medium   |
+| Gap                                                                      | Severity |
+| ------------------------------------------------------------------------ | -------- |
+| No BETA label in `name` or `description`                                 | Must-fix |
+| Version mismatch: `package.json` 0.0.5 vs `manifest.json` 0.1.0          | Must-fix |
+| No stable extension `key` for enterprise force-install                   | High     |
+| No `minimum_chrome_version`                                              | Medium   |
+| Ensure all stale "BM JMX Recorder" branding is replaced with "capultura" | High     |
+| `pack-crx.mjs` emits broken placeholder `.crx` when Chrome is absent     | High     |
+| `enterprise-install.json` contains unmapped `file://` placeholder paths  | High     |
+| No privacy policy or support URLs for Chrome Web Store listing           | Must-fix |
+| Icon paths and Vite dist layout unverified                               | Medium   |
+| Golden E2E tests exist but unvalidated against current build             | Medium   |
 
 ## Prioritized Deliverables
 
@@ -41,7 +41,7 @@ The extension is structurally Manifest V3 compliant:
 4. **Stable extension key** — Add `key` to `manifest.json` for reproducible enterprise install IDs
 5. **pack-crx fail-fast** — Exit non-zero when Chrome is unavailable; stop emitting placeholder `.crx`
 6. **Enterprise install path fix** — Replace broken `file://` paths with `REPLACE_WITH_YOUR_CRX_HOST_URL`
-7. **README branding cleanup** — Replace all "capyultura" and "Betamax" with "Capultura"
+7. **README branding cleanup** — Replace all "BM JMX Recorder" and "Betamax" with "Capultura"
 
 ### P2 — Medium priority (quality gates)
 
@@ -57,7 +57,7 @@ The extension is structurally Manifest V3 compliant:
 
 ## Implementation Sequence
 
-1. README branding (014-E) — zero code risk
+1. All stale "BM JMX Recorder" branding (014-E) — zero code risk
 2. Documentation cleanup (014-M) — parallel with above
 3. Version alignment (014-B) — prerequisite for BETA label
 4. BETA labeling (014-A) — after version fix
@@ -78,7 +78,7 @@ The extension is structurally Manifest V3 compliant:
 - `PRIVACY.md` exists and is referenced from README
 - All four icon files exist at manifest-declared paths
 - `npm test && npm run typecheck && npm run lint && npm run build && npm run test:e2e` all pass
-- No stale "SideeX", "Betamax", or "capyultura" references in published docs
+- No stale "SideeX", "Betamax", or "BM JMX Recorder" references in published docs
 
 ## Out of Scope
 

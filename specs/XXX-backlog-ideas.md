@@ -1025,9 +1025,24 @@ Current implementation notes:
 ### Testing, rollout, and monitoring
 
 - [x] **Unit tests**: serializer, recorder state, and traffic normalizer tests pass in Vitest.
-
-- [~] **Golden tests**: keep a small set of sample sites and expected JMX outputs. _(E2E still placeholder)_
+- [~] **Golden tests**: keep a small set of sample sites and expected JMX outputs. _(E2E validation pending 014-K)_
 - [~] **Beta rollout**: publish to a small enterprise OU first via ExtensionInstallForcelist. _(enterprise-install.json script ready)_
 - [~] **Telemetry**: optional anonymized metrics for errors and export success rates. _(not implemented - opt-in only)_
 - [~] **Rollback**: provide a simple uninstall script and a version pinning mechanism for enterprise admins. _(not implemented)_
+
+---
+
+### Released in 014 — MV3 BETA Compliance
+
+- [x] **014-A** — BETA label in manifest name and description
+- [x] **014-B** — Version alignment (package.json, manifest.json, VERSION to 0.1.0)
+- [x] **014-C** — Stable extension key added to manifest.json
+- [x] **014-D** — minimum_chrome_version (88) added to manifest
+- [x] **014-E** — README branding consistent (Capultura)
+- [x] **014-F** — pack-crx fails fast without Chrome; no placeholder CRX
+- [x] **014-G** — enterprise-install.json uses REPLACE_WITH_YOUR_CRX_HOST_URL
+- [x] **014-H** — PRIVACY.md exists and linked from README; homepage_url and support_url in manifest
+- [x] **014-I** — All four icon files exist at manifest paths
+- [x] **014-J** — Vite dist layout matches manifest paths
+- [x] **014-L** — Pending fragments have TTL (5 min) and tab-mismatch eviction
 

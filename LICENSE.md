@@ -41,4 +41,4 @@ Full license text: https://creativecommons.org/licenses/by-nc/4.0/
 Notes:
 
 Use MIT for software/code and CC BY-NC 4.0 for documentation/content if you want clearer separation; both are provided here as choices.
-If you include third-party code (e.g., SideeX), comply with its license and include any required attributions.
+If you include third-party code, comply with its license and include any required attributions.

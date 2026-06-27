@@ -283,4 +283,3 @@ function collectAllCookies(
 
   return cookies
 }
-
