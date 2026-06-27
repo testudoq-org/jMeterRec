@@ -10,7 +10,7 @@ test.describe('Recorder UI state lifecycle', () => {
     const popup = await context.newPage()
 
     await popup.setViewportSize({ width: 420, height: 760 })
-    await popup.goto(`chrome-extension://${extensionId}/src/popup/popup.html`)
+    await popup.goto(`chrome-extension://${extensionId}/popup/popup.html`)
 
     // Initial state - idle
     await expect(popup.locator('#status')).toContainText('Please start recording')
@@ -67,7 +67,7 @@ test.describe('Recorder UI state lifecycle', () => {
     const popup = await context.newPage()
 
     await popup.setViewportSize({ width: 420, height: 760 })
-    await popup.goto(`chrome-extension://${extensionId}/src/popup/popup.html`)
+    await popup.goto(`chrome-extension://${extensionId}/popup/popup.html`)
 
     // Start and stop to capture some state
     await popup.locator('#start').click()
@@ -92,7 +92,7 @@ test.describe('Recorder UI state lifecycle', () => {
     const popup = await context.newPage()
 
     await popup.setViewportSize({ width: 420, height: 760 })
-    await popup.goto(`chrome-extension://${extensionId}/src/popup/popup.html`)
+    await popup.goto(`chrome-extension://${extensionId}/popup/popup.html`)
 
     await popup.locator('#start').click()
     await expect(popup.locator('#status')).toContainText('Recording')
@@ -127,7 +127,7 @@ test.describe('Recorder UI state lifecycle', () => {
     const popup = await context.newPage()
 
     await popup.setViewportSize({ width: 420, height: 760 })
-    await popup.goto(`chrome-extension://${extensionId}/src/popup/popup.html`)
+    await popup.goto(`chrome-extension://${extensionId}/popup/popup.html`)
 
     const advancedSection = popup.locator('#advancedOptionsBody')
     const toggleBtn = popup.locator('#toggleAdvancedOptions')
@@ -152,7 +152,7 @@ test.describe('Recorder UI state lifecycle', () => {
     const popup = await context.newPage()
 
     await popup.setViewportSize({ width: 420, height: 760 })
-    await popup.goto(`chrome-extension://${extensionId}/src/popup/popup.html`)
+    await popup.goto(`chrome-extension://${extensionId}/popup/popup.html`)
 
     // Expand the advanced options section — controls are hidden (HTML `hidden` attribute) by default
     await popup.locator('#toggleAdvancedOptions').click()
@@ -175,7 +175,7 @@ test.describe('Recorder UI state lifecycle', () => {
     const popup = await context.newPage()
 
     await popup.setViewportSize({ width: 420, height: 760 })
-    await popup.goto(`chrome-extension://${extensionId}/src/popup/popup.html`)
+    await popup.goto(`chrome-extension://${extensionId}/popup/popup.html`)
 
     // Section is hidden by default; controls should still be attached to the DOM
     await expect(popup.locator('#advancedOptionsBody')).toBeHidden()
@@ -197,9 +197,9 @@ test.describe('Recorder UI state lifecycle', () => {
     const options = await context.newPage()
 
     await popup.setViewportSize({ width: 420, height: 760 })
-    await popup.goto(`chrome-extension://${extensionId}/src/popup/popup.html`)
+    await popup.goto(`chrome-extension://${extensionId}/popup/popup.html`)
     await options.setViewportSize({ width: 800, height: 600 })
-    await options.goto(`chrome-extension://${extensionId}/src/options/options.html`)
+    await options.goto(`chrome-extension://${extensionId}/options/options.html`)
 
     // Wait for options page to finish loading its initial state
     await expect(options.locator('#recordCss')).toBeVisible()

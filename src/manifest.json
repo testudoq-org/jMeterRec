@@ -7,10 +7,10 @@
   "minimum_chrome_version": "88",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAoxnkZ50oXOcD5m+42kyQUCQUoCz9Uaf2JSED0Bujd4F354TBiwPS73s/Cs4tOJqA0NaqXkxJPzOZssFavJzsnsF2m/hGfZYhQ/d2Y6QZl/wQkzIdbuGlvbA8sIYLpIv397PqrZxCddvrmnxZw699+h79PtNczG40qD9ukUXNHy4RRdQQdSAxalLQfePdN5C1SyoJj0pTGhxSx70rVunKNx5GtyKP7XF4gI7CynabqpvPjZb8F/tk/+KRDe9y6/8p33/1O3fThNANLOTDaNqelvxterb8Y9RixZ7pS4cjL/bD/t1LGscVL9NNcdyvX/WhB4izo4gSDaHUqUo0uZxV0wIDAQAB",
   "icons": {
-    "16": "icons/icon-16.png",
-    "32": "icons/icon-32.png",
-    "48": "icons/icon-48.png",
-    "128": "icons/icon-128.png"
+    "16": "src/icons/icon-16.png",
+    "32": "src/icons/icon-32.png",
+    "48": "src/icons/icon-48.png",
+    "128": "src/icons/icon-128.png"
   },
   "permissions": [
     "storage",
@@ -24,24 +24,24 @@
   ],
   "host_permissions": ["<all_urls>"],
   "background": {
-    "service_worker": "background/background.js",
+    "service_worker": "src/background/index.ts",
     "type": "module"
   },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
       "all_frames": true,
-      "js": ["content/content.js"],
+      "js": ["src/content/index.ts"],
       "run_at": "document_start"
     }
   ],
   "action": {
-    "default_popup": "popup/popup.html",
+    "default_popup": "src/popup/popup.html",
     "default_title": "Capultura BETA",
-    "default_icon": "icons/icon-128.png"
+    "default_icon": "src/icons/icon-128.png"
   },
   "options_ui": {
-    "page": "options/options.html",
+    "page": "src/options/options.html",
     "open_in_tab": true
   }
 }

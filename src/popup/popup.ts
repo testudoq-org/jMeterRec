@@ -1155,7 +1155,7 @@ function openDetachedInspectorWindow(): void {
 
   void chrome.windows
     .create({
-      url: chrome.runtime.getURL('src/popup/popup.html?detached=1'),
+      url: chrome.runtime.getURL('popup/popup.html?detached=1'),
       type: 'popup',
       width: 420,
       height: 720,

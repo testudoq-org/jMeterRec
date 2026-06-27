@@ -12,7 +12,7 @@ test.describe('External HAR import (012)', () => {
     const popup = await context.newPage()
 
     await popup.setViewportSize({ width: 420, height: 900 })
-    await popup.goto(`chrome-extension://${extensionId}/src/popup/popup.html`)
+    await popup.goto(`chrome-extension://${extensionId}/popup/popup.html`)
 
     // Switch to JMX mode to reveal the import section
     const exportMode = popup.locator('#exportMode')
@@ -72,7 +72,7 @@ test.describe('External HAR import (012)', () => {
     const popup = await context.newPage()
 
     await popup.setViewportSize({ width: 420, height: 900 })
-    await popup.goto(`chrome-extension://${extensionId}/src/popup/popup.html`)
+    await popup.goto(`chrome-extension://${extensionId}/popup/popup.html`)
 
     await popup.locator('#exportMode').selectOption('jmx')
 
