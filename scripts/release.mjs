@@ -120,6 +120,70 @@ function updateJsonFile(file, updates) {
   writeFileAtomic(file, JSON.stringify(data, null, 2) + "\n");
 }
 
+function getPublicKeyFromPem(pemPath) {
+  try {
+    const pem = readFileSync(pemPath, 'utf8');
+    const base64 = pem
+      .replace(/-----BEGIN RSA PRIVATE KEY-----/g, '')
+      .replace(/-----END RSA PRIVATE KEY-----/g, '')
+      .replace(/[\r\n\s]/g, '');
+    const der = Buffer.from(base64, 'base64');
+    const rsa = (() => {
+      let offset = 0;
+      function readLength(buf, off) {
+        const first = buf[off++];
+        if ((first & 0x80) === 0) return first;
+        const lenBytes = first & 0x7f;
+        let len = 0;
+        for (let i = 0; i < lenBytes; i++) len = (len << 8n) | BigInt(buf[off++]);
+        return Number(len);
+      }
+      function readInteger(buf, off) {
+        const tag = buf[off++];
+        if (tag !== 0x02) throw new Error('Expected INTEGER');
+        const len = readLength(buf, off);
+        return { value: buf.slice(off, off + len), offset: off + len };
+      }
+      offset++;
+      readLength(der, offset);
+      offset += 1;
+      const ver = readInteger(der, offset);
+      offset = ver.offset;
+      const mod = readInteger(der, offset);
+      offset = mod.offset;
+      const exp = readInteger(der, offset);
+      offset = exp.offset;
+      const encodeLength = (len) => {
+        if (len < 128) return Buffer.from([len]);
+        const bytes = [];
+        let l = len;
+        while (l > 0) { bytes.unshift(l & 0xff); l = Math.floor(l / 256); }
+        return Buffer.concat([Buffer.from([0x80 | bytes.length]), Buffer.from(bytes)]);
+      };
+      const encodeInteger = (num) => {
+        const hex = num.toString(16);
+        const buf = Buffer.from(hex.length % 2 !== 0 ? '0' + hex : hex, 'hex');
+        const result = buf[0] & 0x80 ? Buffer.concat([Buffer.from([0x00]), buf]) : buf;
+        return Buffer.concat([Buffer.from([0x02]), encodeLength(result.length), result]);
+      };
+      const rsaPub = (data) => Buffer.concat([Buffer.from([0x30]), encodeLength(data.length), data]);
+      const algo = Buffer.from([
+        0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01, 0x05, 0x00,
+      ]);
+      const bitString = Buffer.concat([
+        Buffer.from([0x03]),
+        encodeLength(encodeInteger(mod.value).length + encodeInteger(exp.value).length + 2),
+        Buffer.from([0x00]),
+        rsaPub(Buffer.concat([encodeInteger(mod.value), encodeInteger(exp.value)])),
+      ]);
+      return rsaPub(Buffer.concat([algo, bitString])).toString('base64');
+    })();
+    return rsa;
+  } catch {
+    return 'UNKNOWN (check extension.pem)';
+  }
+}
+
 function getExtensionIdFromPem(pemPath) {
   try {
     const pem = readFileSync(pemPath, "utf8");
@@ -293,7 +357,8 @@ async function main() {
     writeFileAtomic(VERSION_FILE, newVersion);
     updateJsonFile(PACKAGE_JSON, { version: newVersion });
     updateJsonFile(MANIFEST_JSON, { version: newVersion });
-    logSuccess("  Updated: VERSION, package.json, src/manifest.json");
+    writeFileAtomic(join(RELEASES_DIR, "extension.pub"), getPublicKeyFromPem(KEY_FILE));
+    logSuccess("  Updated: VERSION, package.json, src/manifest.json, releases/extension.pub");
   }
 
   log(``);
