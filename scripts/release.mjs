@@ -1,5 +1,5 @@
 import { execSync, spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, unlinkSync, statSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, unlinkSync, statSync, renameSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -53,7 +53,11 @@ function runCommand(cmd, args, options = {}) {
 }
 
 function findChrome() {
-  const envBin = process.env.CHROME_BIN;
+  const envBin =
+    process.env.CHROME_BIN ||
+    process.env.CHROME_LOCATION ||
+    process.env.CHROME_PATH ||
+    process.env.PROGRAM_FILES;
   if (envBin && existsSync(envBin)) {
     return envBin;
   }
@@ -97,14 +101,12 @@ function readVersion(file) {
 function writeFileAtomic(file, content) {
   const tmp = `${file}.tmp-${Date.now()}`;
   writeFileSync(tmp, content, "utf8");
-  // Atomic replace is best-effort on Windows
   try {
     execSync(`powershell -Command "Move-Item -LiteralPath '${tmp}' -Destination '${file}' -Force"`, {
       cwd: ROOT,
       stdio: "pipe",
     });
   } catch {
-    // fallback
     writeFileSync(file, content, "utf8");
     try { unlinkSync(tmp); } catch {}
   }
@@ -128,7 +130,6 @@ function getExtensionIdFromPem(pemPath) {
 
     const der = Buffer.from(base64, "base64");
 
-    // Parse PKCS#1 to extract modulus + exponent
     let offset = 0;
     function readLength(buf, off) {
       const first = buf[off++];
@@ -146,9 +147,9 @@ function getExtensionIdFromPem(pemPath) {
       return { value: buf.slice(off, off + len), offset: off + len };
     }
 
-    offset++; // SEQUENCE tag
-    readLength(der, offset); // skip outer length
-    offset += 1; // rough advance past SEQUENCE header
+    offset++;
+    readLength(der, offset);
+    offset += 1;
     const ver = readInteger(der, offset);
     offset = ver.offset;
     const mod = readInteger(der, offset);
@@ -156,7 +157,6 @@ function getExtensionIdFromPem(pemPath) {
     const exp = readInteger(der, offset);
     offset = exp.offset;
 
-    // Build SPKI structure
     const encodeLength = (len) => {
       if (len < 128) return Buffer.from([len]);
       const bytes = [];
@@ -408,40 +408,13 @@ async function main() {
       logInfo("  No changes to commit");
     }
 
-    // Use release-tagger to create the primary version tag
-    // It reads VERSION, auto-increments build number, and tags deterministically
-    logInfo("  Running release-tagger for version tag...");
-    try {
-      const tagOutput = execSync(`node "${join(ROOT, 'node_modules', 'release-tagger', 'dist', 'index.js')}" --repo-path "${ROOT}"`, {
-        cwd: ROOT,
-        encoding: "utf8",
-        stdio: ["pipe", "pipe", "pipe"],
-      });
-      const tagMatch = tagOutput.match(/Final tag\s*:\s*(.+)/);
-      if (tagMatch) {
-        const releaseTag = tagMatch[1].trim();
-        logSuccess(`  release-tagger created: ${releaseTag}`);
-      }
-    } catch (err) {
-      logError(`release-tagger failed: ${err.message || err}`);
-      // Fallback: create tag directly
-      runCommand("git", ["tag", "-a", `v${newVersion}`, "-m", `Release v${newVersion} - Chrome Web Store upload`]);
-      logSuccess(`  Fallback git tag: v${newVersion}`);
-    }
+    runCommand("git", ["tag", "-a", `v${newVersion}`, "-m", `Release v${newVersion} - Chrome Web Store upload`]);
+    runCommand("git", ["tag", "-a", "beta-candidate-mv3-chrome-extensions", "-m", "Beta candidate for MV3 to Chrome Extensions"]);
 
-    // Create beta candidate tag aligned with release version
-    const betaTag = "beta-candidate-mv3-chrome-extensions";
-    try {
-      execSync(`git tag -d "${betaTag}" 2>/dev/null; git tag -a "${betaTag}" -m "Beta candidate for MV3 to Chrome Extensions (v${newVersion})"`, {
-        cwd: ROOT,
-        stdio: "pipe",
-      });
-      logSuccess(`  Git tag: ${betaTag}`);
-    } catch {
-      logInfo(`  Beta tag ${betaTag} already exists or could not be created`);
-    }
+    logSuccess(`  Git tag: v${newVersion}`);
+    logSuccess(`  Git tag: beta-candidate-mv3-chrome-extensions`);
   } else if (dryRun) {
-    logInfo(`  DryRun: Would commit, tag with release-tagger, and create beta tag`);
+    logInfo(`  DryRun: Would commit and tag v${newVersion}`);
   } else {
     logInfo("  Skipped (--skip-git)");
   }
