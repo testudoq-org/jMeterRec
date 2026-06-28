@@ -7,6 +7,7 @@ const CRX_FILE = join(DIST_DIR, "capultura.crx")
 const CHROME_CRX = join(process.cwd(), "dist.crx")
 const CHROME_PEM = join(process.cwd(), "dist.pem")
 const INSTALL_MANIFEST = join(DIST_DIR, "enterprise-install.json")
+const CHROME_BIN = process.env.CHROME_BIN || process.env.CHROME_LOCATION || process.env.CHROME_PATH || "google-chrome"
 const PROJECT_PEM = join(process.cwd(), "extension.pem")
 const TEMP_PEM = join(process.cwd(), ".tmp-capultura.pem")
 
@@ -30,7 +31,7 @@ copyFileSync(PROJECT_PEM, TEMP_PEM)
 let chromeSucceeded = false
 try {
   execSync(
-    `"${process.env.CHROME_BIN ?? "google-chrome"}" --pack-extension="${DIST_DIR}" --pack-extension-key="${TEMP_PEM}" --no-message-box`,
+    `"${CHROME_BIN}" --pack-extension="${DIST_DIR}" --pack-extension-key="${TEMP_PEM}" --no-message-box`,
     { stdio: "inherit" }
   )
   chromeSucceeded = true
