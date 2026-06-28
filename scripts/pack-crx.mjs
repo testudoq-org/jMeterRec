@@ -1,11 +1,12 @@
-import { execSync } from "child_process"
-import { writeFileSync, readFileSync, existsSync, mkdirSync } from "fs"
+﻿import { execSync } from "child_process"
+import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, unlinkSync } from "fs"
 import { join } from "path"
 
 const DIST_DIR = join(process.cwd(), "dist")
 const CRX_FILE = join(DIST_DIR, "capultura.crx")
 const PEM_FILE = join(DIST_DIR, "capultura.pem")
 const INSTALL_MANIFEST = join(DIST_DIR, "enterprise-install.json")
+const PROJECT_PEM = join(process.cwd(), "extension.pem")
 
 const PACKAGE_VERSION = JSON.parse(readFileSync("package.json", "utf-8")).version
 
@@ -13,42 +14,37 @@ if (!existsSync(DIST_DIR)) {
   mkdirSync(DIST_DIR, { recursive: true })
 }
 
-// Try to use existing key from project root, or generate new one
-const PROJECT_PEM = join(process.cwd(), "extension.pem")
-const PROJECT_KEY = readFileSync("src/manifest.json", "utf-8")
-
-// Extract key from manifest if present
-const manifestKeyMatch = PROJECT_KEY.match(/"key":\s*"([^"]+)"/)
-const MANIFEST_KEY = manifestKeyMatch?.[1]
-
-// Copy key to dist as PEM if it exists in manifest
-if (MANIFEST_KEY && !existsSync(PEM_FILE)) {
-  // If extension.pem exists in project root, copy it
-  if (existsSync(PROJECT_PEM)) {
-    const pemContent = readFileSync(PROJECT_PEM)
-    writeFileSync(PEM_FILE, pemContent)
-  } else {
-    // Generate a new key (for development only)
-    // In production, the key should be pre-generated and stored
-    try {
-      execSync(`openssl genrsa -out "${PEM_FILE}" 2048`, { stdio: "inherit" })
-    } catch {
-      console.error("OpenSSL not available. Please generate extension.pem manually or install OpenSSL.")
-      process.exit(1)
-    }
-  }
+if (!existsSync(PROJECT_PEM)) {
+  console.error(
+    `Missing signing key: ${PROJECT_PEM}\n` +
+    "Generate one with: openssl genrsa -out extension.pem 2048\n" +
+    "Never commit extension.pem. It must remain at the project root."
+  )
+  process.exit(1)
 }
 
-console.log("Packing CRX (requires Chrome)...")
+copyFileSync(PROJECT_PEM, PEM_FILE)
+
+let chromeSucceeded = false
 try {
   execSync(
     `"${process.env.CHROME_BIN ?? "google-chrome"}" --pack-extension="${DIST_DIR}" --pack-extension-key="${PEM_FILE}" --no-message-box`,
     { stdio: "inherit" }
   )
+  chromeSucceeded = true
   console.log("CRX packed successfully")
 } catch (err) {
   console.error("Chrome packing failed: Chrome is required to create .crx files.", err)
   console.error("Set CHROME_BIN environment variable to point to Chrome/Chromium binary.")
+} finally {
+  // Always remove private key from dist so it is never packaged or uploaded
+  if (existsSync(PEM_FILE)) {
+    unlinkSync(PEM_FILE)
+    console.log(`Removed private key from dist: ${PEM_FILE}`)
+  }
+}
+
+if (!chromeSucceeded) {
   process.exit(1)
 }
 
