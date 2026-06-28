@@ -1,12 +1,14 @@
 ﻿import { execSync } from "child_process"
-import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, unlinkSync } from "fs"
+import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, unlinkSync, renameSync } from "fs"
 import { join } from "path"
 
 const DIST_DIR = join(process.cwd(), "dist")
 const CRX_FILE = join(DIST_DIR, "capultura.crx")
-const PEM_FILE = join(DIST_DIR, "capultura.pem")
+const CHROME_CRX = join(process.cwd(), "dist.crx")
+const CHROME_PEM = join(process.cwd(), "dist.pem")
 const INSTALL_MANIFEST = join(DIST_DIR, "enterprise-install.json")
 const PROJECT_PEM = join(process.cwd(), "extension.pem")
+const TEMP_PEM = join(process.cwd(), ".tmp-capultura.pem")
 
 const PACKAGE_VERSION = JSON.parse(readFileSync("package.json", "utf-8")).version
 
@@ -23,12 +25,12 @@ if (!existsSync(PROJECT_PEM)) {
   process.exit(1)
 }
 
-copyFileSync(PROJECT_PEM, PEM_FILE)
+copyFileSync(PROJECT_PEM, TEMP_PEM)
 
 let chromeSucceeded = false
 try {
   execSync(
-    `"${process.env.CHROME_BIN ?? "google-chrome"}" --pack-extension="${DIST_DIR}" --pack-extension-key="${PEM_FILE}" --no-message-box`,
+    `"${process.env.CHROME_BIN ?? "google-chrome"}" --pack-extension="${DIST_DIR}" --pack-extension-key="${TEMP_PEM}" --no-message-box`,
     { stdio: "inherit" }
   )
   chromeSucceeded = true
@@ -37,11 +39,26 @@ try {
   console.error("Chrome packing failed: Chrome is required to create .crx files.", err)
   console.error("Set CHROME_BIN environment variable to point to Chrome/Chromium binary.")
 } finally {
-  // Always remove private key from dist so it is never packaged or uploaded
-  if (existsSync(PEM_FILE)) {
-    unlinkSync(PEM_FILE)
-    console.log(`Removed private key from dist: ${PEM_FILE}`)
+// Always remove private key from temp location so it is never packaged or uploaded
+if (existsSync(TEMP_PEM)) {
+  unlinkSync(TEMP_PEM)
+  console.log(`Removed private key from temp: ${TEMP_PEM}`)
+}
+
+// Move Chrome's output CRX into dist/ with our expected name
+if (existsSync(CHROME_CRX)) {
+  if (existsSync(CRX_FILE)) unlinkSync(CRX_FILE)
+  renameSync(CHROME_CRX, CRX_FILE)
+  console.log(`Moved signed CRX to: ${CRX_FILE}`)
+}
+
+// Clean up any key file Chrome wrote next to the crx
+for (const keyFile of [CHROME_PEM, join(DIST_DIR, "capultura.pem")]) {
+  if (existsSync(keyFile)) {
+    unlinkSync(keyFile)
+    console.log(`Removed key artifact: ${keyFile}`)
   }
+}
 }
 
 if (!chromeSucceeded) {

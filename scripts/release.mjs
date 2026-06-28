@@ -43,11 +43,9 @@ function logInfo(msg) {
 
 function runCommand(cmd, args, options = {}) {
   try {
-    const result = spawnSync(cmd, args, { stdio: "inherit", cwd: ROOT, ...options });
-    if (result.status !== 0) {
-      throw new Error(`Command failed: ${cmd} ${args.join(" ")}`);
-    }
-    return result;
+    const cmdStr = args.length > 0 ? `${cmd} ${args.join(" ")}` : cmd;
+    execSync(cmdStr, { cwd: ROOT, stdio: "inherit", ...options });
+    return { status: 0 };
   } catch (err) {
     logError(err.message);
     process.exit(1);
@@ -61,6 +59,7 @@ function findChrome() {
   }
 
   const candidates = [
+    "D:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
     "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
     "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
     join(process.env.LOCALAPPDATA || "", "Google", "Chrome", "Application", "chrome.exe"),
@@ -409,13 +408,40 @@ async function main() {
       logInfo("  No changes to commit");
     }
 
-    runCommand("git", ["tag", "-a", `v${newVersion}`, "-m", `Release v${newVersion} - Chrome Web Store upload`]);
-    runCommand("git", ["tag", "-a", "beta-candidate-mv3-chrome-extensions", "-m", "Beta candidate for MV3 to Chrome Extensions"]);
+    // Use release-tagger to create the primary version tag
+    // It reads VERSION, auto-increments build number, and tags deterministically
+    logInfo("  Running release-tagger for version tag...");
+    try {
+      const tagOutput = execSync(`node "${join(ROOT, 'node_modules', 'release-tagger', 'dist', 'index.js')}" --repo-path "${ROOT}"`, {
+        cwd: ROOT,
+        encoding: "utf8",
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      const tagMatch = tagOutput.match(/Final tag\s*:\s*(.+)/);
+      if (tagMatch) {
+        const releaseTag = tagMatch[1].trim();
+        logSuccess(`  release-tagger created: ${releaseTag}`);
+      }
+    } catch (err) {
+      logError(`release-tagger failed: ${err.message || err}`);
+      // Fallback: create tag directly
+      runCommand("git", ["tag", "-a", `v${newVersion}`, "-m", `Release v${newVersion} - Chrome Web Store upload`]);
+      logSuccess(`  Fallback git tag: v${newVersion}`);
+    }
 
-    logSuccess(`  Git tag: v${newVersion}`);
-    logSuccess(`  Git tag: beta-candidate-mv3-chrome-extensions`);
+    // Create beta candidate tag aligned with release version
+    const betaTag = "beta-candidate-mv3-chrome-extensions";
+    try {
+      execSync(`git tag -d "${betaTag}" 2>/dev/null; git tag -a "${betaTag}" -m "Beta candidate for MV3 to Chrome Extensions (v${newVersion})"`, {
+        cwd: ROOT,
+        stdio: "pipe",
+      });
+      logSuccess(`  Git tag: ${betaTag}`);
+    } catch {
+      logInfo(`  Beta tag ${betaTag} already exists or could not be created`);
+    }
   } else if (dryRun) {
-    logInfo(`  DryRun: Would commit and tag v${newVersion}`);
+    logInfo(`  DryRun: Would commit, tag with release-tagger, and create beta tag`);
   } else {
     logInfo("  Skipped (--skip-git)");
   }
