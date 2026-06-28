@@ -7,6 +7,7 @@ const CRX_FILE = join(DIST_DIR, "capultura.crx")
 const CHROME_CRX = join(process.cwd(), "dist.crx")
 const CHROME_PEM = join(process.cwd(), "dist.pem")
 const INSTALL_MANIFEST = join(DIST_DIR, "enterprise-install.json")
+const RELEASES_DIR = join(process.cwd(), "releases")
 const CHROME_BIN = process.env.CHROME_BIN || process.env.CHROME_LOCATION || process.env.CHROME_PATH || "google-chrome"
 const PROJECT_PEM = join(process.cwd(), "extension.pem")
 const TEMP_PEM = join(process.cwd(), ".tmp-capultura.pem")
@@ -72,6 +73,13 @@ writeFileSync(
   INSTALL_MANIFEST,
   JSON.stringify(installManifest, null, 2)
 )
+
+if (!existsSync(RELEASES_DIR)) {
+  mkdirSync(RELEASES_DIR, { recursive: true });
+}
+const publicKeyPem = "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAs9rsBu+T9GLV6uG6ZUdv7ZCsWc62LhWN+Nk5R07wN3XG2Kk2drRf9tLJhSDMOFwbvc1G0Puf9c4DjGaNt9KAkgIOW376UqGcjn5tPvrU0qV2TxnszAJ/LRRiRgpFxw7LwuD31C9KI4OPtDf9zA98tW0kCgXLQ3xPl3sFVaIvYbq4y7e1O0DbUDBnpVNT4MyhxsGd/hGrCkh7GfUOq1+knfuPQwdpKQ2fhBs4Vzt6+W0jKMPTiPR/aRiKtrW9ondF6Jyk6FYIhx6cNmcFtR7dbRXbxwDK74k8PBo/LkWJegZcXmyBTAEdMUMrjIeE/eb5Z+rcMeT8UP57kChRoJlknQIDAQAB\n-----END PUBLIC KEY-----";
+writeFileSync(join(RELEASES_DIR, "extension.pub"), publicKeyPem);
+console.log("Wrote public key to releases/extension.pub");
 
 console.log("Enterprise install manifest generated")
 console.log(`CRX: ${CRX_FILE}`)
