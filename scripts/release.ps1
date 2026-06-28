@@ -91,6 +91,7 @@ try {
 # Check for Chrome
 $chromeBin = $env:CHROME_BIN
 if (-not $chromeBin) {
+    # Try common Windows paths
     $possiblePaths = @(
         "C:\Program Files\Google\Chrome\Application\chrome.exe",
         "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
@@ -306,13 +307,7 @@ Write-Host ""
 Write-Host "  Version:        $newVersion" -ForegroundColor White
 Write-Host "  CRX:            $Script:CrxFile" -ForegroundColor White
 Write-Host "  Upload ZIP:     $Script:ZipFile" -ForegroundColor White
-Write-Host ""
-
-if (-not $DryRun -and (Test-Path $Script:KeyFile)) {
-    $extensionId = Get-ExtensionIdFromKey $Script:KeyFile
-    Write-Host "  Extension ID:  $extensionId" -ForegroundColor White
-}
-
+Write-Host "  Extension ID:   $(Get-ExtensionIdFromKey $Script:KeyFile)" -ForegroundColor White
 Write-Host ""
 Write-Host "  NEXT STEPS:" -ForegroundColor Cyan
 Write-Host "  1. Go to https://chrome.google.com/webstore/devconsole" -ForegroundColor White
