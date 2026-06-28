@@ -12,6 +12,7 @@ const MANIFEST_JSON = join(ROOT, "src", "manifest.json");
 const KEY_FILE = join(ROOT, "extension.pem");
 const DIST_DIR = join(ROOT, "dist");
 const CRX_FILE = join(DIST_DIR, "capultura.crx");
+const RELEASES_DIR = join(ROOT, "releases");
 
 const CYAN = "\x1b[36m";
 const GREEN = "\x1b[32m";
@@ -367,7 +368,10 @@ async function main() {
   logStep("4", "Creating upload package...");
 
   if (!dryRun) {
-    const versionedZip = join(ROOT, `capultura-mv3-${newVersion}-beta.zip`);
+    if (!existsSync(RELEASES_DIR)) {
+      mkdirSync(RELEASES_DIR, { recursive: true });
+    }
+    const versionedZip = join(RELEASES_DIR, `capultura-mv3-${newVersion}-beta.zip`);
     if (existsSync(versionedZip)) unlinkSync(versionedZip);
 
     try {
@@ -438,7 +442,7 @@ async function main() {
   log(``);
   logInfo(`  Version:        ${newVersion}`);
   logInfo(`  CRX:            ${CRX_FILE}`);
-  logInfo(`  Upload ZIP:     ${join(ROOT, `capultura-mv3-${newVersion}-beta.zip`)}`);
+  logInfo(`  Upload ZIP:     ${join(RELEASES_DIR, `capultura-mv3-${newVersion}-beta.zip`)}`);
   if (existsSync(KEY_FILE)) {
     logInfo(`  Extension ID:   ${getExtensionIdFromPem(KEY_FILE)}`);
   }
@@ -446,7 +450,7 @@ async function main() {
   log(`${CYAN}  NEXT STEPS:${RESET}`);
   log(`  1. Go to https://chrome.google.com/webstore/devconsole`);
   log(`  2. Select your extension listing`);
-  log(`  3. Upload: ${join(ROOT, `capultura-mv3-${newVersion}-beta.zip`)}`);
+  log(`  3. Upload: ${join(RELEASES_DIR, `capultura-mv3-${newVersion}-beta.zip`)}`);
   log(`  4. Complete store listing with:`);
   log(`     - Single purpose: 'Records real browser flows and converts them into test automation scripts'`);
   log(`     - Remote code: NO`);
