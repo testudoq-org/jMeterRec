@@ -408,8 +408,10 @@ async function main() {
       logInfo("  No changes to commit");
     }
 
-    runCommand("git", ["tag", "-a", `v${newVersion}`, "-m", `Release v${newVersion} - Chrome Web Store upload`], { shell: true });
-    runCommand("git", ["tag", "-a", "beta-candidate-mv3-chrome-extensions", "-m", "Beta candidate for MV3 to Chrome Extensions"], { shell: true });
+    const tagMsg1 = `Release v${newVersion} - Chrome Web Store upload`;
+    const tagMsg2 = `Beta candidate for MV3 to Chrome Extensions`;
+    execSync(`git tag -a "v${newVersion}" -m "${tagMsg1.replace(/"/g, '\\"')}"`, { cwd: ROOT, stdio: "pipe", shell: true });
+    execSync(`git tag -a "beta-candidate-mv3-chrome-extensions" -m "${tagMsg2.replace(/"/g, '\\"')}"`, { cwd: ROOT, stdio: "pipe", shell: true });
 
     logSuccess(`  Git tag: v${newVersion}`);
     logSuccess(`  Git tag: beta-candidate-mv3-chrome-extensions`);
