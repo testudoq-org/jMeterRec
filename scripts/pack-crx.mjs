@@ -40,26 +40,19 @@ try {
   console.error("Chrome packing failed: Chrome is required to create .crx files.", err)
   console.error("Set CHROME_BIN environment variable to point to Chrome/Chromium binary.")
 } finally {
-// Always remove private key from temp location so it is never packaged or uploaded
-if (existsSync(TEMP_PEM)) {
-  unlinkSync(TEMP_PEM)
-  console.log(`Removed private key from temp: ${TEMP_PEM}`)
-}
-
-// Move Chrome's output CRX into dist/ with our expected name
-if (existsSync(CHROME_CRX)) {
-  if (existsSync(CRX_FILE)) unlinkSync(CRX_FILE)
-  renameSync(CHROME_CRX, CRX_FILE)
-  console.log(`Moved signed CRX to: ${CRX_FILE}`)
-}
-
-// Clean up any key file Chrome wrote next to the crx
-for (const keyFile of [CHROME_PEM, join(DIST_DIR, "capultura.pem")]) {
-  if (existsSync(keyFile)) {
-    unlinkSync(keyFile)
-    console.log(`Removed key artifact: ${keyFile}`)
+  if (existsSync(TEMP_PEM)) {
+    unlinkSync(TEMP_PEM)
+    console.log(`Removed private key from temp: ${TEMP_PEM}`)
   }
-}
+  if (existsSync(CHROME_PEM)) {
+    unlinkSync(CHROME_PEM)
+    console.log(`Removed key artifact: ${CHROME_PEM}`)
+  }
+  if (existsSync(CHROME_CRX)) {
+    if (existsSync(CRX_FILE)) unlinkSync(CRX_FILE)
+    renameSync(CHROME_CRX, CRX_FILE)
+    console.log(`Moved signed CRX to: ${CRX_FILE}`)
+  }
 }
 
 if (!chromeSucceeded) {
