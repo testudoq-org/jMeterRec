@@ -12,7 +12,6 @@ const MANIFEST_JSON = join(ROOT, "src", "manifest.json");
 const KEY_FILE = join(ROOT, "extension.pem");
 const DIST_DIR = join(ROOT, "dist");
 const CRX_FILE = join(DIST_DIR, "capultura.crx");
-const ZIP_FILE = join(ROOT, "capultura-mv3-beta.zip");
 
 const CYAN = "\x1b[36m";
 const GREEN = "\x1b[32m";
@@ -368,11 +367,12 @@ async function main() {
   logStep("4", "Creating upload package...");
 
   if (!dryRun) {
-    if (existsSync(ZIP_FILE)) unlinkSync(ZIP_FILE);
+    const versionedZip = join(ROOT, `capultura-mv3-${newVersion}-beta.zip`);
+    if (existsSync(versionedZip)) unlinkSync(versionedZip);
 
     try {
       execSync(
-        `powershell -Command "Compress-Archive -Path '${DIST_DIR}\\*' -DestinationPath '${ZIP_FILE}' -CompressionLevel Optimal"`,
+        `powershell -Command "Compress-Archive -Path '${DIST_DIR}\\*' -DestinationPath '${versionedZip}' -CompressionLevel Optimal"`,
         { cwd: ROOT, stdio: "pipe" }
       );
     } catch {
@@ -380,15 +380,15 @@ async function main() {
       process.exit(1);
     }
 
-    if (!existsSync(ZIP_FILE)) {
+    if (!existsSync(versionedZip)) {
       logError("Zip file not created");
       process.exit(1);
     }
 
-    const zipSize = statSync(ZIP_FILE).size;
-    logInfo(`  Upload package: ${ZIP_FILE} (${zipSize} bytes)`);
+    const zipSize = statSync(versionedZip).size;
+    logInfo(`  Upload package: ${versionedZip} (${zipSize} bytes)`);
   } else {
-    logInfo(`  Would create: ${ZIP_FILE} from ${DIST_DIR}/`);
+    logInfo(`  Would create: capultura-mv3-${newVersion}-beta.zip from ${DIST_DIR}/`);
   }
 
   log(``);
@@ -438,7 +438,7 @@ async function main() {
   log(``);
   logInfo(`  Version:        ${newVersion}`);
   logInfo(`  CRX:            ${CRX_FILE}`);
-  logInfo(`  Upload ZIP:     ${ZIP_FILE}`);
+  logInfo(`  Upload ZIP:     ${join(ROOT, `capultura-mv3-${newVersion}-beta.zip`)}`);
   if (existsSync(KEY_FILE)) {
     logInfo(`  Extension ID:   ${getExtensionIdFromPem(KEY_FILE)}`);
   }
@@ -446,7 +446,7 @@ async function main() {
   log(`${CYAN}  NEXT STEPS:${RESET}`);
   log(`  1. Go to https://chrome.google.com/webstore/devconsole`);
   log(`  2. Select your extension listing`);
-  log(`  3. Upload: ${ZIP_FILE}`);
+  log(`  3. Upload: ${join(ROOT, `capultura-mv3-${newVersion}-beta.zip`)}`);
   log(`  4. Complete store listing with:`);
   log(`     - Single purpose: 'Records real browser flows and converts them into test automation scripts'`);
   log(`     - Remote code: NO`);
