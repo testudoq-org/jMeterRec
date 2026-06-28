@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Capultura — Record, script and scale real browser flows (JMX, Playwright) for reliable performance testing.">
+  <title>Capultura — Record. Script. Scale. | Chrome Extension for Performance Testing</title>
+  <meta name="theme-color" content="#050508">
+
+  <!-- Tailwind CSS (Play CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            deep: '#050508',
+            surface: '#0a0a10',
+            accent: {
+              cyan: '#00e5ff',
+              purple: '#7c4dff',
+              pink: '#ff2d78',
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Custom Styles -->
+  <link rel="stylesheet" href="css/main.css">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png">
+
+  <!-- Three.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+  <!-- GSAP + ScrollTrigger -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+
+  <!-- Shared particle background -->
+  <script src="js/particles.js"></script>
+</head>
+<body>
+
+  <!-- Three.js Background Canvas -->
+  <canvas id="particle-canvas" aria-hidden="true"></canvas>
+
+  <!-- Page Wrapper -->
+  <div class="page-wrapper">
+
+    <!-- Navigation -->
+    <nav id="main-nav" class="nav">
+      <div class="nav-inner">
+        <a href="/" class="nav-logo">
+          <div class="nav-logo-icon">
+            <span style="color:#000;font-weight:800;font-size:0.9rem;">C</span>
+          </div>
+          <span>Capultura</span>
+        </a>
+        <ul class="nav-links">
+          <li><a href="#features">Features</a></li>
+          <li><a href="#how-it-works">How It Works</a></li>
+          <li><a href="support.html">Support</a></li>
+          <li><a href="https://github.com/testudoq-org/jMeterRec" target="_blank" rel="noopener">GitHub</a></li>
+        </ul>
+        <a href="https://github.com/testudoq-org/jMeterRec" class="btn-primary text-sm py-2 px-5">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          View on GitHub
+        </a>
+      </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="section flex items-center justify-center pt-32 pb-20">
+      <div class="container text-center">
+        <div class="hero-badge badge inline-flex mb-6">
+          <span class="w-2 h-2 rounded-full bg-accent-cyan animate-pulse"></span>
+          BETA — Now available for testing
+        </div>
+
+        <h1 class="hero-title text-6xl md:text-7xl lg:text-8xl font-extrabold tracking-tight leading-tight">
+          Record. <span class="gradient-text">Script.</span> Scale.
+        </h1>
+
+        <p class="hero-subtitle text-xl md:text-2xl text-gray-400 max-w-2xl mx-auto mt-8 leading-relaxed font-light">
+          Capultura captures real browser flows, converts recordings into reproducible JMX and Playwright scripts, and runs scalable performance tests.
+        </p>
+
+        <div class="hero-actions flex flex-col sm:flex-row items-center justify-center gap-4 mt-10">
+          <a href="https://github.com/testudoq-org/jMeterRec" class="btn-primary">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+            Install Extension
+          </a>
+          <a href="support.html" class="btn-secondary">
+            Learn More
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg>
+          </a>
+        </div>
+
+        <!-- Hero Visual / Code snippet -->
+        <div class="hero-visual mt-16 max-w-3xl mx-auto">
+          <div class="glass p-6 md:p-8 text-left font-mono text-sm md:text-base overflow-x-auto">
+            <div class="flex items-center gap-2 mb-4">
+              <span class="w-3 h-3 rounded-full bg-red-500"></span>
+              <span class="w-3 h-3 rounded-full bg-yellow-500"></span>
+              <span class="w-3 h-3 rounded-full bg-green-500"></span>
+              <span class="ml-4 text-xs text-gray-500">recording.jmx</span>
+            </div>
+            <pre class="text-gray-300"><code><span class="text-accent-purple">Capultura</span>.<span class="text-accent-cyan">recorder</span>({
+  <span class="text-gray-400">mode:</span> <span class="text-green-400">'jmx'</span>,
+  <span class="text-gray-400">cors:</span> <span class="text-accent-pink">true</span>,
+  <span class="text-gray-400">threads:</span> <span class="text-yellow-400">50</span>,
+  <span class="text-gray-400">assertions:</span> [<span class="text-green-400">'status=200'</span>]
+});
+
+<span class="text-gray-500">// Captured 48 requests in 3.2s</span>
+<span class="text-gray-500">// Generated JMX ready for JMeter</span>
+console.log(<span class="text-green-400">'Ready to scale'</span>);</code></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="section features-section">
+      <div class="container">
+        <div class="section-header text-center mb-4">
+          <div class="badge-purple badge inline-flex mb-4">Core Capabilities</div>
+          <h2 class="text-4xl md:text-5xl font-bold">Everything you need to<br>performance test</h2>
+          <p class="text-gray-400 mt-4 max-w-xl mx-auto">From recording real user journeys to scaling them in CI pipelines — Capultura has you covered.</p>
+        </div>
+
+        <div class="feature-grid">
+          <div class="feature-card glass">
+            <div class="feature-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="url(#g1)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <defs><linearGradient id="g1" x1="0" y1="0" x2="100%" y2="100%"><stop offset="0%" stop-color="#00e5ff"/><stop offset="100%" stop-color="#7c4dff"/></linearGradient></defs>
+                <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="4.93" y1="4.93" x2="9.17" y2="9.17"/><line x1="14.83" y1="14.83" x2="19.07" y2="19.07"/>
+              </svg>
+            </div>
+            <h3>Capture Real Flows</h3>
+            <p>Record every HTTP request and DOM action from actual browser sessions. No synthetic scripting — pure, unfiltered traffic.</p>
+          </div>
+
+          <div class="feature-card glass">
+            <div class="feature-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="url(#g2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <defs><linearGradient id="g2" x1="0" y1="0" x2="100%" y2="100%"><stop offset="0%" stop-color="#7c4dff"/><stop offset="100%" stop-color="#ff2d78"/></linearGradient></defs>
+                <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+              </svg>
+            </div>
+            <h3>Generate Scripts</h3>
+            <p>Automatically transform captures into JMX for JMeter or Playwright specs. Parameterize variables, extractors, and assertions.</p>
+          </div>
+
+          <div class="feature-card glass">
+            <div class="feature-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="url(#g3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <defs><linearGradient id="g3" x1="0" y1="0" x2="100%" y2="100%"><stop offset="0%" stop-color="#ff2d78"/><stop offset="100%" stop-color="#00e5ff"/></linearGradient></defs>
+                <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
+              </svg>
+            </div>
+            <h3>Scale with Confidence</h3>
+            <p>Run thousands of virtual users with configurable load patterns. Export metrics, validate stability, and slip results into CI.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- How It Works Section -->
+    <section id="how-it-works" class="section steps-section">
+      <div class="container">
+        <div class="section-header text-center mb-4">
+          <div class="badge-purple badge inline-flex mb-4">Workflow</div>
+          <h2 class="text-4xl md:text-5xl font-bold">From browser to benchmark<br>in four simples steps</h2>
+        </div>
+
+        <div class="steps">
+          <div class="step glass glass-sm">
+            <div class="step-number">1</div>
+            <h3>Record</h3>
+            <p>Open Capultura and capture your browser session. Every click, request, and response is logged.</p>
+          </div>
+          <div class="step glass glass-sm">
+            <div class="step-number">2</div>
+            <h3>Inspect</h3>
+            <p>Review captured requests in the transaction inspector. Filter, search, and validate the data.</p>
+          </div>
+          <div class="step glass glass-sm">
+            <div class="step-number">3</div>
+            <h3>Generate</h3>
+            <p>Export to JMX or Playwright. Add parameters, assertions, and timers in a few clicks.</p>
+          </div>
+          <div class="step glass glass-sm">
+            <div class="step-number">4</div>
+            <h3>Execute</h3>
+            <p>Run scalable load tests in JMeter or CI pipelines. Analyze metrics and regressions.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="cta-section">
+      <div class="container">
+        <div class="glass inline-block px-12 py-10 md:px-16 md:py-14 text-center max-w-2xl">
+          <h2 class="text-3xl md:text-4xl font-bold mb-4">Ready to scale your tests?</h2>
+          <p class="text-gray-400 mb-8 max-w-md mx-auto">Install the Chrome extension and start recording real browser flows today. Free during BETA.</p>
+          <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <a href="https://github.com/testudoq-org/jMeterRec" class="btn-primary">
+              <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+              Install Capultura
+            </a>
+            <a href="https://github.com/testudoq-org/jMeterRec#readme" target="_blank" rel="noopener" class="btn-secondary">Read the Docs</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="container">
+        <div class="footer-grid">
+          <div class="footer-brand">
+            <a href="/" class="nav-logo">
+              <div class="nav-logo-icon">
+                <span style="color:#000;font-weight:800;font-size:0.9rem;">C</span>
+              </div>
+              <span>Capultura</span>
+            </a>
+            <p>Record, script and scale real browser flows for reliable performance testing.</p>
+          </div>
+          <div>
+            <h4>Product</h4>
+            <ul>
+              <li><a href="#features">Features</a></li>
+              <li><a href="#how-it-works">How It Works</a></li>
+              <li><a href="https://github.com/testudoq-org/jMeterRec">Download</a></li>
+              <li><a href="https://github.com/testudoq-org/jMeterRec/releases">Releases</a></li>
+            </ul>
+          </div>
+          <div>
+            <h4>Resources</h4>
+            <ul>
+              <li><a href="https://github.com/testudoq-org/jMeterRec#readme" target="_blank" rel="noopener">Documentation</a></li>
+              <li><a href="support.html">Support</a></li>
+              <li><a href="https://github.com/testudoq-org/jMeterRec/issues" target="_blank" rel="noopener">Issues</a></li>
+              <li><a href="https://github.com/testudoq-org/jMeterRec/blob/main/PRIVACY.md" target="_blank" rel="noopener">Privacy</a></li>
+            </ul>
+          </div>
+          <div>
+            <h4>Community</h4>
+            <ul>
+              <li><a href="https://github.com/testudoq-org/jMeterRec" target="_blank" rel="noopener">GitHub</a></li>
+              <li><a href="https://github.com/testudoq-org/jMeterRec/blob/main/LICENSE.md" target="_blank" rel="noopener">License</a></li>
+              <li><a href="support.html">Contact</a></li>
+            </ul>
+          </div>
+        </div>
+        <div class="footer-bottom">
+          <p>&copy; <span id="current-year"></span> Capultura. All rights reserved. Built for BETA testing.</p>
+        </div>
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- Landing Page Scripts -->
+  <script src="js/main.js"></script>
+
+  <script>
+    document.getElementById('current-year').textContent = new Date().getFullYear();
+  </script>
+</body>
+</html>

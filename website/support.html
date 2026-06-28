@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Capultura support — Frequently asked questions, documentation, and contact form.">
+  <title>Support — Capultura</title>
+  <meta name="theme-color" content="#050508">
+
+  <!-- Tailwind CSS (Play CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            deep: '#050508',
+            surface: '#0a0a10',
+            accent: {
+              cyan: '#00e5ff',
+              purple: '#7c4dff',
+              pink: '#ff2d78',
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Custom Styles -->
+  <link rel="stylesheet" href="css/main.css">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png">
+
+  <!-- Three.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+  <!-- GSAP + ScrollTrigger -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+
+  <!-- Shared particle background -->
+  <script src="js/particles.js"></script>
+</head>
+<body>
+
+  <!-- Three.js Background Canvas -->
+  <canvas id="particle-canvas" aria-hidden="true"></canvas>
+
+  <!-- Page Wrapper -->
+  <div class="page-wrapper">
+
+    <!-- Navigation -->
+    <nav id="main-nav" class="nav">
+      <div class="nav-inner">
+        <a href="/" class="nav-logo">
+          <div class="nav-logo-icon">
+            <span style="color:#000;font-weight:800;font-size:0.9rem;">C</span>
+          </div>
+          <span>Capultura</span>
+        </a>
+        <ul class="nav-links">
+          <li><a href="/#features">Features</a></li>
+          <li><a href="/#how-it-works">How It Works</a></li>
+          <li><a href="support.html">Support</a></li>
+          <li><a href="https://github.com/testudoq-org/jMeterRec" target="_blank" rel="noopener">GitHub</a></li>
+        </ul>
+        <a href="https://github.com/testudoq-org/jMeterRec" class="btn-primary text-sm py-2 px-5">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          View on GitHub
+        </a>
+      </div>
+    </nav>
+
+    <!-- Support Hero -->
+    <section class="section support-hero flex items-center justify-center pt-32 pb-10">
+      <div class="container text-center">
+        <div class="section-tag badge inline-flex mb-6">Support Center</div>
+        <h1 class="text-5xl md:text-6xl font-extrabold tracking-tight">How can we help?</h1>
+        <p class="subtitle text-gray-400 mt-4 max-w-xl mx-auto text-lg">Get answers, report issues, or reach out directly. We're here for the BETA.</p>
+      </div>
+    </section>
+
+    <!-- FAQ Section -->
+    <section class="section section-tight">
+      <div class="container">
+        <div class="section-header text-center mb-4">
+          <div class="badge-purple badge inline-flex mb-4">Frequently Asked Questions</div>
+          <h2 class="text-3xl md:text-4xl font-bold">Common questions</h2>
+        </div>
+
+        <div class="faq-list max-w-3xl mx-auto mt-8">
+          <div class="faq-item glass glass-sm">
+            <button class="faq-question">
+              <span>What is Capultura BETA?</span>
+              <span class="faq-arrow">▼</span>
+            </button>
+            <div class="faq-answer">
+              <p>Capultura is a Chrome extension that records real browser HTTP traffic and DOM actions, then exports them into JMX (for Apache JMeter) or Playwright test scripts. The BETA is for early adopters and testers — expect rough edges and occasional regressions.</p>
+            </div>
+          </div>
+
+          <div class="faq-item glass glass-sm">
+            <button class="faq-question">
+              <span>How do I install the extension?</span>
+              <span class="faq-arrow">▼</span>
+            </button>
+            <div class="faq-answer">
+              <p>Visit the <a href="https://github.com/testudoq-org/jMeterRec#readme" class="text-accent-cyan underline" target="_blank" rel="noopener">GitHub repository</a> and download the latest BETA release. Load the unpacked extension in Chrome via <code class="font-mono text-accent-cyan">chrome://extensions</code>. Check the README for detailed installation instructions.</p>
+            </div>
+          </div>
+
+          <div class="faq-item glass glass-sm">
+            <button class="faq-question">
+              <span>What browsers are supported?</span>
+              <span class="faq-arrow">▼</span>
+            </button>
+            <div class="faq-answer">
+              <p>Currently Capultura targets Chrome/Chromium (version 88+) with Manifest V3. Firefox and Edge support is on the roadmap but not yet available.</p>
+            </div>
+          </div>
+
+          <div class="faq-item glass glass-sm">
+            <button class="faq-question">
+              <span>Will my captured data leave my machine?</span>
+              <span class="faq-arrow">▼</span>
+            </button>
+            <div class="faq-answer">
+              <p>No. Capultura runs entirely locally in your browser. Captured requests and generated scripts are stored in <code class="font-mono text-accent-cyan">chrome.storage.local</code>. There is no remote telemetry in the BETA, though this policy may change in future releases with opt-in telemetry.</p>
+            </div>
+          </div>
+
+          <div class="faq-item glass glass-sm">
+            <button class="faq-question">
+              <span>How do I report a bug or request a feature?</span>
+              <span class="faq-arrow">▼</span>
+            </button>
+            <div class="faq-answer">
+              <p>Use the <a href="https://github.com/testudoq-org/jMeterRec/issues" class="text-accent-cyan underline" target="_blank" rel="noopener">GitHub Issues</a> page. Please include your Chrome version, extension version, and steps to reproduce. Feature requests are welcome in the "enhancement" category.</p>
+            </div>
+          </div>
+
+          <div class="faq-item glass glass-sm">
+            <button class="faq-question">
+              <span>Is there an enterprise / silent install option?</span>
+              <span class="faq-arrow">▼</span>
+            </button>
+            <div class="faq-answer">
+              <p>Yes. See <code class="font-mono text-accent-cyan">enterprise-install.json</code> in the repo for force-install configuration. A stable <code class="font-mono text-accent-cyan">key</code> is included in the manifest for reproducible install IDs. Contact us for enterprise-specific questions.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Contact Section -->
+    <section class="section section-tight">
+      <div class="container">
+        <div class="section-header text-center mb-4">
+          <div class="badge-purple badge inline-flex mb-4">Contact Us</div>
+          <h2 class="text-3xl md:text-4xl font-bold">Get in touch</h2>
+          <p class="text-gray-400 mt-3">Questions, feedback, or partnership inquiries — we'd love to hear from you.</p>
+        </div>
+
+        <div class="contact-card glass mt-10">
+          <form id="contact-form" novalidate>
+            <div class="form-group">
+              <label class="form-label" for="name">Name</label>
+              <input class="form-input" type="text" id="name" name="name" placeholder="Your name" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="email">Email</label>
+              <input class="form-input" type="email" id="email" name="email" placeholder="you@example.com" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="subject">Subject</label>
+              <input class="form-input" type="text" id="subject" name="subject" placeholder="How can we help?" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="message">Message</label>
+              <textarea class="form-textarea" id="message" name="message" placeholder="Describe your issue or idea..." required></textarea>
+            </div>
+            <button type="submit" class="btn-primary w-full justify-center">
+              Send message
+            </button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- Quick Links -->
+    <section class="section section-tight">
+      <div class="container">
+        <div class="glass grid md:grid-cols-3 gap-6 p-8 md:p-10">
+          <a href="https://github.com/testudoq-org/jMeterRec/issues" target="_blank" rel="noopener" class="flex items-start gap-4 group">
+            <div class="w-10 h-10 rounded-lg bg-accent-cyan/10 flex items-center justify-center flex-shrink-0">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00e5ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>
+            </div>
+            <div>
+              <h3 class="font-semibold group-hover:text-accent-cyan transition-colors">Open an Issue</h3>
+              <p class="text-sm text-gray-400 mt-1">Report bugs or request features on GitHub.</p>
+            </div>
+          </a>
+          <a href="https://github.com/testudoq-org/jMeterRec#readme" target="_blank" rel="noopener" class="flex items-start gap-4 group">
+            <div class="w-10 h-10 rounded-lg bg-accent-purple/10 flex items-center justify-center flex-shrink-0">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7c4dff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
+            </div>
+            <div>
+              <h3 class="font-semibold group-hover:text-accent-purple transition-colors">Read the Docs</h3>
+              <p class="text-sm text-gray-400 mt-1">In-depth usage guides and API reference.</p>
+            </div>
+          </a>
+          <a href="https://github.com/testudoq-org/jMeterRec/releases" target="_blank" rel="noopener" class="flex items-start gap-4 group">
+            <div class="w-10 h-10 rounded-lg bg-accent-pink/10 flex items-center justify-center flex-shrink-0">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ff2d78" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </div>
+            <div>
+              <h3 class="font-semibold group-hover:text-accent-pink transition-colors">Releases</h3>
+              <p class="text-sm text-gray-400 mt-1">Download the latest BETA build.</p>
+            </div>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="container">
+        <div class="footer-grid">
+          <div class="footer-brand">
+            <a href="/" class="nav-logo">
+              <div class="nav-logo-icon">
+                <span style="color:#000;font-weight:800;font-size:0.9rem;">C</span>
+              </div>
+              <span>Capultura</span>
+            </a>
+            <p>Record, script and scale real browser flows for reliable performance testing.</p>
+          </div>
+          <div>
+            <h4>Product</h4>
+            <ul>
+              <li><a href="/#features">Features</a></li>
+              <li><a href="/#how-it-works">How It Works</a></li>
+              <li><a href="https://github.com/testudoq-org/jMeterRec">Download</a></li>
+            </ul>
+          </div>
+          <div>
+            <h4>Resources</h4>
+            <ul>
+              <li><a href="https://github.com/testudoq-org/jMeterRec#readme" target="_blank" rel="noopener">Documentation</a></li>
+              <li><a href="support.html">Support</a></li>
+              <li><a href="https://github.com/testudoq-org/jMeterRec/issues" target="_blank" rel="noopener">Issues</a></li>
+            </ul>
+          </div>
+          <div>
+            <h4>Community</h4>
+            <ul>
+              <li><a href="https://github.com/testudoq-org/jMeterRec" target="_blank" rel="noopener">GitHub</a></li>
+              <li><a href="https://github.com/testudoq-org/jMeterRec/blob/main/LICENSE.md" target="_blank" rel="noopener">License</a></li>
+            </ul>
+          </div>
+        </div>
+        <div class="footer-bottom">
+          <p>&copy; <span id="current-year"></span> Capultura. All rights reserved. Built for BETA testing.</p>
+        </div>
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- Support Page Scripts -->
+  <script src="js/support.js"></script>
+
+  <script>
+    document.getElementById('current-year').textContent = new Date().getFullYear();
+  </script>
+</body>
+</html>
