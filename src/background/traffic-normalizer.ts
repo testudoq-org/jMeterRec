@@ -1,6 +1,7 @@
 import type { PendingRequest } from '../models/pending-web-request'
 import type { CapturedRequest } from '../models/captured-request'
 import type { ResponseBodyPayload } from '../messages'
+import { sanitizeForXml } from '../utils/xml-sanitizer'
 
 export type { PendingRequest } from '../models/pending-web-request'
 
@@ -197,7 +198,8 @@ function decodeHeader(value: ArrayBuffer | undefined): string {
 }
 
 function decodeBytes(bytes: ArrayBuffer): string {
-  return new TextDecoder('utf-8', { fatal: false }).decode(bytes)
+  const raw = new TextDecoder('utf-8', { fatal: false }).decode(bytes)
+  return sanitizeForXml(raw)
 }
 
 type BasePendingRequest = Omit<PendingRequest, 'method'>

@@ -134,18 +134,26 @@ export function parseExtractors(extractorsJson: string): JmxExtractor[] {
 
     const record = item as Record<string, unknown>
     const type = record.type
-    if (type !== 'json' && type !== 'regex') {
+    const normalizedType =
+      type === 'JSONPostProcessor' || type === 'RegexExtractor'
+        ? type
+        : type === 'json'
+          ? 'JSONPostProcessor'
+          : type === 'regex'
+            ? 'RegexExtractor'
+            : null
+    if (normalizedType === null) {
       return []
     }
 
-    if (type === 'json') {
+    if (normalizedType === 'JSONPostProcessor') {
       const refNames = record.refNames
       const jsonPathExpressions = record.jsonPathExpressions
       if (typeof refNames !== 'string' || typeof jsonPathExpressions !== 'string') {
         return []
       }
       result.push({
-        type: 'json',
+        type: normalizedType as 'JSONPostProcessor',
         testClass: 'JSONPostProcessor',
         guiClass: 'JSONPostProcessorGui',
         name: 'JSON Post Processor',
@@ -162,7 +170,7 @@ export function parseExtractors(extractorsJson: string): JmxExtractor[] {
         return []
       }
       result.push({
-        type: 'regex',
+        type: normalizedType as 'RegexExtractor',
         testClass: 'RegexExtractor',
         guiClass: 'RegexExtractorGui',
         name: 'Regular Expression Extractor',

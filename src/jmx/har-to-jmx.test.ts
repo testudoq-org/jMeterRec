@@ -184,6 +184,21 @@ describe('convertHarToJmx', () => {
     expect(jmx).toContain('Bearer token123')
   })
 
+  it('strips illegal XML chars from HAR postData text before JMX export', () => {
+    const har = buildMinimalHar([
+      harEntry({
+        url: 'https://example.com/api',
+        method: 'POST',
+        postMime: 'application/octet-stream',
+        postText: '\x00\x01binary',
+        resText: '',
+      }),
+    ])
+    const jmx = convertHarToJmx(har, meta)
+    expect(jmx).not.toContain('\x00')
+    expect(jmx).not.toContain('\x01')
+  })
+
   it('throws on empty HAR entries array', () => {
     const har = buildMinimalHar([])
     expect(() => validateHar(har)).toThrow('Invalid HAR: no entries found')

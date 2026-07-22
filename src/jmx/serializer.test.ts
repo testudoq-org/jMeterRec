@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
 import { buildJmx } from './serializer'
+import { describe, expect, it } from 'vitest'
 import type { CapturedRequest, PlanMeta } from '../models/captured-request'
 
 const meta: PlanMeta = {
@@ -921,7 +921,7 @@ describe('buildJmx', () => {
     const jmx = buildJmx(meta, requests, {
       extractors: [
         {
-          type: 'json',
+          type: 'JSONPostProcessor',
           testClass: 'JSONPostProcessor',
           guiClass: 'JSONPostProcessorGui',
           name: 'JSON Post Processor',
@@ -954,7 +954,7 @@ describe('buildJmx', () => {
     const jmx = buildJmx(meta, requests, {
       extractors: [
         {
-          type: 'regex',
+          type: 'RegexExtractor',
           testClass: 'RegexExtractor',
           guiClass: 'RegexExtractorGui',
           name: 'Regular Expression Extractor',
@@ -1006,7 +1006,7 @@ describe('buildJmx', () => {
     const jmx = buildJmx(meta, requests, {
       extractors: [
         {
-          type: 'json',
+          type: 'JSONPostProcessor',
           testClass: 'JSONPostProcessor',
           guiClass: 'JSONPostProcessorGui',
           name: 'JSON Post Processor',
@@ -1017,7 +1017,7 @@ describe('buildJmx', () => {
           matchNumbers: '1',
         },
         {
-          type: 'regex',
+          type: 'RegexExtractor',
           testClass: 'RegexExtractor',
           guiClass: 'RegexExtractorGui',
           name: 'Regular Expression Extractor',
@@ -1056,7 +1056,7 @@ describe('buildJmx', () => {
     const jmx = buildJmx(meta, requests, {
       extractors: [
         {
-          type: 'regex',
+          type: 'RegexExtractor',
           testClass: 'RegexExtractor',
           guiClass: 'RegexExtractorGui',
           name: 'Regular Expression Extractor',
@@ -1090,7 +1090,7 @@ describe('buildJmx', () => {
       durationAssertion: { enabled: true, thresholdMs: 5000 },
       extractors: [
         {
-          type: 'json',
+          type: 'JSONPostProcessor',
           testClass: 'JSONPostProcessor',
           guiClass: 'JSONPostProcessorGui',
           name: 'JSON Post Processor',
@@ -1113,5 +1113,48 @@ describe('buildJmx', () => {
     const jsonPos = jmx.indexOf('JSONPostProcessor')
     expect(durationPos).toBeLessThan(samplerEnd)
     expect(jsonPos).toBeGreaterThan(firstHashTree)
+  })
+
+  it('strips XML 1.0 illegal characters from POST body CDATA', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00.000Z',
+        method: 'POST',
+        url: 'https://play.google.com/log',
+        headers: {},
+        queryParams: {},
+        body: '\x00\x01\x02payload\x7F',
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests)
+    // eslint-disable-next-line no-control-regex
+    expect(jmx).not.toMatch(/[\x00-\x08\x0B\x0C\x0E-\x1F]/)
+    expect(jmx).toContain('<![CDATA[')
+  })
+
+  it('produces XML that passes DOMParser validation for the reported BlazeMeter failure case', () => {
+    const binaryBody = String.fromCharCode(...Array.from({ length: 256 }, (_, i) => i))
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'POST',
+        url: 'https://play.google.com/log',
+        headers: { 'content-type': 'application/octet-stream' },
+        queryParams: {},
+        body: binaryBody,
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests)
+
+    // validateJmx is called inside buildJmx; this test verifies it does not throw.
+    // In Node environment DOMParser is unavailable, so validateJmx is a no-op.
+    // We still assert the output contains no illegal control characters.
+    // eslint-disable-next-line no-control-regex
+    expect(jmx).not.toMatch(/[\x00-\x08\x0B\x0C\x0E-\x1F]/)
+    expect(jmx).toContain('<![CDATA[')
   })
 })

@@ -1,4 +1,5 @@
 import type { CapturedRequest } from '../models/captured-request'
+import { sanitizeForXml } from '../utils/xml-sanitizer'
 
 /**
  * Base interface for all JMeter XML element representations.
@@ -303,7 +304,7 @@ export interface JmxCacheManager extends JmxElement {
 }
 
 export interface JmxJSONPostProcessor extends JmxElement {
-  readonly type: 'json'
+  readonly type: 'JSONPostProcessor'
   readonly testClass: 'JSONPostProcessor'
   readonly guiClass: 'JSONPostProcessorGui'
   readonly refNames: string
@@ -313,7 +314,7 @@ export interface JmxJSONPostProcessor extends JmxElement {
 }
 
 export interface JmxRegexExtractor extends JmxElement {
-  readonly type: 'regex'
+  readonly type: 'RegexExtractor'
   readonly testClass: 'RegexExtractor'
   readonly guiClass: 'RegexExtractorGui'
   readonly refname: string
@@ -464,7 +465,7 @@ export function createJSONPostProcessor(
   name = 'JSON Post Processor'
 ): JmxJSONPostProcessor {
   return {
-    type: 'json',
+    type: 'JSONPostProcessor',
     testClass: 'JSONPostProcessor',
     guiClass: 'JSONPostProcessorGui',
     name,
@@ -485,7 +486,7 @@ export function createRegexExtractor(
   name = 'Regular Expression Extractor'
 ): JmxRegexExtractor {
   return {
-    type: 'regex',
+    type: 'RegexExtractor',
     testClass: 'RegexExtractor',
     guiClass: 'RegexExtractorGui',
     name,
@@ -942,7 +943,7 @@ export function serializeRegexExtractor(element: JmxRegexExtractor): string {
 // ============================================================================
 
 export function xmlEsc(s: string): string {
-  return s
+  return sanitizeForXml(s)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -950,5 +951,5 @@ export function xmlEsc(s: string): string {
 }
 
 export function escapeCdata(value: string): string {
-  return value.replaceAll(']]>', ']]]]><![CDATA[>')
+  return sanitizeForXml(value).replaceAll(']]>', ']]]]><![CDATA[>')
 }

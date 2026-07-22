@@ -92,6 +92,19 @@ describe('traffic-normalizer', () => {
     expect(pending.contentType).toBe('application/json')
   })
 
+  it('strips XML illegal characters from decoded request body bytes', () => {
+    const bytes = new Uint8Array([0x00, 0x01, 0x41, 0x42]) // NUL, SOH, 'A', 'B'
+    const pending = createPendingRequest(
+      beforeRequest({
+        requestBody: { raw: [{ bytes: bytes.buffer }] },
+      })
+    )
+
+    expect(pending.body).not.toContain('\x00')
+    expect(pending.body).not.toContain('\x01')
+    expect(pending.body).toContain('AB')
+  })
+
   it('merges response status and response headers', () => {
     const pending = createPendingRequest(beforeRequest())
 

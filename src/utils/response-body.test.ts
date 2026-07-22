@@ -43,6 +43,13 @@ describe('measureBody', () => {
     expect(result.truncated).toBe(false)
     expect(result.size).toBe(0)
   })
+
+  it('strips XML illegal characters from captured response bodies', () => {
+    const result = measureBody('hello\x00world\x01')
+
+    expect(result.body).toBe('helloworld')
+    expect(result.size).toBeGreaterThan(0)
+  })
 })
 
 describe('isPlainText', () => {

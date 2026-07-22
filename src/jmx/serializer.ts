@@ -2,6 +2,7 @@ import type { JmxExtractor } from './element-model'
 import type { CapturedRequest, PlanMeta } from '../models/captured-request'
 import type { UserAgentId } from '../options/advanced-options'
 import { getUserAgentString } from '../options/user-agents'
+import { sanitizeForXml } from '../utils/xml-sanitizer'
 import {
   // Factories
   createTestPlan,
@@ -55,6 +56,86 @@ export interface JmxSerializerOptions {
  * - Empty child elements without <hashTree/> may be silently discarded or shift ordering.
  * - Response bodies containing &, <, > must use CDATA to avoid invalid XML.
  */
+
+const EXTRACTOR_BUILDERS = new Map<JmxExtractor['type'], (ext: JmxExtractor) => string>([
+  [
+    'JSONPostProcessor',
+    (ext: JmxExtractor) => {
+      const jsonExt = ext as Extract<JmxExtractor, { type: 'JSONPostProcessor' }>
+      const xml = serializeJSONPostProcessor(
+        createJSONPostProcessor(
+          jsonExt.refNames,
+          jsonExt.jsonPathExpressions,
+          jsonExt.defaultValues ?? '',
+          jsonExt.matchNumbers ?? '1'
+        )
+      )
+      return `${xml}<hashTree/>`
+    },
+  ],
+  [
+    'RegexExtractor',
+    (ext: JmxExtractor) => {
+      const regexExt = ext as Extract<JmxExtractor, { type: 'RegexExtractor' }>
+      const xml = serializeRegexExtractor(
+        createRegexExtractor(
+          regexExt.refname,
+          regexExt.regex,
+          regexExt.defaultValue ?? '',
+          regexExt.matchNumber ?? '1',
+          regexExt.template ?? '$1$'
+        )
+      )
+      return `${xml}<hashTree/>`
+    },
+  ],
+])
+
+function buildAssertionXml(options?: JmxSerializerOptions): string {
+  return options?.assertion?.enabled === true
+    ? serializeResponseAssertion(createResponseAssertion(options.assertion.expectStatus))
+    : ''
+}
+
+function buildDurationAssertionXml(options?: JmxSerializerOptions): string {
+  return options?.durationAssertion?.enabled === true
+    ? serializeDurationAssertion(createDurationAssertion(options.durationAssertion.thresholdMs))
+    : ''
+}
+
+function buildSamplerSequence(
+  requests: CapturedRequest[],
+  options?: JmxSerializerOptions,
+  effectiveDefaults?: { domain: string; port: string; protocol: string }
+): string {
+  return requests
+    .map((req, idx) => {
+      const prev = idx > 0 ? requests[idx - 1] : undefined
+      const gap =
+        prev !== undefined
+          ? new Date(req.timestamp).getTime() - new Date(prev.timestamp).getTime()
+          : 0
+      const timerXml = gap > 0 ? buildThinkTimeTimer(gap, options?.thinkTime) : ''
+      const assertionXml = buildAssertionXml(options)
+      const durationAssertionXml = buildDurationAssertionXml(options)
+      const extractorsXml = (options?.extractors ?? [])
+        .map((ext) => EXTRACTOR_BUILDERS.get(ext.type)?.(ext) ?? '')
+        .join('\n')
+
+      const samplerModel = createHTTPSampler(
+        req,
+        idx,
+        processHeaders(req.headers, options),
+        effectiveDefaults
+      )
+      const samplerXml = serializeHTTPSampler(samplerModel)
+      const extractorSection = extractorsXml.length > 0 ? `\n${extractorsXml}` : ''
+
+      return `${timerXml}${assertionXml}${durationAssertionXml}${samplerXml}<hashTree/>${extractorSection}`
+    })
+    .join('\n')
+}
+
 export function buildJmx(
   meta: PlanMeta,
   requests: CapturedRequest[],
@@ -90,85 +171,51 @@ export function buildJmx(
 
   // ⑤ Build each sampler via model factory + serializer.
   //    Think-time timers are computed between adjacent request pairs.
-  const sequenceXml = requests
-    .map((req, idx) => {
-      const prev = idx > 0 ? requests[idx - 1] : undefined
-      const gap =
-        prev !== undefined
-          ? new Date(req.timestamp).getTime() - new Date(prev.timestamp).getTime()
-          : 0
-      const timerXml = gap > 0 ? buildThinkTimeTimer(gap, options?.thinkTime) : ''
-      const assertionXml =
-        options?.assertion?.enabled === true
-          ? serializeResponseAssertion(createResponseAssertion(options.assertion.expectStatus))
-          : ''
-      const durationAssertionXml =
-        options?.durationAssertion?.enabled === true
-          ? serializeDurationAssertion(
-              createDurationAssertion(options.durationAssertion.thresholdMs)
-            )
-          : ''
-      const extractorsXml = (options?.extractors ?? [])
-        .map((ext) => {
-          if (ext.type === 'json') {
-            const xml = serializeJSONPostProcessor(
-              createJSONPostProcessor(
-                ext.refNames,
-                ext.jsonPathExpressions,
-                ext.defaultValues ?? '',
-                ext.matchNumbers ?? '1'
-              )
-            )
-            return `${xml}<hashTree/>`
-          }
-          if (ext.type === 'regex') {
-            const xml = serializeRegexExtractor(
-              createRegexExtractor(
-                ext.refname,
-                ext.regex,
-                ext.defaultValue ?? '',
-                ext.matchNumber ?? '1',
-                ext.template ?? '$1$'
-              )
-            )
-            return `${xml}<hashTree/>`
-          }
-          return ''
-        })
-        .join('\n')
-
-      const samplerModel = createHTTPSampler(
-        req,
-        idx,
-        processHeaders(req.headers, options),
-        effectiveDefaults
-      )
-      const samplerXml = serializeHTTPSampler(samplerModel)
-      const extractorSection = extractorsXml.length > 0 ? `\n${extractorsXml}` : ''
-
-      return `${timerXml}${assertionXml}${durationAssertionXml}${samplerXml}<hashTree/>${extractorSection}`
-    })
-    .join('\n')
+  const sequenceXml = buildSamplerSequence(requests, options, effectiveDefaults)
 
   // ⑥ Assemble document — element content is model-driven, structure is schema-fixed.
   // Each element (ConfigTestElement, CookieManager, samplers) must be followed by its own hashTree.
   // CookieManager is only included if there are cookies to avoid empty hashTree elements.
   const cookieSection = cookieMgrXml ? `${cookieMgrXml}<hashTree/>\n` : ''
   const cacheSection = cacheMgrXml ? `${cacheMgrXml}<hashTree/>\n` : ''
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
-<hashTree>
-${planXml}
-<hashTree>
-${tgXml}
-<hashTree>
-${defaultsXml}
-<hashTree/>
-${cacheSection}${cookieSection}${sequenceXml}
-</hashTree>
-</hashTree>
-</hashTree>
-</jmeterTestPlan>`
+  const jmx = `<?xml version="1.0" encoding="UTF-8"?>
+ <jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
+ <hashTree>
+ ${planXml}
+ <hashTree>
+ ${tgXml}
+ <hashTree>
+ ${defaultsXml}
+ <hashTree/>
+ ${cacheSection}${cookieSection}${sequenceXml}
+ </hashTree>
+ </hashTree>
+ </hashTree>
+ </jmeterTestPlan>`
+
+  assertJmxWellFormedInDom(jmx)
+  return sanitizeForXml(jmx)
+}
+
+/**
+ * Development-only assertion that the generated JMX is well-formed XML.
+ *
+ * This is a no-op in the MV3 service-worker runtime because `DOMParser` is
+ * unavailable there. The authoritative runtime protection is the
+ * `sanitizeForXml()` guard in `xmlEsc()` / `escapeCdata()`.
+ *
+ * This assertion runs in browser and jsdom test environments to catch
+ * serializer regressions that would produce invalid XML before the file
+ * is written or handed off to strict validators like BlazeMeter.
+ */
+function assertJmxWellFormedInDom(jmx: string): void {
+  if (typeof DOMParser !== 'undefined') {
+    const doc = new DOMParser().parseFromString(jmx, 'application/xml')
+    const error = doc.querySelector('parsererror')
+    if (error !== null) {
+      throw new Error(`Generated JMX is not valid XML: ${error.textContent}`)
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

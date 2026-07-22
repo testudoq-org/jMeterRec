@@ -104,7 +104,7 @@ describe('parseExtractors', () => {
     )
     expect(result).toEqual([
       {
-        type: 'json',
+        type: 'JSONPostProcessor',
         testClass: 'JSONPostProcessor',
         guiClass: 'JSONPostProcessorGui',
         name: 'JSON Post Processor',
@@ -123,7 +123,7 @@ describe('parseExtractors', () => {
     )
     expect(result).toEqual([
       {
-        type: 'regex',
+        type: 'RegexExtractor',
         testClass: 'RegexExtractor',
         guiClass: 'RegexExtractorGui',
         name: 'Regular Expression Extractor',
@@ -142,7 +142,7 @@ describe('parseExtractors', () => {
       '[{"type":"json","refNames":"t","jsonPathExpressions":"$.t"},{"type":"regex","refname":"o","regex":"#(d+)"}]'
     )
     expect(result).toHaveLength(2)
-    expect(result[0]?.type).toBe('json')
-    expect(result[1]?.type).toBe('regex')
+    expect(result[0]?.type).toBe('JSONPostProcessor')
+    expect(result[1]?.type).toBe('RegexExtractor')
   })
 })

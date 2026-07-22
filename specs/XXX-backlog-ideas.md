@@ -1,5 +1,11 @@
 ### Backlog — newest first
 
+- [ ] **015-improve-export-to-jmx** — Sanitize XML 1.0 illegal characters (NUL bytes, control characters) in JMX export pipeline so generated files are valid for strict XML parsers such as BlazeMeter. Fix CDATA contamination from binary POST bodies and HAR imports.
+  - Status: proposed
+  - Depends on: 013-jmx-output-hardening stable
+  - Related spec: `specs/013-jmx-output-hardening.md`
+  - Key design: add `sanitizeForXml()` utility, guard capture/HAR-import/serializer boundaries, add `validateJmx()` gate, and expand test coverage for binary payloads
+
 - [x] **009-post-impl-review** — Post-implementation review findings from `009-jmx-export-quality` delivery. High-priority items: gate the dead `redirectDedupEnabled` option, fix `as never` casts in `createRedirectFollowUp` tests, and add bounded eviction to the redirect map. Medium-priority items: revert formatting-only changes to committed files, and add edge-case tests for cross-tab isolation and disallowed-scheme `Location` headers. See dedicated section below for full action items and file references.
 - [x] **010-advanced-recorder-options** — Add advanced recorder options: URL filter pattern, resource type filtering, CookieManager output control, User-Agent override.
    - Status: implemented

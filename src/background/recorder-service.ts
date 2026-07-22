@@ -1,10 +1,12 @@
 import { convertHarToJmx, validateHar } from '../jmx/har-to-jmx'
+import type { JmxSerializerOptions } from '../jmx/serializer'
 import { buildHar } from '../har/har-builder'
 import { filterRequestsByDomains, filterHarEntriesByDomains } from '../jmx/domains'
 import { buildPlaywrightResponse } from '../generators/playwright'
 import { JmxOptionsStore } from '../options/jmx-options'
 import { AdvancedOptionsStore } from '../options/advanced-options'
 import type { JmxOptions } from '../options/jmx-options'
+import type { AdvancedOptions } from '../options/advanced-options'
 import { parseExtractors } from '../options/jmx-options'
 import { safeFilename } from '../utils/filename'
 import type { BackgroundRequest, BackgroundResponse, RecorderSnapshot } from '../messages'
@@ -351,23 +353,11 @@ export class RecorderService {
       },
     }
 
-    const jmx = convertHarToJmx(har, meta, {
-      thinkTime: {
-        enabled: jmxOptions.thinkTimeEnabled,
-        randomize: false,
-        rangePercent: jmxOptions.thinkTimeRangePercent,
-      },
-      assertion: jmxOptions.assertionsEnabled
-        ? { enabled: true, expectStatus: jmxOptions.assertionExpectStatus }
-        : undefined,
-      recordCookies: advancedOptions.recordCookies,
-      userAgent: advancedOptions.userAgent,
-      durationAssertion: jmxOptions.durationAssertionEnabled
-        ? { enabled: true, thresholdMs: jmxOptions.durationAssertionThresholdMs }
-        : undefined,
-      cacheEnabled: jmxOptions.cacheEnabled,
-      extractors: parseExtractors(jmxOptions.extractorsJson),
-    })
+    const jmx = convertHarToJmx(
+      har,
+      meta,
+      this.buildJmxSerializerOptions(jmxOptions, advancedOptions)
+    )
 
     return {
       success: true,
@@ -399,7 +389,24 @@ export class RecorderService {
     }
 
     const har = buildHar(requests)
-    const jmx = convertHarToJmx(har, meta, {
+    const jmx = convertHarToJmx(
+      har,
+      meta,
+      this.buildJmxSerializerOptions(jmxOptions, advancedOptions)
+    )
+
+    return {
+      success: true,
+      jmx,
+      filename: `${safeFilename(meta.name)}.jmx`,
+    }
+  }
+
+  private buildJmxSerializerOptions(
+    jmxOptions: JmxOptions,
+    advancedOptions: AdvancedOptions
+  ): JmxSerializerOptions {
+    return {
       thinkTime: {
         enabled: jmxOptions.thinkTimeEnabled,
         randomize: false,
@@ -415,12 +422,6 @@ export class RecorderService {
         : undefined,
       cacheEnabled: jmxOptions.cacheEnabled,
       extractors: parseExtractors(jmxOptions.extractorsJson),
-    })
-
-    return {
-      success: true,
-      jmx,
-      filename: `${safeFilename(meta.name)}.jmx`,
     }
   }
 

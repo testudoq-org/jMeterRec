@@ -343,7 +343,7 @@ describe('JmxJSONPostProcessor factory', () => {
   it('creates a JSON extractor with given expressions', () => {
     const extractor = createJSONPostProcessor('token', '$.token')
 
-    expect(extractor.type).toBe('json')
+    expect(extractor.type).toBe('JSONPostProcessor')
     expect(extractor.refNames).toBe('token')
     expect(extractor.jsonPathExpressions).toBe('$.token')
     expect(extractor.defaultValues).toBe('')
@@ -355,7 +355,7 @@ describe('JmxRegexExtractor factory', () => {
   it('creates a regex extractor with default template', () => {
     const extractor = createRegexExtractor('orderId', 'Order #(\\d+)')
 
-    expect(extractor.type).toBe('regex')
+    expect(extractor.type).toBe('RegexExtractor')
     expect(extractor.refname).toBe('orderId')
     expect(extractor.regex).toBe('Order #(\\d+)')
     expect(extractor.template).toBe('$1$')
@@ -841,5 +841,158 @@ describe('Model factory functions', () => {
     expect(sampler.domain).toBe('other.example.com')
     expect(sampler.port).toBe('8080') // Port differs, so included
     expect(sampler.protocol).toBe('') // Protocol matches, so inherited
+  })
+})
+
+describe('XML 1.0 sanitization', () => {
+  it('strips NUL bytes from body CDATA to keep JMX valid for strict XML parsers', () => {
+    const sampler: {
+      type: 'HTTPSamplerProxy'
+      testClass: 'HTTPSamplerProxy'
+      guiClass: 'HttpTestSampleGui'
+      name: string
+      enabled: boolean
+      domain: string
+      port: string
+      protocol: string
+      path: string
+      method: string
+      followRedirects: boolean
+      useKeepAlive: boolean
+      postBodyRaw: boolean
+      arguments: Array<{ name: string; value: string; alwaysEncode: boolean }>
+      headers: Array<{ name: string; value: string; enabled: boolean }>
+      body: string
+    } = {
+      type: 'HTTPSamplerProxy',
+      testClass: 'HTTPSamplerProxy',
+      guiClass: 'HttpTestSampleGui',
+      name: 'POST play.google.com/log #51',
+      enabled: true,
+      domain: 'play.google.com',
+      port: '443',
+      protocol: 'https',
+      path: '/log',
+      method: 'POST',
+      followRedirects: true,
+      useKeepAlive: true,
+      postBodyRaw: true,
+      arguments: [{ name: '', value: '', alwaysEncode: false }],
+      headers: [],
+      body: '\x00\x01\x02binary\x00data',
+    }
+
+    const xml = serializeHTTPSampler(sampler)
+
+    expect(xml).toContain('<![CDATA[')
+    const bodyCdata =
+      xml.match(/<stringProp name="Argument\.value"><!\[CDATA\[(.*?)\]\]><\/stringProp>/s)?.[1] ??
+      ''
+    expect(bodyCdata).not.toContain('\x00')
+    expect(bodyCdata).not.toContain('\x01')
+    expect(bodyCdata).not.toContain('\x02')
+  })
+
+  it('strips control chars while preserving CDATA terminator escaping', () => {
+    const sampler: {
+      type: 'HTTPSamplerProxy'
+      testClass: 'HTTPSamplerProxy'
+      guiClass: 'HttpTestSampleGui'
+      name: string
+      enabled: boolean
+      domain: string
+      port: string
+      protocol: string
+      path: string
+      method: string
+      followRedirects: boolean
+      useKeepAlive: boolean
+      postBodyRaw: boolean
+      arguments: Array<{ name: string; value: string; alwaysEncode: boolean }>
+      headers: Array<{ name: string; value: string; enabled: boolean }>
+      body: string
+    } = {
+      type: 'HTTPSamplerProxy',
+      testClass: 'HTTPSamplerProxy',
+      guiClass: 'HttpTestSampleGui',
+      name: 'POST example.com #0',
+      enabled: true,
+      domain: '',
+      port: '',
+      protocol: '',
+      path: '/',
+      method: 'POST',
+      followRedirects: true,
+      useKeepAlive: true,
+      postBodyRaw: true,
+      arguments: [{ name: '', value: 'data\x00]]>more', alwaysEncode: false }],
+      headers: [],
+      body: '',
+    }
+
+    const xml = serializeHTTPSampler(sampler)
+
+    expect(xml).not.toContain('\x00')
+    expect(xml).toContain(']]]]><![CDATA[>')
+  })
+
+  it('sanitizes regex extractor CDATA containing NUL bytes', () => {
+    const extractor = createRegexExtractor('orderId', 'Order #\x00(\\d+)')
+
+    const xml = serializeRegexExtractor(extractor)
+
+    expect(xml).not.toContain('\x00')
+    expect(xml).toContain('<![CDATA[')
+  })
+
+  it('strips NUL bytes from header values in stringProp elements', () => {
+    const sampler: {
+      type: 'HTTPSamplerProxy'
+      testClass: 'HTTPSamplerProxy'
+      guiClass: 'HttpTestSampleGui'
+      name: string
+      enabled: boolean
+      domain: string
+      port: string
+      protocol: string
+      path: string
+      method: string
+      followRedirects: boolean
+      useKeepAlive: boolean
+      postBodyRaw: boolean
+      arguments: Array<{ name: string; value: string; alwaysEncode: boolean }>
+      headers: Array<{ name: string; value: string; enabled: boolean }>
+      body: string
+    } = {
+      type: 'HTTPSamplerProxy',
+      testClass: 'HTTPSamplerProxy',
+      guiClass: 'HttpTestSampleGui',
+      name: 'GET example.com #0',
+      enabled: true,
+      domain: '',
+      port: '',
+      protocol: '',
+      path: '/',
+      method: 'GET',
+      followRedirects: true,
+      useKeepAlive: true,
+      postBodyRaw: false,
+      arguments: [{ name: '', value: '', alwaysEncode: false }],
+      headers: [{ name: 'x-custom', value: 'val\x00ue', enabled: true }],
+      body: '',
+    }
+
+    const xml = serializeHTTPSampler(sampler)
+
+    expect(xml).not.toContain('\x00')
+  })
+
+  it('strips NUL bytes from cookie values', () => {
+    const mgr = createCookieManager([{ name: 'session', value: 'abc\x00def' }])
+
+    const xml = serializeCookieManager(mgr)
+
+    expect(xml).not.toContain('\x00')
+    expect(xml).toContain('Cookie.value">abcdef')
   })
 })

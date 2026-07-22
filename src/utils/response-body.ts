@@ -1,4 +1,5 @@
 // Shared response-body capture helpers for content-script and background processing.
+import { sanitizeForXml } from './xml-sanitizer'
 
 export const MAX_RESPONSE_BODY_BYTES = 1024 * 64
 
@@ -28,9 +29,10 @@ export function measureBody(
   safeBytes.set(bytes.subarray(0, safeBytes.length))
   const decoder = new TextDecoder()
   const truncatedBody = size === 0 ? '' : decoder.decode(safeBytes, { stream: false })
+  const sanitized = sanitizeForXml(truncatedBody)
 
   return {
-    body: truncatedBody,
+    body: sanitized,
     truncated,
     redacted: false,
     size,

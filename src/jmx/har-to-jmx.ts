@@ -1,5 +1,6 @@
 import type { CapturedRequest, PlanMeta } from '../models/captured-request'
 import { buildJmx, type JmxSerializerOptions } from '../jmx/serializer'
+import { sanitizeForXml } from '../utils/xml-sanitizer'
 
 export interface TrafficModel {
   entries: TrafficEntry[]
@@ -61,8 +62,8 @@ export function convertHarToJmx(
     const headers = normalizeHeaders(entry.request.headers)
     const responseHeaders = normalizeHeaders(entry.response.headers)
     const query = normalizeQueryParams(entry.request.queryString)
-    const body = entry.request.postData?.text ?? ''
-    const responseBody = entry.response.content.text ?? ''
+    const body = sanitizeForXml(entry.request.postData?.text ?? '')
+    const responseBody = sanitizeForXml(entry.response.content.text ?? '')
     const bodyType = detectBodyType(
       entry.request.postData?.mimeType ?? entry.response.content.mimeType,
       body
