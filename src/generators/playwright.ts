@@ -1,3 +1,4 @@
+import { safeFilename } from '../utils/filename'
 import type {
   CapturedRequest,
   ActionStep,
@@ -91,11 +92,6 @@ export function buildPlaywrightResponse(
   return {
     success: true,
     playwright: buildPlaywrightTest(meta, steps),
-    filename: `${safeFilename(meta.testCaseName)}.spec.ts`,
+    filename: `${safeFilename(meta.testCaseName, 'Untitled-Suite')}.spec.ts`,
   }
-}
-
-function safeFilename(value: string): string {
-  const filename = value.trim().replace(/[^a-z0-9._-]+/gi, '-')
-  return filename.length > 0 ? filename : 'Untitled-Suite'
 }

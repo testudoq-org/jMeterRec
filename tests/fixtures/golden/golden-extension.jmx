@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
+<hashTree>
+<TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="Golden E2E" enabled="true">
+<stringProp name="TestPlan.comments"></stringProp>
+<stringProp name="TestPlan.functional_mode">false</stringProp>
+<boolProp name="TestPlan.serialize_threadgroups">false</boolProp>
+<elementProp name="TestPlan.user_defined_variables" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+<collectionProp name="Arguments.arguments" />
+</elementProp>
+</TestPlan>
+<hashTree>
+<ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Thread Group" enabled="true">
+<stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+<elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController" testname="Loop Controller" enabled="true">
+<boolProp name="LoopController.continue_forever">false</boolProp>
+<stringProp name="LoopController.loops">1</stringProp>
+</elementProp>
+<stringProp name="ThreadGroup.num_threads">1</stringProp>
+<stringProp name="ThreadGroup.ramp_time">1</stringProp>
+<boolProp name="ThreadGroup.scheduler">false</boolProp>
+<stringProp name="ThreadGroup.duration"></stringProp>
+<stringProp name="ThreadGroup.delay"></stringProp>
+<boolProp name="ThreadGroup.same_user_on_next_iteration">true</boolProp>
+</ThreadGroup>
+<hashTree>
+<ConfigTestElement guiclass="org.apache.jmeter.protocol.http.config.gui.HttpDefaultsGui" testclass="org.apache.jmeter.config.ConfigTestElement" testname="HTTP Request Defaults" enabled="true">
+<elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+<collectionProp name="Arguments.arguments" />
+</elementProp>
+<stringProp name="HTTPSampler.domain">127.0.0.1</stringProp>
+<stringProp name="HTTPSampler.port">3144</stringProp>
+<stringProp name="HTTPSampler.protocol">http</stringProp>
+</ConfigTestElement>
+<hashTree/>
+<HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="GET 127.0.0.1/golden-page.html #0" enabled="true">
+<boolProp name="HTTPSampler.postBodyRaw">false</boolProp>
+<elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+<collectionProp name="Arguments.arguments">
+<elementProp name="" elementType="HTTPArgument" guiclass="HTTPArgumentGui" testclass="HTTPArgument" testname="Argument" enabled="true">
+<boolProp name="HTTPArgument.always_encode">false</boolProp>
+<stringProp name="Argument.name"></stringProp>
+<stringProp name="Argument.value"><![CDATA[]]></stringProp>
+<stringProp name="Argument.metadata">=</stringProp>
+</elementProp>
+<elementProp name="" elementType="HTTPArgument" guiclass="HTTPArgumentGui" testclass="HTTPArgument" testname="Argument" enabled="true">
+<boolProp name="HTTPArgument.always_encode">false</boolProp>
+<stringProp name="Argument.name"></stringProp>
+<stringProp name="Argument.value"><![CDATA[]]></stringProp>
+<stringProp name="Argument.metadata">=</stringProp>
+</elementProp>
+</collectionProp>
+</elementProp>
+
+
+
+<stringProp name="HTTPSampler.path">/golden-page.html</stringProp>
+<stringProp name="HTTPSampler.method">GET</stringProp>
+<boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+<boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+<boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+<boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+<stringProp name="HTTPSampler.embedded_url_re"></stringProp>
+<stringProp name="HTTPSampler.connect_timeout"></stringProp>
+<stringProp name="HTTPSampler.response_timeout"></stringProp>
+<elementProp name="HTTPsampler.Headers" elementType="HeaderManager" guiclass="HeaderPanel" testclass="HeaderManager" testname="HTTP Default Headers" enabled="true">
+<collectionProp name="HeaderManager.headers">
+<elementProp name="" elementType="Header" guiclass="Header" testclass="Header" testname="sec-ch-ua" enabled="true">
+</elementProp>
+<elementProp name="" elementType="Header" guiclass="Header" testclass="Header" testname="sec-ch-ua-mobile" enabled="true">
+</elementProp>
+<elementProp name="" elementType="Header" guiclass="Header" testclass="Header" testname="sec-ch-ua-platform" enabled="true">
+</elementProp>
+<elementProp name="" elementType="Header" guiclass="Header" testclass="Header" testname="upgrade-insecure-requests" enabled="true">
+</elementProp>
+<elementProp name="" elementType="Header" guiclass="Header" testclass="Header" testname="accept" enabled="true">
+</elementProp>
+</collectionProp>
+</elementProp>
+</HTTPSamplerProxy><hashTree/>
+<HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="GET 127.0.0.1/api/search #1" enabled="true">
+<boolProp name="HTTPSampler.postBodyRaw">false</boolProp>
+<elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+<collectionProp name="Arguments.arguments">
+<elementProp name="" elementType="HTTPArgument" guiclass="HTTPArgumentGui" testclass="HTTPArgument" testname="Argument" enabled="true">
+<boolProp name="HTTPArgument.always_encode">false</boolProp>
+<stringProp name="Argument.name"></stringProp>
+<stringProp name="Argument.value"><![CDATA[]]></stringProp>
+<stringProp name="Argument.metadata">=</stringProp>
+</elementProp>
+<elementProp name="" elementType="HTTPArgument" guiclass="HTTPArgumentGui" testclass="HTTPArgument" testname="Argument" enabled="true">
+<boolProp name="HTTPArgument.always_encode">false</boolProp>
+<stringProp name="Argument.name"></stringProp>
+<stringProp name="Argument.value"><![CDATA[]]></stringProp>
+<stringProp name="Argument.metadata">=</stringProp>
+</elementProp>
+<elementProp name="" elementType="HTTPArgument" guiclass="HTTPArgumentGui" testclass="HTTPArgument" testname="Argument" enabled="true">
+<boolProp name="HTTPArgument.always_encode">false</boolProp>
+<stringProp name="Argument.name">term</stringProp>
+<stringProp name="Argument.value"><![CDATA[gold]]></stringProp>
+<stringProp name="Argument.metadata">=</stringProp>
+</elementProp>
+</collectionProp>
+</elementProp>
+
+
+
+<stringProp name="HTTPSampler.path">/api/search</stringProp>
+<stringProp name="HTTPSampler.method">GET</stringProp>
+<boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+<boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+<boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+<boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+<stringProp name="HTTPSampler.embedded_url_re"></stringProp>
+<stringProp name="HTTPSampler.connect_timeout"></stringProp>
+<stringProp name="HTTPSampler.response_timeout"></stringProp>
+<elementProp name="HTTPsampler.Headers" elementType="HeaderManager" guiclass="HeaderPanel" testclass="HeaderManager" testname="HTTP Default Headers" enabled="true">
+<collectionProp name="HeaderManager.headers">
+<elementProp name="" elementType="Header" guiclass="Header" testclass="Header" testname="sec-ch-ua-platform" enabled="true">
+</elementProp>
+<elementProp name="" elementType="Header" guiclass="Header" testclass="Header" testname="accept" enabled="true">
+</elementProp>
+<elementProp name="" elementType="Header" guiclass="Header" testclass="Header" testname="sec-ch-ua" enabled="true">
+</elementProp>
+<elementProp name="" elementType="Header" guiclass="Header" testclass="Header" testname="sec-ch-ua-mobile" enabled="true">
+</elementProp>
+</collectionProp>
+</elementProp>
+</HTTPSamplerProxy><hashTree/>
+<HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="POST 127.0.0.1/api/login #2" enabled="true">
+<boolProp name="HTTPSampler.postBodyRaw">true</boolProp>
+<elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+<collectionProp name="Arguments.arguments">
+<elementProp name="" elementType="HTTPArgument" guiclass="HTTPArgumentGui" testclass="HTTPArgument" testname="Argument" enabled="true">
+<boolProp name="HTTPArgument.always_encode">false</boolProp>
+<stringProp name="Argument.name"></stringProp>
+<stringProp name="Argument.value"><![CDATA[{"username":"alice","password":"secret"}]]></stringProp>
+<stringProp name="Argument.metadata">=</stringProp>
+</elementProp>
+<elementProp name="" elementType="HTTPArgument" guiclass="HTTPArgumentGui" testclass="HTTPArgument" testname="Argument" enabled="true">
+<boolProp name="HTTPArgument.always_encode">false</boolProp>
+<stringProp name="Argument.name"></stringProp>
+<stringProp name="Argument.value"><![CDATA[{"username":"alice","password":"secret"}]]></stringProp>
+<stringProp name="Argument.metadata">=</stringProp>
+</elementProp>
+</collectionProp>
+</elementProp>
+
+
+
+<stringProp name="HTTPSampler.path">/api/login</stringProp>
+<stringProp name="HTTPSampler.method">POST</stringProp>
+<boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+<boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+<boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+<boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+<stringProp name="HTTPSampler.embedded_url_re"></stringProp>
+<stringProp name="HTTPSampler.connect_timeout"></stringProp>
+<stringProp name="HTTPSampler.response_timeout"></stringProp>
+<elementProp name="HTTPsampler.Headers" elementType="HeaderManager" guiclass="HeaderPanel" testclass="HeaderManager" testname="HTTP Default Headers" enabled="true">
+<collectionProp name="HeaderManager.headers">
+<elementProp name="" elementType="Header" guiclass="Header" testclass="Header" testname="sec-ch-ua-platform" enabled="true">
+</elementProp>
+<elementProp name="" elementType="Header" guiclass="Header" testclass="Header" testname="accept" enabled="true">
+</elementProp>
+<elementProp name="" elementType="Header" guiclass="Header" testclass="Header" testname="sec-ch-ua" enabled="true">
+</elementProp>
+<elementProp name="" elementType="Header" guiclass="Header" testclass="Header" testname="content-type" enabled="true">
+<stringProp name="Header.name">content-type</stringProp>
+<stringProp name="Header.value">application/json</stringProp>
+<stringProp name="Header.enabled">true</stringProp>
+</elementProp>
+<elementProp name="" elementType="Header" guiclass="Header" testclass="Header" testname="sec-ch-ua-mobile" enabled="true">
+</elementProp>
+</collectionProp>
+</elementProp>
+</HTTPSamplerProxy><hashTree/>
+</hashTree>
+</hashTree>
+</hashTree>
+</jmeterTestPlan>

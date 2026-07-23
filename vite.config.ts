@@ -1,23 +1,38 @@
-import { defineConfig } from 'vite'
+import { type Plugin, defineConfig } from "vite";
+import { crx, CrxPlugin } from "@crxjs/vite-plugin";
+import manifest from "./src/manifest.json";
 
-export default defineConfig({
+const relocateHtmlAssets: CrxPlugin = {
+  name: "crx:relocate-html",
+  enforce: "post",
+  generateBundle(_options, bundle) {
+    if (bundle["src/popup/popup.html"]) {
+      bundle["src/popup/popup.html"].fileName = "popup/popup.html";
+    }
+    if (bundle["src/options/options.html"]) {
+      bundle["src/options/options.html"].fileName = "options/options.html";
+    }
+  },
+  renderCrxManifest(manifest) {
+    manifest.action = { ...manifest.action, default_popup: "popup/popup.html" };
+    manifest.options_ui = { ...manifest.options_ui, page: "options/options.html" };
+    return manifest;
+  },
+};
+
+export default defineConfig(({ mode }) => ({
+  plugins: [
+    crx({ manifest, browser: "chrome" }),
+    relocateHtmlAssets,
+  ],
   build: {
-    emptyOutDir: true,
-    outDir: 'dist',
-    sourcemap: true,
+    sourcemap: mode === "development",
     rollupOptions: {
-      input: {
-        background: 'src/background/index.ts',
-        content: 'src/content/index.ts',
-        popup: 'src/popup/popup.html',
-        options: 'src/options/options.html',
-      },
       output: {
-        entryFileNames: '[name]/[name].js',
-        format: 'es',
-        chunkFileNames: '[name].js',
-        assetFileNames: '[name][extname]',
+        entryFileNames: "[name].js",
+        chunkFileNames: "[name].js",
+        assetFileNames: "[name]/[name][extname]",
       },
     },
   },
-})
+}));

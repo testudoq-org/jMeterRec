@@ -1,12 +1,16 @@
-import { execSync } from "child_process"
-import { writeFileSync, readFileSync, existsSync, mkdirSync } from "fs"
+﻿import { execSync } from "child_process"
+import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, unlinkSync, renameSync } from "fs"
 import { join } from "path"
-import { createHash } from "crypto"
 
 const DIST_DIR = join(process.cwd(), "dist")
-const CRX_FILE = join(DIST_DIR, "bm-jmx-recorder.crx")
-const PEM_FILE = join(DIST_DIR, "bm-jmx-recorder.pem")
+const CRX_FILE = join(DIST_DIR, "capultura.crx")
+const CHROME_CRX = join(process.cwd(), "dist.crx")
+const CHROME_PEM = join(process.cwd(), "dist.pem")
 const INSTALL_MANIFEST = join(DIST_DIR, "enterprise-install.json")
+const RELEASES_DIR = join(process.cwd(), "releases")
+const CHROME_BIN = process.env.CHROME_BIN || process.env.CHROME_LOCATION || process.env.CHROME_PATH || "google-chrome"
+const PROJECT_PEM = join(process.cwd(), "extension.pem")
+const TEMP_PEM = join(process.cwd(), ".tmp-capultura.pem")
 
 const PACKAGE_VERSION = JSON.parse(readFileSync("package.json", "utf-8")).version
 
@@ -14,40 +18,68 @@ if (!existsSync(DIST_DIR)) {
   mkdirSync(DIST_DIR, { recursive: true })
 }
 
-console.log("Generating extension key...")
-if (!existsSync(PEM_FILE)) {
-  execSync(`openssl genrsa -out "${PEM_FILE}" 2048`, { stdio: "inherit" })
+if (!existsSync(PROJECT_PEM)) {
+  console.error(
+    `Missing signing key: ${PROJECT_PEM}\n` +
+    "Generate one with: openssl genrsa -out extension.pem 2048\n" +
+    "Never commit extension.pem. It must remain at the project root."
+  )
+  process.exit(1)
 }
 
-console.log("Packing CRX (requires Chrome)...")
+copyFileSync(PROJECT_PEM, TEMP_PEM)
+
+let chromeSucceeded = false
 try {
   execSync(
-    `"${process.env.CHROME_BIN ?? "google-chrome"}" --pack-extension="${DIST_DIR}" --pack-extension-key="${PEM_FILE}" --no-message-box`,
+    `"${CHROME_BIN}" --pack-extension="${DIST_DIR}" --pack-extension-key="${TEMP_PEM}" --no-message-box`,
     { stdio: "inherit" }
   )
+  chromeSucceeded = true
   console.log("CRX packed successfully")
 } catch (err) {
-  console.error("Chrome packing failed, creating placeholder files...", err)
-  const hash = createHash("sha256").update(readFileSync(DIST_DIR).toString()).digest("hex").slice(0, 16)
-  writeFileSync(
-    join(DIST_DIR, "bm-jmx-recorder.crx"),
-    `// Placeholder CRX - build with Chrome\n// SHA: ${hash}\n`
-  )
+  console.error("Chrome packing failed: Chrome is required to create .crx files.", err)
+  console.error("Set CHROME_BIN environment variable to point to Chrome/Chromium binary.")
+} finally {
+  if (existsSync(TEMP_PEM)) {
+    unlinkSync(TEMP_PEM)
+    console.log(`Removed private key from temp: ${TEMP_PEM}`)
+  }
+  if (existsSync(CHROME_PEM)) {
+    unlinkSync(CHROME_PEM)
+    console.log(`Removed key artifact: ${CHROME_PEM}`)
+  }
+  if (existsSync(CHROME_CRX)) {
+    if (existsSync(CRX_FILE)) unlinkSync(CRX_FILE)
+    renameSync(CHROME_CRX, CRX_FILE)
+    console.log(`Moved signed CRX to: ${CRX_FILE}`)
+  }
+}
+
+if (!chromeSucceeded) {
+  process.exit(1)
 }
 
 const installManifest = {
-  name: "BM JMX Recorder",
+  name: "capultura",
   version: PACKAGE_VERSION,
   extension_id: process.env.EXTENSION_ID ?? "placeholder",
   update_url: "https://clients2.google.com/service/update2/crx",
   installation_mode: "force_installed",
-  install_link: `file:///path/to/dist/bm-jmx-recorder.crx`
+  install_link: "REPLACE_WITH_YOUR_CRX_HOST_URL/capultura.crx"
 }
 
 writeFileSync(
   INSTALL_MANIFEST,
   JSON.stringify(installManifest, null, 2)
 )
+
+if (!existsSync(RELEASES_DIR)) {
+  mkdirSync(RELEASES_DIR, { recursive: true });
+}
+const publicKeyPem = "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAs9rsBu+T9GLV6uG6ZUdv7ZCsWc62LhWN+Nk5R07wN3XG2Kk2drRf9tLJhSDMOFwbvc1G0Puf9c4DjGaNt9KAkgIOW376UqGcjn5tPvrU0qV2TxnszAJ/LRRiRgpFxw7LwuD31C9KI4OPtDf9zA98tW0kCgXLQ3xPl3sFVaIvYbq4y7e1O0DbUDBnpVNT4MyhxsGd/hGrCkh7GfUOq1+knfuPQwdpKQ2fhBs4Vzt6+W0jKMPTiPR/aRiKtrW9ondF6Jyk6FYIhx6cNmcFtR7dbRXbxwDK74k8PBo/LkWJegZcXmyBTAEdMUMrjIeE/eb5Z+rcMeT8UP57kChRoJlknQIDAQAB\n-----END PUBLIC KEY-----";
+writeFileSync(join(RELEASES_DIR, "extension.pub"), publicKeyPem);
+console.log("Wrote public key to releases/extension.pub");
 
 console.log("Enterprise install manifest generated")
 console.log(`CRX: ${CRX_FILE}`)

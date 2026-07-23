@@ -1,70 +1,207 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>BM JMX Recorder Options</title>
-    <style>
-      body {
-        max-width: 720px;
-        margin: 32px auto;
-        padding: 0 16px;
-        font-family: Arial, sans-serif;
-        color: #0f172a;
-      }
-
-      h1 {
-        margin-top: 0;
-      }
-
-      label {
-        display: block;
-        margin: 16px 0 6px;
-        font-weight: 700;
-      }
-
-      input {
-        width: 100%;
-        max-width: 320px;
-        padding: 8px;
-        border: 1px solid #cbd5e1;
-        border-radius: 6px;
-      }
-
-      button {
-        margin-top: 20px;
-        padding: 10px 16px;
-        border: 0;
-        border-radius: 6px;
-        background: #2563eb;
-        color: white;
-        cursor: pointer;
-      }
-
-      #saved {
-        margin-top: 12px;
-        color: #15803d;
-      }
-    </style>
+    <title>Capultura Options</title>
+    <link rel="stylesheet" href="./options.css" />
   </head>
   <body>
-    <h1>BM JMX Recorder Options</h1>
+    <h1>Capultura Options</h1>
     <p>These defaults are used when exporting captured HTTP traffic to JMeter JMX.</p>
 
-    <label for="defaultPlanName">Default plan name</label>
-    <input id="defaultPlanName" type="text" />
+    <section class="options-section" aria-labelledby="appearanceOptionsTitle">
+      <h2 id="appearanceOptionsTitle">Appearance</h2>
 
-    <label for="threads">Threads</label>
-    <input id="threads" type="number" min="1" />
+      <label for="themeMode">Theme</label>
+      <select id="themeMode">
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+      </select>
+    </section>
 
-    <label for="rampUp">Ramp-up seconds</label>
-    <input id="rampUp" type="number" min="0" />
+    <section class="options-section" aria-labelledby="jmxOptionsTitle">
+      <h2 id="jmxOptionsTitle">JMX export defaults</h2>
 
-    <label for="loops">Loop count</label>
-    <input id="loops" type="number" min="1" />
+      <label for="defaultPlanName">Default plan name</label>
+      <input id="defaultPlanName" type="text" />
 
-    <button id="save">Save options</button>
-    <div id="saved" aria-live="polite"></div>
+      <label for="threads">Threads</label>
+      <input id="threads" type="number" min="1" />
+
+      <label for="rampUp">Ramp-up seconds</label>
+      <input id="rampUp" type="number" min="0" />
+
+      <label for="loops">Loop count</label>
+      <input id="loops" type="number" min="1" />
+
+      <label class="checkbox-row">
+        <input id="thinkTimeEnabled" type="checkbox" />
+        <span>Export think-time timers between requests</span>
+      </label>
+
+      <label class="checkbox-row">
+        <input id="thinkTimeRandomize" type="checkbox" />
+        <span>Randomize recorded think times (±X %)</span>
+      </label>
+
+      <label for="thinkTimeRangePercent">Randomization range (%)</label>
+      <input id="thinkTimeRangePercent" type="number" min="1" max="100" />
+
+      <label class="checkbox-row">
+        <input id="assertionsEnabled" type="checkbox" />
+        <span>Add response assertions on expected status code</span>
+      </label>
+
+      <label for="assertionExpectStatus">Expected HTTP status</label>
+      <input id="assertionExpectStatus" type="number" min="100" max="599" />
+
+      <label class="checkbox-row">
+        <input id="redirectDedupEnabled" type="checkbox" />
+        <span>Deduplicate redirect chains (collapse 3xx + follow-up into one sampler)</span>
+      </label>
+
+      <label class="checkbox-row" style="margin-top: 16px">
+        <input id="cacheEnabled" type="checkbox" />
+        <span>Enable CacheManager in JMX output</span>
+      </label>
+
+      <label class="checkbox-row" style="margin-top: 16px">
+        <input id="durationAssertionEnabled" type="checkbox" />
+        <span>Enable DurationAssertion for response-time validation</span>
+      </label>
+
+      <label for="durationAssertionThresholdMs">Duration threshold (ms)</label>
+      <input id="durationAssertionThresholdMs" type="number" min="100" step="100" />
+
+      <label for="extractorsJson" style="margin-top: 16px">Extractors (JSON array)</label>
+      <textarea
+        id="extractorsJson"
+        rows="3"
+        placeholder='[{"type":"json","refNames":"token","jsonPathExpressions":"$.token"}]'
+      ></textarea>
+      <div
+        id="extractorsJsonError"
+        class="error"
+        style="display: none; color: #dc2626; margin-top: 4px"
+      ></div>
+
+      <button id="save" type="button">Save options</button>
+      <div id="saved" aria-live="polite"></div>
+    </section>
+
+    <section class="options-section" aria-labelledby="transactionPanelOptionsTitle">
+      <h2 id="transactionPanelOptionsTitle">Transaction panel</h2>
+      <p>Controls how the popup displays recently captured HTTP requests.</p>
+
+      <label for="maxTransactions">Maximum transactions shown in popup</label>
+      <input id="maxTransactions" type="number" min="20" max="500" step="20" />
+
+      <label class="checkbox-row">
+        <input id="openDetachedInspector" type="checkbox" />
+        <span>Open detached inspector window when recording starts</span>
+      </label>
+
+      <label class="checkbox-row">
+        <input id="captureResponseBody" type="checkbox" />
+        <span>Capture response bodies when available. This can expose sensitive data.</span>
+      </label>
+      <div id="captureResponseBodyWarning" class="warning" style="display: none">
+        <strong>Privacy notice:</strong> Response body capture records data received by the browser.
+        This may include secrets or personal information. Only enable if you understand the risks.
+        By default, data stays local. If backend converter upload is enabled, captured data is sent
+        to that remote endpoint.
+      </div>
+
+      <button id="saveTransactionPanelOptions" type="button">Save transaction panel options</button>
+      <div id="transactionPanelSaved" aria-live="polite"></div>
+    </section>
+
+    <section class="options-section" aria-labelledby="advancedOptionsTitle">
+      <h2 id="advancedOptionsTitle">Advanced recording options</h2>
+      <p>Control what HTTP traffic is recorded and how it appears in exported JMX files.</p>
+
+      <label for="filterPattern">URL filter pattern</label>
+      <textarea
+        id="filterPattern"
+        rows="2"
+        placeholder="e.g., https://api.example.com/*"
+      ></textarea>
+      <div
+        id="filterPatternError"
+        class="error"
+        style="display: none; color: #dc2626; margin-top: 4px"
+      ></div>
+
+      <fieldset id="resourceTypeFilters" style="margin-top: 16px">
+        <legend style="font-weight: 700; margin-bottom: 8px">Resource types to record</legend>
+        <label class="checkbox-row">
+          <input id="recordCss" type="checkbox" />
+          <span>Stylesheets and font files</span>
+        </label>
+        <label class="checkbox-row">
+          <input id="recordJs" type="checkbox" />
+          <span>JavaScript, XHR/fetch, and page navigation</span>
+        </label>
+        <label class="checkbox-row">
+          <input id="recordImages" type="checkbox" />
+          <span>Images and favicons</span>
+        </label>
+        <label class="checkbox-row">
+          <input id="recordRedirects" type="checkbox" />
+          <span>3xx redirect responses</span>
+        </label>
+      </fieldset>
+      <div
+        id="resourceTypeError"
+        class="error"
+        style="display: none; color: #dc2626; margin-top: 4px"
+      ></div>
+
+      <label for="userAgent" style="margin-top: 16px">User-Agent override</label>
+      <select id="userAgent">
+        <option value="current">Current Browser</option>
+        <option value="chrome-win">Chrome on Windows</option>
+        <option value="chrome-mac">Chrome on macOS</option>
+        <option value="chrome-linux">Chrome on Linux</option>
+        <option value="firefox-win">Firefox on Windows</option>
+        <option value="firefox-mac">Firefox on macOS</option>
+        <option value="firefox-linux">Firefox on Linux</option>
+        <option value="edge-win">Edge on Windows</option>
+        <option value="custom">Custom...</option>
+      </select>
+      <input
+        id="customUserAgent"
+        type="text"
+        placeholder="Custom User-Agent string"
+        style="display: none; margin-top: 8px"
+      />
+      <div
+        id="userAgentError"
+        class="error"
+        style="display: none; color: #dc2626; margin-top: 4px"
+      ></div>
+
+      <label class="checkbox-row" style="margin-top: 16px">
+        <input id="recordCookies" type="checkbox" />
+        <span>Emit cookies via CookieManager in JMX output</span>
+      </label>
+
+      <button id="saveAdvancedOptions" type="button" style="margin-top: 20px">
+        Save advanced options
+      </button>
+      <button id="resetAdvancedOptions" type="button" style="margin-left: 8px; background: #64748b">
+        Reset to defaults
+      </button>
+      <div id="advancedSaved" aria-live="polite"></div>
+    </section>
+
+    <footer
+      style="text-align: center; padding: 16px 8px; font-size: 11px; color: #666; margin-top: 16px"
+    >
+      Capultura v0.1.0 BETA —
+      <a href="https://github.com/testudoq-org/jMeterRec" style="color: #666">Help &amp; Support</a>
+    </footer>
 
     <script type="module" src="./options.ts"></script>
   </body>

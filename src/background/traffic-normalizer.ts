@@ -1,28 +1,64 @@
+import type { PendingRequest } from '../models/pending-web-request'
 import type { CapturedRequest } from '../models/captured-request'
+import type { ResponseBodyPayload } from '../messages'
+import { sanitizeForXml } from '../utils/xml-sanitizer'
 
-export interface PendingRequest extends CapturedRequest {
-  startedAtMs: number
-}
+export type { PendingRequest } from '../models/pending-web-request'
 
 export function createPendingRequest(
+  details: chrome.webRequest.OnBeforeRequestDetails
+): PendingRequest {
+  return {
+    ...createBaseRequest(details),
+    method: details.method,
+    body: decodeRequestBody(details.requestBody),
+    contentType: undefined,
+    startedAtMs: details.timeStamp,
+  }
+}
+
+export function createCompletedRequest(
+  details: chrome.webRequest.OnCompletedDetails
+): PendingRequest {
+  return {
+    ...createBaseRequest(details),
+    method: details.method,
+    contentType: undefined,
+    statusCode: details.statusCode,
+    responseHeaders: headersToRecord(details.responseHeaders),
+    completedAt: new Date(details.timeStamp).toISOString(),
+    startedAtMs: details.timeStamp,
+  }
+}
+
+export function createRedirectFollowUp(
+  _source: PendingRequest,
   details: chrome.webRequest.OnBeforeRequestDetails
 ): PendingRequest {
   const url = parseUrl(details.url)
 
   return {
-    id: createRequestId(details.tabId, details.requestId),
-    timestamp: new Date(details.timeStamp).toISOString(),
+    ...createBaseRequest(details),
     method: details.method,
-    url: details.url,
-    path: url?.path,
-    headers: {},
-    queryParams: url?.queryParams ?? {},
     body: decodeRequestBody(details.requestBody),
     contentType: undefined,
-    tabId: details.tabId,
-    frameId: details.frameId,
-    type: details.type,
-    initiator: details.initiator,
+    startedAtMs: details.timeStamp,
+    followRedirects: false,
+    path: url?.path,
+    queryParams: url?.queryParams ?? {},
+  }
+}
+
+export function createErrorRequest(
+  details: chrome.webRequest.OnErrorOccurredDetails,
+  pendingMethod?: string
+): PendingRequest {
+  return {
+    ...createBaseRequest(details),
+    method: pendingMethod ?? 'GET',
+    contentType: undefined,
+    error: details.error,
+    completedAt: new Date(details.timeStamp).toISOString(),
     startedAtMs: details.timeStamp,
   }
 }
@@ -58,6 +94,58 @@ export function markRequestError(
 ): void {
   pending.error = details.error
   pending.completedAt = new Date(details.timeStamp).toISOString()
+}
+
+export function applyCapturedResponseBody(
+  request: PendingRequest | CapturedRequest,
+  payload: ResponseBodyPayload
+): void {
+  if (request.responseBody !== undefined) {
+    return
+  }
+
+  if (payload.body === undefined && payload.error === undefined) {
+    return
+  }
+
+  if (payload.redacted) {
+    request.responseBody = '[REDACTED]'
+    request.responseBodyRedacted = true
+    request.responseBodySize = payload.size
+    return
+  }
+
+  if (payload.error !== undefined && payload.body === undefined) {
+    request.responseBody = undefined
+    request.responseBodyTruncated = false
+    request.responseBodyRedacted = false
+    request.responseBodySize = 0
+    request.responseBodyCapturedAt = new Date(payload.capturedAtMs).toISOString()
+    return
+  }
+
+  request.responseBody = payload.body
+  request.responseBodyTruncated = payload.truncated
+  request.responseBodyRedacted = false
+  request.responseBodySize = payload.size
+  request.responseBodyCapturedAt = new Date(payload.capturedAtMs).toISOString()
+  request.responseBodyContentType = payload.contentType
+}
+
+export function isResponseBodyCandidate(request: PendingRequest): boolean {
+  const method = request.method.toUpperCase()
+
+  return (
+    (method === 'GET' ||
+      method === 'POST' ||
+      method === 'PUT' ||
+      method === 'PATCH' ||
+      method === 'DELETE') &&
+    typeof request.statusCode === 'number' &&
+    request.statusCode >= 200 &&
+    request.statusCode < 400 &&
+    (!request.responseBodyTruncated || request.responseBody !== undefined)
+  )
 }
 
 export function createRequestId(tabId: number, requestId: string): string {
@@ -110,7 +198,38 @@ function decodeHeader(value: ArrayBuffer | undefined): string {
 }
 
 function decodeBytes(bytes: ArrayBuffer): string {
-  return new TextDecoder('utf-8', { fatal: false }).decode(bytes)
+  const raw = new TextDecoder('utf-8', { fatal: false }).decode(bytes)
+  return sanitizeForXml(raw)
+}
+
+type BasePendingRequest = Omit<PendingRequest, 'method'>
+
+type BaseRequestDetails = {
+  requestId: string
+  tabId: number
+  timeStamp: number
+  url: string
+  frameId?: number
+  type?: string
+  initiator?: string
+}
+
+function createBaseRequest(details: BaseRequestDetails): BasePendingRequest {
+  const url = parseUrl(details.url)
+
+  return {
+    id: createRequestId(details.tabId, details.requestId),
+    timestamp: new Date(details.timeStamp).toISOString(),
+    url: details.url,
+    path: url?.path,
+    headers: {},
+    queryParams: url?.queryParams ?? {},
+    tabId: details.tabId,
+    frameId: details.frameId,
+    type: details.type,
+    initiator: details.initiator,
+    startedAtMs: details.timeStamp,
+  }
 }
 
 function parseUrl(

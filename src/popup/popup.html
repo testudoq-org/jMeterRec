@@ -1,166 +1,227 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Capultura</title>
-    <style>
-      :root {
-        color-scheme: light;
-        font-family: Arial, sans-serif;
-      }
-
-      body {
-        width: 320px;
-        margin: 0;
-        padding: 16px;
-        background: #f8fafc;
-        color: #0f172a;
-      }
-
-      h1 {
-        margin: 0 0 12px;
-        font-size: 18px;
-      }
-
-      label {
-        display: block;
-        margin-bottom: 4px;
-        font-size: 12px;
-        font-weight: 700;
-      }
-
-      input {
-        box-sizing: border-box;
-        width: 100%;
-        margin-bottom: 12px;
-        padding: 8px;
-        border: 1px solid #cbd5e1;
-        border-radius: 6px;
-      }
-
-      fieldset {
-        margin: 0 0 12px;
-        padding: 8px;
-        border: 1px solid #cbd5e1;
-        border-radius: 6px;
-      }
-
-      legend {
-        padding: 0 4px;
-        font-size: 12px;
-        font-weight: 700;
-      }
-
-      .domain-list {
-        display: grid;
-        gap: 6px;
-        margin-bottom: 8px;
-      }
-
-      .domain-option {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        font-size: 12px;
-      }
-
-      .domain-option input {
-        width: auto;
-        margin: 0;
-      }
-
-      .domain-status {
-        margin-bottom: 8px;
-        font-size: 12px;
-      }
-
-      .status {
-        margin: 8px 0 12px;
-        padding: 8px;
-        border-radius: 6px;
-        background: #e2e8f0;
-        font-size: 13px;
-      }
-
-      .row {
-        display: flex;
-        gap: 8px;
-        margin-bottom: 8px;
-      }
-
-      button {
-        flex: 1;
-        padding: 8px;
-        border: 0;
-        border-radius: 6px;
-        background: #2563eb;
-        color: white;
-        cursor: pointer;
-      }
-
-      button.secondary {
-        background: #64748b;
-      }
-
-      button.danger {
-        background: #dc2626;
-      }
-
-      button:disabled {
-        background: #cbd5e1;
-        cursor: not-allowed;
-      }
-
-      .error {
-        color: #dc2626;
-        font-size: 12px;
-      }
-    </style>
+    <link rel="stylesheet" href="./popup.css" />
   </head>
   <body>
     <h1>Capultura</h1>
 
-    <label for="planName">Plan name</label>
-    <input id="planName" type="text" autocomplete="off" />
+    <section class="card" aria-labelledby="recorderTitle">
+      <div class="card-header">
+        <div>
+          <h2 id="recorderTitle" class="sr-only">Recorder controls</h2>
+          <div class="settings-row">
+            <div class="field">
+              <label for="planName">Plan name</label>
+              <input id="planName" type="text" autocomplete="off" />
+            </div>
+            <div class="field">
+              <label for="themeMode">Theme</label>
+              <select id="themeMode">
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+              </select>
+            </div>
+          </div>
+          <div id="status" class="status status-idle" aria-live="polite">
+            Please start recording
+          </div>
+          <div id="elapsedTime" class="elapsed" aria-live="polite">Elapsed: 00:00</div>
+        </div>
+      </div>
 
-    <div id="status" class="status">Loading recorder state…</div>
+      <div class="row">
+        <button id="start" type="button">Start</button>
+        <button id="pause" class="secondary" type="button">Pause</button>
+        <button id="resume" class="secondary" type="button">Resume</button>
+      </div>
 
-    <div class="row">
-      <button id="start">Start</button>
-      <button id="pause" class="secondary">Pause</button>
-      <button id="resume" class="secondary">Resume</button>
-    </div>
+      <div class="row">
+        <button id="stop" class="danger" type="button">Stop</button>
+        <label for="exportMode" class="sr-only">Export format</label>
+        <select id="exportMode">
+          <option value="jmx">JMX</option>
+          <option value="playwright">Playwright</option>
+        </select>
+        <button id="export" class="secondary" type="button">Export</button>
+      </div>
 
-    <div class="row">
-      <button id="stop" class="danger">Stop</button>
-      <select id="exportMode">
-        <option value="jmx">JMX</option>
-        <option value="playwright">Playwright</option>
-      </select>
-      <button id="export" class="secondary">Export</button>
-    </div>
+      <div id="jmxOptions" style="display: none">
+        <fieldset>
+          <legend>Domains to include</legend>
+          <div id="jmxDomains" class="domain-list"></div>
+          <div id="jmxDomainStatus" class="domain-status"></div>
+          <div id="jmxDomainError" class="error" aria-live="polite"></div>
+          <button id="exportJmxSelected" class="secondary" disabled type="button">
+            Export JMX
+          </button>
+        </fieldset>
+      </div>
 
-    <div id="jmxOptions" style="display: none">
-      <fieldset>
-        <legend>Domains to include</legend>
-        <div id="jmxDomains" class="domain-list"></div>
-        <div id="jmxDomainStatus" class="domain-status"></div>
-        <div id="jmxDomainError" class="error" aria-live="polite"></div>
-        <button id="exportJmxSelected" class="secondary" disabled>Export selected domains</button>
-      </fieldset>
-    </div>
+      <!-- EXTERNAL HAR IMPORT: Parallel import path for HAR files -->
+      <div id="importHarSection" class="card" style="display: none; margin-bottom: 12px">
+        <div class="card-header">
+          <h2>Import HAR file</h2>
+        </div>
+        <p class="muted" style="font-size: 12px; margin: 0 0 8px">
+          Select a .har file exported from browser DevTools or other proxy tools. The file is
+          processed locally and never sent to any server.
+        </p>
+        <div
+          id="importHarPrivacyNotice"
+          class="status-warning"
+          style="font-size: 12px; padding: 6px 8px; margin-bottom: 8px; border-radius: 4px"
+        >
+          HAR files may contain cookies, authorization headers, query tokens, and request/response
+          bodies. This data will be included in the JMX output unless manually removed from the
+          file.
+        </div>
+        <div class="field">
+          <label for="importHarFile">HAR file</label>
+          <input id="importHarFile" type="file" accept=".har,application/json" />
+        </div>
+        <div id="importHarError" class="error" aria-live="polite"></div>
 
-    <div id="playwrightOptions" style="display: none">
-      <label for="baseUrl">Base URL</label>
-      <input id="baseUrl" type="text" placeholder="https://example.com" autocomplete="off" />
-    </div>
+        <fieldset id="importHarFieldset" hidden>
+          <legend>Domains to include</legend>
+          <div id="importHarDomains" class="domain-list"></div>
+          <div id="importHarDomainStatus" class="domain-status"></div>
+          <div id="importHarDomainError" class="error" aria-live="polite"></div>
+          <button id="convertHarToJmx" class="secondary" disabled type="button">
+            Convert HAR to JMX
+          </button>
+        </fieldset>
+      </div>
 
-    <div class="row">
-      <button id="clear" class="secondary">Clear</button>
-    </div>
+      <div class="row">
+        <button id="clear" class="secondary" type="button">Clear</button>
+      </div>
+    </section>
 
     <div id="error" class="error" aria-live="polite"></div>
+
+    <section class="advanced-options" aria-labelledby="advancedOptionsTitle">
+      <div class="advanced-options__header">
+        <h2 id="advancedOptionsTitle">Advanced recording options</h2>
+        <button id="toggleAdvancedOptions" type="button" class="secondary">Show</button>
+      </div>
+
+      <div id="advancedOptionsBody" class="advanced-options__body" hidden>
+        <label for="filterPattern">URL filter pattern</label>
+        <textarea
+          id="filterPattern"
+          rows="2"
+          placeholder="e.g., https://api.example.com/*"
+        ></textarea>
+        <div id="filterPatternError" class="error" hidden></div>
+
+        <fieldset style="margin-top: 8px">
+          <legend style="font-size: 12px; font-weight: 700">Resource types</legend>
+          <label class="checkbox-row">
+            <input id="recordCss" type="checkbox" />
+            <span>Stylesheets/fonts</span>
+          </label>
+          <label class="checkbox-row">
+            <input id="recordJs" type="checkbox" />
+            <span>JS/XHR/navigation</span>
+          </label>
+          <label class="checkbox-row">
+            <input id="recordImages" type="checkbox" />
+            <span>Images</span>
+          </label>
+          <label class="checkbox-row">
+            <input id="recordRedirects" type="checkbox" />
+            <span>3xx redirects</span>
+          </label>
+        </fieldset>
+        <div id="resourceTypeError" class="error" hidden></div>
+
+        <label for="userAgent" style="margin-top: 8px">User-Agent</label>
+        <select id="userAgent">
+          <option value="current">Current Browser</option>
+          <option value="chrome-win">Chrome on Windows</option>
+          <option value="chrome-mac">Chrome on macOS</option>
+          <option value="chrome-linux">Chrome on Linux</option>
+          <option value="firefox-win">Firefox on Windows</option>
+          <option value="firefox-mac">Firefox on macOS</option>
+          <option value="firefox-linux">Firefox on Linux</option>
+          <option value="edge-win">Edge on Windows</option>
+          <option value="custom">Custom...</option>
+        </select>
+        <input
+          id="customUserAgent"
+          type="text"
+          placeholder="Custom User-Agent string"
+          hidden
+          style="margin-top: 4px"
+        />
+        <div id="userAgentError" class="error" hidden></div>
+
+        <label class="checkbox-row" style="margin-top: 8px">
+          <input id="recordCookies" type="checkbox" />
+          <span>Emit cookies in JMX</span>
+        </label>
+      </div>
+    </section>
+
+    <section
+      id="capultura-transaction-panel"
+      class="transaction-panel"
+      aria-labelledby="transactionPanelTitle"
+    >
+      <div class="transaction-panel__header">
+        <div>
+          <h2 id="transactionPanelTitle">Live transactions</h2>
+          <p id="transactionSummary" class="muted">No requests captured yet.</p>
+        </div>
+        <button id="openDetachedInspector" class="secondary" type="button">Detach</button>
+      </div>
+
+      <div class="transaction-filters" role="search" aria-label="Filter transactions">
+        <label for="transactionMethodFilter">Method</label>
+        <select id="transactionMethodFilter">
+          <option value="all">All</option>
+          <option value="GET">GET</option>
+          <option value="POST">POST</option>
+          <option value="PUT">PUT</option>
+          <option value="PATCH">PATCH</option>
+          <option value="DELETE">DELETE</option>
+        </select>
+
+        <label for="transactionStatusFilter">Status</label>
+        <select id="transactionStatusFilter">
+          <option value="all">All</option>
+          <option value="2xx">2xx</option>
+          <option value="3xx">3xx</option>
+          <option value="4xx">4xx</option>
+          <option value="5xx">5xx</option>
+          <option value="error">Error</option>
+        </select>
+
+        <label for="transactionSearch">Search URL</label>
+        <input
+          id="transactionSearch"
+          type="search"
+          autocomplete="off"
+          placeholder="example.com/api"
+        />
+      </div>
+
+      <div
+        id="transactionList"
+        class="transaction-list"
+        role="list"
+        aria-label="Recent HTTP transactions"
+      ></div>
+    </section>
+
+    <footer style="text-align: center; padding: 8px; font-size: 11px; color: #666; margin-top: 8px">
+      Capultura v0.1.0 BETA —
+      <a href="https://github.com/testudoq-org/jMeterRec" style="color: #666">Help &amp; Support</a>
+    </footer>
 
     <script type="module" src="./popup.ts"></script>
   </body>

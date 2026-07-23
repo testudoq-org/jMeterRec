@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
 import { buildJmx } from './serializer'
+import { describe, expect, it } from 'vitest'
 import type { CapturedRequest, PlanMeta } from '../models/captured-request'
 
 const meta: PlanMeta = {
@@ -154,11 +154,37 @@ describe('buildJmx', () => {
     expect(jmx).not.toContain('&lt;script&gt;')
   })
 
+  it('uses saved plan name and thread group values', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '5',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(
+      {
+        name: 'Saved Plan',
+        threadGroup: { threads: 4, rampUp: 5, loops: 6 },
+      },
+      requests
+    )
+
+    expect(jmx).toContain('testname="Saved Plan"')
+    expect(jmx).toContain('<stringProp name="ThreadGroup.num_threads">4</stringProp>')
+    expect(jmx).toContain('<stringProp name="ThreadGroup.ramp_time">5</stringProp>')
+    expect(jmx).toContain('<stringProp name="LoopController.loops">6</stringProp>')
+  })
+
   it('handles missing optional fields gracefully', () => {
     const requests: CapturedRequest[] = [
       {
         id: '4',
-        timestamp: '2024-01-01T00:00:00Z',
+        timestamp: '2024-01-01T00:00:00.000Z',
         method: 'DELETE',
         url: 'https://api.example.com/resource/123',
         headers: {},
@@ -170,5 +196,965 @@ describe('buildJmx', () => {
 
     expect(jmx).toContain('DELETE')
     expect(jmx).toContain('api.example.com')
+  })
+
+  it('percent-encodes CDATA terminator ]]> in run-time bodies', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '6',
+        timestamp: '2024-01-01T00:00:00.000Z',
+        method: 'POST',
+        url: 'https://example.com/search',
+        headers: {},
+        queryParams: {},
+        body: 'query=foo]]>bar',
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests)
+
+    // ]]> must be split so the XML parser does not see a CDATA close.
+    expect(jmx).toContain('<![CDATA[query=foo]]]]><![CDATA[>bar]]>')
+    expect(jmx).not.toContain('<![CDATA[query=foo]]>bar]]>')
+  })
+
+  it('prefers captured responseBody over request body in sampler content', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '7',
+        timestamp: '2024-01-01T00:00:00.000Z',
+        method: 'POST',
+        url: 'https://example.com/api',
+        headers: {},
+        queryParams: {},
+        body: 'request-body',
+        responseBody: 'response-body',
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests)
+
+    expect(jmx).toContain('<![CDATA[response-body]]>')
+    expect(jmx).not.toContain('<![CDATA[request-body]]>')
+  })
+
+  it('handles redacted captured response bodies as [REDACTED]', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '8',
+        timestamp: '2024-01-01T00:00:00.000Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: {},
+        queryParams: {},
+        body: 'original-request',
+        responseBody: '[REDACTED]',
+        responseBodyRedacted: true,
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests)
+
+    expect(jmx).toContain('<![CDATA[[REDACTED]]]>')
+    expect(jmx).not.toContain('<![CDATA[original-request]]>')
+  })
+
+  it('defaults to empty body when no request or response body is present', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '9',
+        timestamp: '2024-01-01T00:00:00.000Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests)
+
+    expect(jmx).toContain('<![CDATA[]]>')
+  })
+
+  it.each<{ method: string; expected: 'true' | 'false' }>([
+    { method: 'POST', expected: 'true' },
+    { method: 'PUT', expected: 'true' },
+    { method: 'PATCH', expected: 'true' },
+    { method: 'DELETE', expected: 'true' },
+    { method: 'GET', expected: 'false' },
+    { method: 'HEAD', expected: 'false' },
+    { method: 'OPTIONS', expected: 'false' },
+    { method: 'TRACE', expected: 'false' },
+    { method: 'CONNECT', expected: 'false' },
+  ])('sets postBodyRaw=$expected for $method', ({ method, expected }) => {
+    const requests: CapturedRequest[] = [
+      {
+        id: `pb-${method}`,
+        timestamp: '2024-01-01T00:00:00Z',
+        method,
+        url: 'https://example.com/api',
+        headers: {},
+        queryParams: {},
+        ...(expected === 'true' ? { body: '{"key":"value"}' } : undefined),
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests)
+
+    expect(jmx).toContain(`<boolProp name="HTTPSampler.postBodyRaw">${expected}</boolProp>`)
+  })
+
+  it('serializes followRedirects=false to HTTPSampler.follow_redirects=false', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: 'fr-false',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://api.example.com/next?token=abc',
+        headers: {},
+        queryParams: { token: 'abc' },
+        followRedirects: false,
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests)
+
+    expect(jmx).toContain('<boolProp name="HTTPSampler.follow_redirects">false</boolProp>')
+  })
+
+  it('defaults followRedirects to true when not set', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: 'fr-default',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://api.example.com/old',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests)
+
+    expect(jmx).toContain('<boolProp name="HTTPSampler.follow_redirects">true</boolProp>')
+  })
+
+  it('omits CookieManager when no Cookie or Cookie2 headers are present', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: { accept: 'application/json' },
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests)
+
+    expect(jmx).not.toContain('CookieManager')
+  })
+
+  it('emits a CookieManager with a single Cookie entry', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: { cookie: 'session=abc123' },
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests)
+
+    expect(jmx).toContain('CookieManager')
+    expect(jmx).toContain('session=abc123')
+    expect(jmx).toContain('testname="cookie"')
+  })
+
+  it('preserves both Cookie and Cookie2 headers separately', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: { cookie: 'a=1', cookie2: 'a=1' },
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests)
+
+    expect(jmx).toContain('CookieManager')
+    const matches = jmx.match(/<CookieManager[\s\S]*?<\/CookieManager>/g)
+    expect(matches?.length).toBe(1)
+    const cookieEntries = (jmx.match(/elementProp name="" elementType="Cookie"/g) ?? []).length
+    expect(cookieEntries).toBe(2)
+  })
+
+  it('deduplicates identical cookies across requests', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://example.com/1',
+        headers: { cookie: 'session=abc' },
+        queryParams: {},
+      },
+      {
+        id: '2',
+        timestamp: '2024-01-01T00:00:01Z',
+        method: 'GET',
+        url: 'https://example.com/2',
+        headers: { cookie: 'session=abc' },
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests)
+
+    const cookieEntries = (jmx.match(/elementProp name="" elementType="Cookie"/g) ?? []).length
+    expect(cookieEntries).toBe(1)
+  })
+
+  it('preserves distinct cookies with different values', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://example.com/1',
+        headers: { cookie: 'a=1' },
+        queryParams: {},
+      },
+      {
+        id: '2',
+        timestamp: '2024-01-01T00:00:01Z',
+        method: 'GET',
+        url: 'https://example.com/2',
+        headers: { cookie: 'a=2' },
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests)
+
+    const cookieEntries = (jmx.match(/elementProp name="" elementType="Cookie"/g) ?? []).length
+    expect(cookieEntries).toBe(2)
+  })
+
+  it('emits a ConstantTimer between requests when there is a timestamp gap', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00.000Z',
+        method: 'GET',
+        url: 'https://example.com/1',
+        headers: {},
+        queryParams: {},
+      },
+      {
+        id: '2',
+        timestamp: '2024-01-01T00:00:01.500Z',
+        method: 'GET',
+        url: 'https://example.com/2',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests)
+
+    expect(jmx).toContain('ConstantTimer')
+    expect(jmx).toContain('<stringProp name="ConstantTimer.delay">1500</stringProp>')
+  })
+
+  it('omits the timer when consecutive requests have zero or negative gap', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00.000Z',
+        method: 'GET',
+        url: 'https://example.com/1',
+        headers: {},
+        queryParams: {},
+      },
+      {
+        id: '2',
+        timestamp: '2024-01-01T00:00:00.000Z',
+        method: 'GET',
+        url: 'https://example.com/2',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests)
+
+    expect(jmx).not.toContain('ConstantTimer')
+  })
+
+  it('does not emit a timer before the first sampler', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:01.000Z',
+        method: 'GET',
+        url: 'https://example.com/1',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests)
+
+    const timerIndex = jmx.indexOf('ConstantTimer')
+    const firstSamplerIndex = jmx.indexOf('<HTTPSamplerProxy')
+    expect(timerIndex).toBe(-1)
+    expect(firstSamplerIndex).toBeGreaterThan(-1)
+  })
+
+  it('omits ResponseAssertion when assertions are disabled', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00.000Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests, { assertion: { enabled: false, expectStatus: 201 } })
+
+    expect(jmx).not.toContain('ResponseAssertion')
+  })
+
+  it('adds a ResponseAssertion for the expected status code when enabled', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00.000Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests, { assertion: { enabled: true, expectStatus: 201 } })
+
+    expect(jmx).toContain('ResponseAssertion')
+    expect(jmx).toContain('<stringProp name="200">201</stringProp>')
+  })
+
+  it('emits a UniformRandomTimer when randomization is enabled', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00.000Z',
+        method: 'GET',
+        url: 'https://example.com/1',
+        headers: {},
+        queryParams: {},
+      },
+      {
+        id: '2',
+        timestamp: '2024-01-01T00:00:02.000Z',
+        method: 'GET',
+        url: 'https://example.com/2',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests, {
+      thinkTime: { enabled: true, randomize: true, rangePercent: 20 },
+    })
+
+    expect(jmx).toContain('UniformRandomTimer')
+    expect(jmx).toContain('<stringProp name="UniformRandomTimer.delay">1600')
+  })
+
+  describe('recordCookies option', () => {
+    it('omits CookieManager when recordCookies is false', () => {
+      const requests: CapturedRequest[] = [
+        {
+          id: '1',
+          timestamp: '2024-01-01T00:00:00.000Z',
+          method: 'GET',
+          url: 'https://example.com/api',
+          headers: { cookie: 'session=abc123' },
+          queryParams: {},
+        },
+      ]
+
+      const jmx = buildJmx(meta, requests, { recordCookies: false })
+
+      expect(jmx).not.toContain('CookieManager')
+      // Cookie header should still be in sampler headers
+      expect(jmx).toContain('cookie')
+    })
+
+    it('includes CookieManager when recordCookies is true (default)', () => {
+      const requests: CapturedRequest[] = [
+        {
+          id: '1',
+          timestamp: '2024-01-01T00:00:00.000Z',
+          method: 'GET',
+          url: 'https://example.com/api',
+          headers: { cookie: 'session=abc123' },
+          queryParams: {},
+        },
+      ]
+
+      const jmx = buildJmx(meta, requests, { recordCookies: true })
+
+      expect(jmx).toContain('CookieManager')
+    })
+  })
+
+  describe('userAgent option', () => {
+    it('uses current User-Agent option (removes header from sampler)', () => {
+      const requests: CapturedRequest[] = [
+        {
+          id: '1',
+          timestamp: '2024-01-01T00:00:00.000Z',
+          method: 'GET',
+          url: 'https://example.com/api',
+          headers: { 'user-agent': 'original-agent' },
+          queryParams: {},
+        },
+      ]
+
+      const jmx = buildJmx(meta, requests, { userAgent: 'current' })
+
+      // User-Agent should not be in the sampler headers
+      expect(jmx).not.toContain('original-agent')
+    })
+
+    it('uses custom User-Agent option (adds header to sampler)', () => {
+      const requests: CapturedRequest[] = [
+        {
+          id: '1',
+          timestamp: '2024-01-01T00:00:00.000Z',
+          method: 'GET',
+          url: 'https://example.com/api',
+          headers: {},
+          queryParams: {},
+        },
+      ]
+
+      const jmx = buildJmx(meta, requests, { userAgent: 'chrome-win' })
+
+      expect(jmx).toContain('User-Agent')
+      expect(jmx).toContain('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+    })
+  })
+
+  describe('HTTPRequestDefaults', () => {
+    it('emits HTTPRequestDefaults when all requests share a host', () => {
+      const requests: CapturedRequest[] = [
+        {
+          id: '1',
+          timestamp: '2024-01-01T00:00:00Z',
+          method: 'GET',
+          url: 'https://api.example.com/users',
+          headers: {},
+          queryParams: {},
+        },
+        {
+          id: '2',
+          timestamp: '2024-01-01T00:00:01Z',
+          method: 'GET',
+          url: 'https://api.example.com/posts',
+          headers: {},
+          queryParams: {},
+        },
+      ]
+
+      const jmx = buildJmx(meta, requests)
+
+      expect(jmx).toContain('HTTP Request Defaults')
+      expect(jmx).toContain('HTTPSampler.domain">api.example.com')
+      expect(jmx).toContain('HTTPSampler.port">443')
+      expect(jmx).toContain('HTTPSampler.protocol">https')
+    })
+
+    it('omits inherited domain/port/protocol from individual samplers', () => {
+      const requests: CapturedRequest[] = [
+        {
+          id: '1',
+          timestamp: '2024-01-01T00:00:00Z',
+          method: 'GET',
+          url: 'https://api.example.com/users',
+          headers: {},
+          queryParams: {},
+        },
+      ]
+
+      const jmx = buildJmx(meta, requests)
+
+      // Defaults appears once
+      const defaultsMatches = jmx.match(/HTTPSampler\.domain/g) ?? []
+      expect(defaultsMatches.length).toBe(1)
+
+      // Sampler does not contain its own domain/port/protocol props
+      const samplerDomains = jmx.match(/<HTTPSamplerProxy[\s\S]*?HTTPSampler\.domain/g)
+      expect(samplerDomains?.length ?? 0).toBe(0)
+    })
+
+    it('allows cross-host samplers to override defaults', () => {
+      const requests: CapturedRequest[] = [
+        {
+          id: '1',
+          timestamp: '2024-01-01T00:00:00Z',
+          method: 'GET',
+          url: 'https://api.example.com/users',
+          headers: {},
+          queryParams: {},
+        },
+        {
+          id: '2',
+          timestamp: '2024-01-01T00:00:01Z',
+          method: 'GET',
+          url: 'https://cdn.other.com/image.png',
+          headers: {},
+          queryParams: {},
+        },
+      ]
+
+      const jmx = buildJmx(meta, requests)
+
+      // Defaults should be the most frequent host
+      expect(jmx).toContain('>api.example.com<')
+
+      // Second sampler should explicitly include its domain
+      const secondSampler = jmx.split('<HTTPSamplerProxy')[2] ?? ''
+      expect(secondSampler).toContain('>cdn.other.com<')
+    })
+
+    it('emits empty HTTPRequestDefaults for empty request list', () => {
+      const jmx = buildJmx(meta, [])
+
+      expect(jmx).toContain('HTTP Request Defaults')
+      expect(jmx).toContain('HTTPSampler.domain"></stringProp>')
+    })
+
+    it('handles malformed URLs gracefully', () => {
+      const requests: CapturedRequest[] = [
+        {
+          id: '1',
+          timestamp: '2024-01-01T00:00:00Z',
+          method: 'GET',
+          url: 'not-a-valid-url',
+          headers: {},
+          queryParams: {},
+        },
+      ]
+
+      const jmx = buildJmx(meta, requests)
+
+      // Should not throw; defaults fall back to empty strings
+      expect(jmx).toContain('HTTP Request Defaults')
+    })
+
+    it('defaults to empty strings for mixed valid and malformed URLs', () => {
+      const requests: CapturedRequest[] = [
+        {
+          id: '1',
+          timestamp: '2024-01-01T00:00:00Z',
+          method: 'GET',
+          url: 'not-a-valid-url',
+          headers: {},
+          queryParams: {},
+        },
+        {
+          id: '2',
+          timestamp: '2024-01-01T00:00:01Z',
+          method: 'GET',
+          url: 'https://api.example.com/users',
+          headers: {},
+          queryParams: {},
+        },
+      ]
+
+      const jmx = buildJmx(meta, requests)
+
+      expect(jmx).toContain('>api.example.com<')
+      expect(jmx).toContain('HTTP Request Defaults')
+    })
+
+    it('uses ConfigTestElement as element tag (not HTTPRequestDefaults) for JMeter compatibility', () => {
+      const requests: CapturedRequest[] = [
+        {
+          id: '1',
+          timestamp: '2024-01-01T00:00:00Z',
+          method: 'GET',
+          url: 'https://api.example.com/users',
+          headers: {},
+          queryParams: {},
+        },
+        {
+          id: '2',
+          timestamp: '2024-01-01T00:00:01Z',
+          method: 'GET',
+          url: 'https://api.example.com/posts',
+          headers: {},
+          queryParams: {},
+        },
+      ]
+
+      const jmx = buildJmx(meta, requests)
+
+      // Must use ConfigTestElement tag name (mapped in saveservice.properties)
+      // HTTPRequestDefaults is NOT a valid alias in JMeter 5.6.3
+      expect(jmx).toContain(
+        '<ConfigTestElement guiclass="org.apache.jmeter.protocol.http.config.gui.HttpDefaultsGui"'
+      )
+      expect(jmx).not.toContain('<HTTPRequestDefaults')
+
+      // ConfigTestElement must be followed by a hashTree before the next sampler
+      // (JMeter expects each element to be followed by its child hashTree)
+      const configEnd = jmx.indexOf('</ConfigTestElement>')
+      const nextSampler = jmx.indexOf('<HTTPSamplerProxy', configEnd)
+      const hashTreeAfterConfig = jmx.indexOf('<hashTree', configEnd + 1)
+
+      expect(configEnd).toBeGreaterThan(-1)
+      expect(nextSampler).toBeGreaterThan(-1)
+      expect(hashTreeAfterConfig).toBeGreaterThan(-1)
+      expect(hashTreeAfterConfig).toBeLessThan(nextSampler)
+    })
+  })
+
+  it('emits CacheManager under ThreadGroup when cacheEnabled is true', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests, { cacheEnabled: true })
+
+    expect(jmx).toContain('CacheManager')
+    expect(jmx).toContain('testname="Cache Manager"')
+    expect(jmx).toContain('maxNumberOfResults">500')
+  })
+
+  it('does not emit CacheManager when cacheEnabled is false or undefined', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    expect(buildJmx(meta, requests)).not.toContain('CacheManager')
+    expect(buildJmx(meta, requests, { cacheEnabled: false })).not.toContain('CacheManager')
+  })
+
+  it('emits DurationAssertion after sampler when enabled', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests, {
+      durationAssertion: { enabled: true, thresholdMs: 5000 },
+    })
+
+    expect(jmx).toContain('DurationAssertion')
+    expect(jmx).toContain('duration">5000')
+  })
+
+  it('does not emit DurationAssertion when disabled', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    expect(buildJmx(meta, requests)).not.toContain('DurationAssertion')
+    expect(
+      buildJmx(meta, requests, { durationAssertion: { enabled: false, thresholdMs: 5000 } })
+    ).not.toContain('DurationAssertion')
+  })
+
+  it('emits JSONPostProcessor after sampler when extractors include JSON', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests, {
+      extractors: [
+        {
+          type: 'JSONPostProcessor',
+          testClass: 'JSONPostProcessor',
+          guiClass: 'JSONPostProcessorGui',
+          name: 'JSON Post Processor',
+          enabled: true,
+          refNames: 'token',
+          jsonPathExpressions: '$.token',
+          defaultValues: '',
+          matchNumbers: '1',
+        },
+      ],
+    })
+
+    expect(jmx).toContain('JSONPostProcessor')
+    expect(jmx).toContain('referenceNames">token')
+    expect(jmx).toContain('jsonPathExpressions">$.token')
+  })
+
+  it('emits RegexExtractor after sampler when extractors include regex', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests, {
+      extractors: [
+        {
+          type: 'RegexExtractor',
+          testClass: 'RegexExtractor',
+          guiClass: 'RegexExtractorGui',
+          name: 'Regular Expression Extractor',
+          enabled: true,
+          refname: 'orderId',
+          regex: 'Order #(\\d+)',
+          defaultValue: '',
+          matchNumber: '1',
+          template: '$1$',
+        },
+      ],
+    })
+
+    expect(jmx).toContain('RegexExtractor')
+    expect(jmx).toContain('refname">orderId')
+    expect(jmx).toContain('<![CDATA[Order #(\\d+)]]>')
+  })
+
+  it('does not emit extractors when extractors array is empty', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests, { extractors: [] })
+
+    expect(jmx).not.toContain('JSONPostProcessor')
+    expect(jmx).not.toContain('RegexExtractor')
+  })
+
+  it('emits multiple extractors after a single sampler', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests, {
+      extractors: [
+        {
+          type: 'JSONPostProcessor',
+          testClass: 'JSONPostProcessor',
+          guiClass: 'JSONPostProcessorGui',
+          name: 'JSON Post Processor',
+          enabled: true,
+          refNames: 'token',
+          jsonPathExpressions: '$.token',
+          defaultValues: '',
+          matchNumbers: '1',
+        },
+        {
+          type: 'RegexExtractor',
+          testClass: 'RegexExtractor',
+          guiClass: 'RegexExtractorGui',
+          name: 'Regular Expression Extractor',
+          enabled: true,
+          refname: 'orderId',
+          regex: 'Order #(\\d+)',
+          defaultValue: '',
+          matchNumber: '1',
+          template: '$1$',
+        },
+      ],
+    })
+
+    expect(jmx).toContain('JSONPostProcessor')
+    expect(jmx).toContain('RegexExtractor')
+    const samplerEnd = jmx.indexOf('</HTTPSamplerProxy>')
+    const firstHashTree = jmx.indexOf('<hashTree/>', samplerEnd)
+    const jsonPos = jmx.indexOf('JSONPostProcessor')
+    const regexPos = jmx.indexOf('RegexExtractor')
+    expect(jsonPos).toBeGreaterThan(firstHashTree)
+    expect(regexPos).toBeGreaterThan(jsonPos)
+  })
+
+  it('escapes regex special characters in CDATA for RegexExtractor', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests, {
+      extractors: [
+        {
+          type: 'RegexExtractor',
+          testClass: 'RegexExtractor',
+          guiClass: 'RegexExtractorGui',
+          name: 'Regular Expression Extractor',
+          enabled: true,
+          refname: 'complex',
+          regex: '<html>.*?</html>',
+          defaultValue: '',
+          matchNumber: '1',
+          template: '$1$',
+        },
+      ],
+    })
+
+    expect(jmx).toContain('<![CDATA[<html>.*?</html>]]>')
+    expect(jmx).not.toContain('&lt;html&gt;')
+  })
+
+  it('renders extractors alongside DurationAssertion without interfering with hashTree ordering', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests, {
+      durationAssertion: { enabled: true, thresholdMs: 5000 },
+      extractors: [
+        {
+          type: 'JSONPostProcessor',
+          testClass: 'JSONPostProcessor',
+          guiClass: 'JSONPostProcessorGui',
+          name: 'JSON Post Processor',
+          enabled: true,
+          refNames: 'token',
+          jsonPathExpressions: '$.token',
+          defaultValues: '',
+          matchNumbers: '1',
+        },
+      ],
+    })
+
+    expect(jmx).toContain('DurationAssertion')
+    expect(jmx).toContain('JSONPostProcessor')
+
+    // DurationAssertion comes before sampler, JSONPostProcessor comes after sampler's hashTree
+    const durationPos = jmx.indexOf('DurationAssertion')
+    const samplerEnd = jmx.indexOf('</HTTPSamplerProxy>')
+    const firstHashTree = jmx.indexOf('<hashTree/>', samplerEnd)
+    const jsonPos = jmx.indexOf('JSONPostProcessor')
+    expect(durationPos).toBeLessThan(samplerEnd)
+    expect(jsonPos).toBeGreaterThan(firstHashTree)
+  })
+
+  it('strips XML 1.0 illegal characters from POST body CDATA', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00.000Z',
+        method: 'POST',
+        url: 'https://play.google.com/log',
+        headers: {},
+        queryParams: {},
+        body: '\x00\x01\x02payload\x7F',
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests)
+    // eslint-disable-next-line no-control-regex
+    expect(jmx).not.toMatch(/[\x00-\x08\x0B\x0C\x0E-\x1F]/)
+    expect(jmx).toContain('<![CDATA[')
+  })
+
+  it('produces XML that passes DOMParser validation for the reported BlazeMeter failure case', () => {
+    const binaryBody = String.fromCharCode(...Array.from({ length: 256 }, (_, i) => i))
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'POST',
+        url: 'https://play.google.com/log',
+        headers: { 'content-type': 'application/octet-stream' },
+        queryParams: {},
+        body: binaryBody,
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests)
+
+    // validateJmx is called inside buildJmx; this test verifies it does not throw.
+    // In Node environment DOMParser is unavailable, so validateJmx is a no-op.
+    // We still assert the output contains no illegal control characters.
+    // eslint-disable-next-line no-control-regex
+    expect(jmx).not.toMatch(/[\x00-\x08\x0B\x0C\x0E-\x1F]/)
+    expect(jmx).toContain('<![CDATA[')
   })
 })

@@ -1,9 +1,51 @@
+import { JmxOptionsStore } from '../options/jmx-options'
+import {
+  AdvancedOptionsStore,
+  validateFilterPattern,
+  validateResourceTypes,
+  validateCustomUserAgent,
+  type AdvancedOptions,
+  type UserAgentSelection,
+  type UserAgentId,
+} from '../options/advanced-options'
+import {
+  applyTheme,
+  boundedNumber,
+  normalizeTheme,
+  requireElement,
+  toErrorMessage,
+  type AppTheme,
+} from '../shared/dom-utils'
 import type { BackgroundRequest, BackgroundResponse, RecorderSnapshot } from '../messages'
+import type { CapturedRequest } from '../models/captured-request'
+import type { HAR } from '../jmx/har-to-jmx'
+import { validateHar, extractHarDomains } from '../jmx/har-to-jmx'
 
 type ResponseWithSnapshot = Extract<BackgroundResponse, { snapshot?: RecorderSnapshot }>
+type TransactionRequest = CapturedRequest & { responseBody?: string }
+type RequestCapturedMessage = { type: 'REQUEST_CAPTURED'; request: TransactionRequest }
+
+interface TransactionPanelOptions {
+  maxTransactions: number
+  openDetachedInspector: boolean
+  captureResponseBody: boolean
+  theme: AppTheme
+}
+
+const defaultTransactionPanelOptions: TransactionPanelOptions = {
+  maxTransactions: 200,
+  openDetachedInspector: false,
+  captureResponseBody: false,
+  theme: 'light',
+}
+
+const capturedRequestStringFields = ['id', 'timestamp', 'method', 'url'] as const
+const capturedRequestObjectFields = ['headers', 'queryParams'] as const
+const statusBuckets = ['pending', '2xx', '3xx', '4xx', '5xx'] as const
 
 const planNameInput = requireElement<HTMLInputElement>('planName')
 const status = requireElement<HTMLDivElement>('status')
+const elapsedTime = requireElement<HTMLDivElement>('elapsedTime')
 const error = requireElement<HTMLDivElement>('error')
 const start = requireElement<HTMLButtonElement>('start')
 const pause = requireElement<HTMLButtonElement>('pause')
@@ -17,20 +59,78 @@ const jmxDomains = requireElement<HTMLDivElement>('jmxDomains')
 const jmxDomainStatus = requireElement<HTMLDivElement>('jmxDomainStatus')
 const jmxDomainError = requireElement<HTMLDivElement>('jmxDomainError')
 const exportJmxSelected = requireElement<HTMLButtonElement>('exportJmxSelected')
-const playwrightOptions = requireElement<HTMLDivElement>('playwrightOptions')
-const baseUrlInput = requireElement<HTMLInputElement>('baseUrl')
+// EXTERNAL HAR IMPORT: New DOM elements for HAR import section
+const importHarSection = requireElement<HTMLDivElement>('importHarSection')
+const importHarFile = requireElement<HTMLInputElement>('importHarFile')
+const importHarError = requireElement<HTMLDivElement>('importHarError')
+const importHarFieldset = requireElement<HTMLFieldSetElement>('importHarFieldset')
+const importHarDomains = requireElement<HTMLDivElement>('importHarDomains')
+const importHarDomainStatus = requireElement<HTMLDivElement>('importHarDomainStatus')
+const importHarDomainError = requireElement<HTMLDivElement>('importHarDomainError')
+const convertHarToJmx = requireElement<HTMLButtonElement>('convertHarToJmx')
+const playwrightOptions = document.getElementById('playwrightOptions') as HTMLDivElement | null
+const baseUrlInput = document.getElementById('baseUrl') as HTMLInputElement | null
+const transactionSummary = requireElement<HTMLParagraphElement>('transactionSummary')
+const transactionMethodFilter = requireElement<HTMLSelectElement>('transactionMethodFilter')
+const transactionStatusFilter = requireElement<HTMLSelectElement>('transactionStatusFilter')
+const transactionSearch = requireElement<HTMLInputElement>('transactionSearch')
+const transactionList = requireElement<HTMLDivElement>('transactionList')
+const openDetachedInspector = requireElement<HTMLButtonElement>('openDetachedInspector')
+const themeMode = requireElement<HTMLSelectElement>('themeMode')
+
+// Advanced options elements
+const toggleAdvancedOptions = requireElement<HTMLButtonElement>('toggleAdvancedOptions')
+const advancedOptionsBody = requireElement<HTMLDivElement>('advancedOptionsBody')
+const filterPattern = requireElement<HTMLTextAreaElement>('filterPattern')
+const recordCss = requireElement<HTMLInputElement>('recordCss')
+const recordJs = requireElement<HTMLInputElement>('recordJs')
+const recordImages = requireElement<HTMLInputElement>('recordImages')
+const recordRedirects = requireElement<HTMLInputElement>('recordRedirects')
+const recordCookies = requireElement<HTMLInputElement>('recordCookies')
+const userAgent = requireElement<HTMLSelectElement>('userAgent')
+const customUserAgent = requireElement<HTMLInputElement>('customUserAgent')
+const filterPatternError = requireElement<HTMLDivElement>('filterPatternError')
+const resourceTypeError = requireElement<HTMLDivElement>('resourceTypeError')
+const userAgentError = requireElement<HTMLDivElement>('userAgentError')
+
+let advancedOptionsExpanded = false
+let advancedOptionsSaveTimer: number | null = null
 
 let availableDomains: string[] = []
 let selectedDomains = new Set<string>()
+let transactionPanelOptions = defaultTransactionPanelOptions
+let planNameEdited = false
+
+// EXTERNAL HAR IMPORT: State for the imported HAR file and domain selection
+let importedHar: HAR | null = null
+let importedHarDomains: string[] = []
+let selectedImportedHarDomains = new Set<string>()
+
+const transactions: CapturedRequest[] = []
 
 let snapshot: RecorderSnapshot = {
   status: 'idle',
   recording: false,
   planName: 'Untitled Plan',
   requestCount: 0,
+  startedAt: undefined,
 }
 
+let actionSequence = 0
+let hasStoppedRecording = false
+
+let elapsedTimer: number | null = null
+let detachedWindowId: number | null = null
+let pausedElapsedSeconds = 0
+
+chrome.windows.onRemoved.addListener((windowId) => {
+  if (windowId === detachedWindowId) {
+    detachedWindowId = null
+  }
+})
+
 planNameInput.addEventListener('input', () => {
+  planNameEdited = true
   snapshot = { ...snapshot, planName: planNameInput.value }
 })
 
@@ -38,28 +138,69 @@ exportMode.addEventListener('change', () => {
   const isJmx = exportMode.value === 'jmx'
 
   jmxOptions.style.display = isJmx ? 'block' : 'none'
-  playwrightOptions.style.display = exportMode.value === 'playwright' ? 'block' : 'none'
+  importHarSection.style.display = isJmx ? 'block' : 'none'
+  if (playwrightOptions !== null) {
+    playwrightOptions.style.display = exportMode.value === 'playwright' ? 'block' : 'none'
+  }
   clearJmxDomainError()
+  clearImportHarError()
 })
 
 start.addEventListener('click', () => {
-  void send({ type: 'START_RECORDING', planName: planNameInput.value })
+  const startedAt = new Date().toISOString()
+
+  void send({ type: 'START_RECORDING', planName: planNameInput.value }).then((response) => {
+    if (response.success) {
+      applySuccessSnapshot(response, startedAt)
+      openDetachedInspectorWindowIfEnabled()
+    }
+  })
 })
 
 pause.addEventListener('click', () => {
-  void send({ type: 'PAUSE_RECORDING' })
+  sendSnapshotAction({ type: 'PAUSE_RECORDING' })
 })
 
 resume.addEventListener('click', () => {
-  void send({ type: 'RESUME_RECORDING' })
+  sendSnapshotAction({ type: 'RESUME_RECORDING' })
 })
 
 stop.addEventListener('click', () => {
-  void send({ type: 'STOP_RECORDING' })
+  cleanupTimer()
+  void send({ type: 'STOP_RECORDING' }).then((response) => {
+    if (response.success) {
+      markActionResponse()
+      hasStoppedRecording = true
+      snapshot = {
+        ...snapshot,
+        status: 'idle',
+        recording: false,
+        requestCount: 'requestCount' in response ? response.requestCount : snapshot.requestCount,
+        startedAt: undefined,
+      }
+      applySnapshot(snapshot)
+    }
+  })
 })
 
 clear.addEventListener('click', () => {
-  void send({ type: 'CLEAR_REQUESTS' })
+  void send({ type: 'RESET' }).then((response) => {
+    if (response.success) {
+      hasStoppedRecording = false
+      planNameEdited = false
+      applySuccessSnapshot(response)
+      transactions.splice(0, transactions.length)
+      availableDomains = []
+      selectedDomains.clear()
+      importedHar = null
+      importedHarDomains = []
+      selectedImportedHarDomains.clear()
+      importHarFieldset.hidden = true
+      importHarDomains.replaceChildren()
+      clearImportHarError()
+      renderTransactions()
+    }
+  })
 })
 
 exportBtn.addEventListener('click', () => {
@@ -70,58 +211,282 @@ exportJmxSelected.addEventListener('click', () => {
   void exportSelectedJmxDomains()
 })
 
+// EXTERNAL HAR IMPORT: File input handler for selecting and parsing HAR files
+importHarFile.addEventListener('change', () => {
+  void handleImportHarFile()
+})
+
+convertHarToJmx.addEventListener('click', () => {
+  void convertImportedHarToJmx()
+})
+
+openDetachedInspector.addEventListener('click', () => {
+  openDetachedInspectorWindow()
+})
+
+themeMode.addEventListener('change', () => {
+  const theme = normalizeTheme(themeMode.value)
+
+  applyTheme(theme)
+  void chrome.storage.local.set({ theme }).catch((err: unknown) => {
+    showError(toErrorMessage(err))
+  })
+})
+
+transactionMethodFilter.addEventListener('change', renderTransactions)
+transactionStatusFilter.addEventListener('change', renderTransactions)
+transactionSearch.addEventListener('input', renderTransactions)
+
 chrome.runtime.onMessage.addListener((message: unknown) => {
   if (isStateBroadcast(message)) {
     applySnapshot(message.snapshot)
   }
+
+  if (isRequestCapturedMessage(message)) {
+    appendTransaction(message.request)
+  }
 })
 
-refreshState().catch((err: unknown) => {
+void refreshState().catch((err: unknown) => {
   showError(toErrorMessage(err))
 })
 
+void loadTransactionPanelOptions()
+  .then(() => seedTransactions())
+  .catch((err: unknown) => {
+    showError(toErrorMessage(err))
+  })
+
+void loadJmxOptions().catch((err: unknown) => {
+  showError(toErrorMessage(err))
+})
+
+void loadAdvancedOptions().catch((err: unknown) => {
+  showError(toErrorMessage(err))
+})
+
+toggleAdvancedOptions.addEventListener('click', () => {
+  toggleAdvancedSection()
+})
+
+advancedOptionsBody.addEventListener('change', () => {
+  scheduleAdvancedOptionsSave()
+})
+
+userAgent.addEventListener('change', () => {
+  updateCustomUserAgentVisibility()
+})
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== 'local') {
+    return
+  }
+
+  const advancedKeys = [
+    'filterPattern',
+    'recordCss',
+    'recordJs',
+    'recordImages',
+    'recordRedirects',
+    'recordCookies',
+    'userAgent',
+  ] as const
+
+  const hasAdvancedChange = advancedKeys.some((key) => changes[key] !== undefined)
+  if (!hasAdvancedChange) {
+    return
+  }
+
+  void new AdvancedOptionsStore()
+    .load()
+    .then((opts) => {
+      applyAdvancedOptionsToUi(opts)
+    })
+    .catch((err: unknown) => {
+      showError(toErrorMessage(err))
+    })
+})
+
+elapsedTimer = globalThis.setInterval(updateElapsed, 250)
+
+chrome.runtime.onSuspend.addListener(cleanupTimer)
+
 async function refreshState(): Promise<void> {
+  const actionSequenceAtRequest = actionSequence
   const response = await send({ type: 'GET_STATE' })
+
+  if (actionSequence !== actionSequenceAtRequest) {
+    return
+  }
 
   if (isSnapshotResponse(response)) {
     applySnapshot(response.snapshot)
   }
 }
 
-async function exportRecording(): Promise<void> {
-  clearError()
+async function seedTransactions(): Promise<void> {
+  const response = await send({ type: 'GET_REQUESTS' })
 
-  if (exportMode.value === 'playwright') {
-    const baseUrl = baseUrlInput.value.trim().length > 0 ? baseUrlInput.value.trim() : undefined
+  if (isRequestsResponse(response)) {
+    transactions.splice(0, transactions.length, ...response.requests.filter(isCapturedRequest))
+    trimTransactions()
+    renderTransactions()
+  }
+}
 
-    const response = await send({
-      type: 'EXPORT_PLAYWRIGHT',
-      baseUrl,
-      suiteName: snapshot.planName,
-      testCaseName: `${snapshot.planName} Test`,
-    })
+async function loadTransactionPanelOptions(): Promise<void> {
+  transactionPanelOptions = normalizeTransactionPanelOptions(
+    await chrome.storage.local.get<TransactionPanelOptions>(defaultTransactionPanelOptions)
+  )
 
-    if (!response.success) {
-      showError('Export failed.')
-      return
-    }
+  applyTheme(transactionPanelOptions.theme)
+  themeMode.value = transactionPanelOptions.theme
+  trimTransactions()
+  renderTransactions()
+}
 
-    if (!isPlaywrightResponse(response)) {
-      showError('Export failed.')
-      return
-    }
+async function loadJmxOptions(): Promise<void> {
+  const options = await new JmxOptionsStore().load()
 
-    download(response.playwright, response.filename)
+  if (planNameInput.value.trim().length === 0) {
+    planNameInput.value = options.name
+  }
+}
+
+async function loadAdvancedOptions(): Promise<void> {
+  const options = await new AdvancedOptionsStore().load()
+  applyAdvancedOptionsToUi(options)
+}
+
+function applyAdvancedOptionsToUi(options: AdvancedOptions): void {
+  filterPattern.value = options.filterPattern
+  recordCss.checked = options.recordCss
+  recordJs.checked = options.recordJs
+  recordImages.checked = options.recordImages
+  recordRedirects.checked = options.recordRedirects
+  recordCookies.checked = options.recordCookies
+  userAgent.value = isCustomUserAgent(options.userAgent) ? 'custom' : options.userAgent
+  customUserAgent.value = isCustomUserAgent(options.userAgent) ? options.userAgent.slice(7) : ''
+  updateCustomUserAgentVisibility()
+  clearAdvancedOptionsErrors()
+}
+
+function toggleAdvancedSection(): void {
+  advancedOptionsExpanded = !advancedOptionsExpanded
+  advancedOptionsBody.hidden = !advancedOptionsExpanded
+  toggleAdvancedOptions.textContent = advancedOptionsExpanded ? 'Hide' : 'Show'
+}
+
+function scheduleAdvancedOptionsSave(): void {
+  if (advancedOptionsSaveTimer !== null) {
+    globalThis.clearTimeout(advancedOptionsSaveTimer)
+  }
+
+  advancedOptionsSaveTimer = globalThis.setTimeout(() => {
+    advancedOptionsSaveTimer = null
+    void saveAdvancedOptions()
+  }, 300)
+}
+
+async function saveAdvancedOptions(): Promise<void> {
+  const filterValidation = validateFilterPattern(filterPattern.value)
+  const resourceValidation = validateResourceTypes({
+    recordCss: recordCss.checked,
+    recordJs: recordJs.checked,
+    recordImages: recordImages.checked,
+  })
+  const customValue = userAgent.value === 'custom' ? customUserAgent.value : ''
+  const userAgentValidation = validateCustomUserAgent(
+    userAgent.value as UserAgentSelection,
+    customValue
+  )
+
+  filterPatternError.hidden = filterValidation.valid
+  filterPatternError.textContent = filterValidation.error ?? ''
+  resourceTypeError.hidden = resourceValidation.valid
+  resourceTypeError.textContent = resourceValidation.error ?? ''
+  userAgentError.hidden = userAgentValidation.valid
+  userAgentError.textContent = userAgentValidation.error ?? ''
+
+  if (!filterValidation.valid || !resourceValidation.valid || !userAgentValidation.valid) {
     return
   }
 
-  await prepareJmxExport()
+  const storedUserAgent: UserAgentId =
+    userAgent.value === 'custom'
+      ? (`custom:${customUserAgent.value.trim()}` as UserAgentId)
+      : (userAgent.value as UserAgentSelection as UserAgentId)
+
+  const next: AdvancedOptions = {
+    filterPattern: filterPattern.value.trim(),
+    recordCss: recordCss.checked,
+    recordJs: recordJs.checked,
+    recordImages: recordImages.checked,
+    recordRedirects: recordRedirects.checked,
+    recordCookies: recordCookies.checked,
+    userAgent: storedUserAgent,
+  }
+
+  await new AdvancedOptionsStore().save(next)
+}
+
+function updateCustomUserAgentVisibility(): void {
+  customUserAgent.hidden = userAgent.value !== 'custom'
+}
+
+function isCustomUserAgent(id: UserAgentId): boolean {
+  return id.startsWith('custom:')
+}
+
+function clearAdvancedOptionsErrors(): void {
+  filterPatternError.hidden = true
+  resourceTypeError.hidden = true
+  userAgentError.hidden = true
+}
+
+async function exportRecording(): Promise<void> {
+  clearError()
+
+  if (exportMode.value !== 'playwright') {
+    await prepareJmxExport()
+    return
+  }
+
+  await exportPlaywrightRecording()
+}
+
+async function exportPlaywrightRecording(): Promise<void> {
+  const input = baseUrlInput
+  const baseUrl = input === null || input.value.trim().length === 0 ? undefined : input.value.trim()
+
+  const response = await send({
+    type: 'EXPORT_PLAYWRIGHT',
+    baseUrl,
+    suiteName: snapshot.planName,
+    testCaseName: `${snapshot.planName} Test`,
+  })
+
+  if (!canDownloadPlaywright(response)) {
+    showError('Export failed.')
+    return
+  }
+
+  download(response.playwright, response.filename)
+}
+
+function canDownloadPlaywright(
+  response: BackgroundResponse
+): response is Extract<
+  BackgroundResponse,
+  { success: true; playwright: string; filename: string }
+> {
+  return response.success && isPlaywrightResponse(response)
 }
 
 async function prepareJmxExport(): Promise<void> {
   const response = await send({ type: 'GET_DOMAINS' })
 
-  if (!response.success || !isDomainsResponse(response)) {
+  if (!canLoadDomains(response)) {
     showError('Unable to load domains for JMX export.')
     return
   }
@@ -133,14 +498,15 @@ async function prepareJmxExport(): Promise<void> {
     return
   }
 
-  const [domain] = availableDomains
-
-  if (domain !== undefined) {
-    await exportJmx([domain])
-  }
-
   selectedDomains = new Set(availableDomains)
   renderJmxDomainSelector()
+  await exportJmx(availableDomains)
+}
+
+function canLoadDomains(
+  response: BackgroundResponse
+): response is Extract<BackgroundResponse, { success: true; domains: string[] }> {
+  return response.success && isDomainsResponse(response)
 }
 
 async function exportSelectedJmxDomains(): Promise<void> {
@@ -156,17 +522,217 @@ async function exportSelectedJmxDomains(): Promise<void> {
 }
 
 async function exportJmx(includedDomains: string[]): Promise<void> {
+  exportJmxSelected.disabled = true
+  exportJmxSelected.textContent = 'Converting…'
+
   const response = await send({
     type: 'EXPORT_JMX',
     includedDomains,
   })
 
-  if (!response.success || !('jmx' in response)) {
-    showError(response.success ? 'Export failed.' : response.error)
+  exportJmxSelected.disabled = selectedDomains.size === 0
+  exportJmxSelected.textContent = 'Export JMX'
+
+  if (!response.success) {
+    showError(response.error)
+    return
+  }
+
+  if (!('jmx' in response)) {
+    showError('Export failed.')
     return
   }
 
   download(response.jmx, response.filename)
+}
+
+// EXTERNAL HAR IMPORT: Handle file selection, parsing, and validation
+async function handleImportHarFile(): Promise<void> {
+  const file = importHarFile.files?.[0]
+
+  if (!file) {
+    showImportHarError('Empty HAR file: please select a file.')
+    importedHar = null
+    importedHarDomains = []
+    selectedImportedHarDomains.clear()
+    importHarFieldset.hidden = true
+    return
+  }
+
+  if (file.size === 0) {
+    showImportHarError('Empty HAR file: file has no content.')
+    importedHar = null
+    importedHarDomains = []
+    selectedImportedHarDomains.clear()
+    importHarFieldset.hidden = true
+    return
+  }
+
+  clearImportHarError()
+  importedHar = null
+  importedHarDomains = []
+  selectedImportedHarDomains.clear()
+  importHarFieldset.hidden = true
+
+  try {
+    const text = await file.text()
+
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(text)
+    } catch {
+      throw new Error('Invalid HAR file: file is not valid JSON')
+    }
+
+    // Client-side validation (fast feedback before sending to background)
+    if (typeof parsed !== 'object' || parsed === null) {
+      throw new Error('Invalid HAR file: file is not a valid object')
+    }
+
+    const record = parsed as Record<string, unknown>
+
+    if (!('log' in record)) {
+      throw new Error('Invalid HAR file: missing log object')
+    }
+
+    const log = record.log as Record<string, unknown>
+
+    if (typeof log !== 'object' || log === null) {
+      throw new Error('Invalid HAR file: log must be an object')
+    }
+
+    if (log.version !== '1.2') {
+      throw new Error('Unsupported HAR version: expected 1.2')
+    }
+
+    if (!Array.isArray(log.entries)) {
+      throw new Error('Invalid HAR file: log.entries must be an array')
+    }
+
+    if (log.entries.length === 0) {
+      throw new Error('Invalid HAR file: no entries found')
+    }
+
+    // Type-cast to HAR after structural validation
+    const har = parsed as HAR
+    validateHar(har)
+
+    importedHar = har
+    importedHarDomains = extractHarDomains(har)
+    selectedImportedHarDomains = new Set(importedHarDomains)
+
+    renderImportHarDomainSelector()
+    importHarFieldset.hidden = false
+  } catch (err) {
+    showImportHarError(toErrorMessage(err))
+    importedHar = null
+    importedHarDomains = []
+    selectedImportedHarDomains.clear()
+    importHarFieldset.hidden = true
+  }
+}
+
+// EXTERNAL HAR IMPORT: Render domain checkboxes mirroring the JMX domain selector UI
+function renderImportHarDomainSelector(): void {
+  importHarDomains.replaceChildren()
+
+  for (const domain of importedHarDomains) {
+    const label = document.createElement('label')
+    const checkbox = document.createElement('input')
+    const name = document.createElement('span')
+
+    label.className = 'domain-option'
+    checkbox.type = 'checkbox'
+    checkbox.value = domain
+    checkbox.checked = selectedImportedHarDomains.has(domain)
+    checkbox.addEventListener('change', () => {
+      if (checkbox.checked) {
+        selectedImportedHarDomains.add(domain)
+      } else {
+        selectedImportedHarDomains.delete(domain)
+      }
+
+      updateImportHarDomainSelectionState()
+    })
+    name.textContent = domain
+
+    label.append(checkbox, name)
+    importHarDomains.append(label)
+  }
+
+  updateImportHarDomainSelectionState()
+}
+
+function updateImportHarDomainSelectionState(): void {
+  const selectedCount = selectedImportedHarDomains.size
+
+  convertHarToJmx.disabled = selectedCount === 0
+  importHarDomainStatus.textContent = `${selectedCount} of ${importedHarDomains.length} domains selected`
+  clearImportHarDomainError()
+}
+
+// EXTERNAL HAR IMPORT: Convert imported HAR to JMX via background message
+async function convertImportedHarToJmx(): Promise<void> {
+  if (importedHar === null) {
+    showImportHarError('No HAR file loaded.')
+    return
+  }
+
+  if (selectedImportedHarDomains.size === 0) {
+    showImportHarDomainError('Select at least one domain.')
+    return
+  }
+
+  clearImportHarError()
+  clearImportHarDomainError()
+  convertHarToJmx.disabled = true
+  convertHarToJmx.textContent = 'Converting…'
+
+  try {
+    const response = await send({
+      type: 'IMPORT_HAR',
+      har: importedHar,
+      includedDomains: [...selectedImportedHarDomains],
+    })
+
+    if (!response.success) {
+      showImportHarError(response.error)
+      return
+    }
+
+    // Check for JMX response shape
+    const jmxResponse = response as BackgroundResponse & { jmx?: string; filename?: string }
+
+    if (!('jmx' in jmxResponse) || !jmxResponse.jmx) {
+      showImportHarError('Conversion failed: no JMX output received.')
+      return
+    }
+
+    const filename = jmxResponse.filename ?? 'Untitled-Plan.jmx'
+    download(jmxResponse.jmx, filename)
+  } catch (err) {
+    showImportHarError(toErrorMessage(err))
+  } finally {
+    convertHarToJmx.disabled = selectedImportedHarDomains.size === 0
+    convertHarToJmx.textContent = 'Convert HAR to JMX'
+  }
+}
+
+function showImportHarError(message: string): void {
+  importHarError.textContent = message
+}
+
+function showImportHarDomainError(message: string): void {
+  importHarDomainError.textContent = message
+}
+
+function clearImportHarError(): void {
+  importHarError.textContent = ''
+  clearImportHarDomainError()
+}
+
+function clearImportHarDomainError(): void {
+  importHarDomainError.textContent = ''
 }
 
 async function send(message: BackgroundRequest): Promise<BackgroundResponse> {
@@ -191,20 +757,237 @@ async function send(message: BackgroundRequest): Promise<BackgroundResponse> {
   }
 }
 
+function sendSnapshotAction(message: BackgroundRequest): void {
+  void send(message).then((response) => {
+    if (response.success) {
+      applySuccessSnapshot(response)
+    }
+  })
+}
+
+function applySuccessSnapshot(response: BackgroundResponse, startedAt?: string): void {
+  if (response.success && isSnapshotResponse(response)) {
+    markActionResponse()
+    const next =
+      startedAt !== undefined &&
+      response.snapshot !== undefined &&
+      response.snapshot.status === 'recording'
+        ? { ...response.snapshot, startedAt }
+        : response.snapshot
+
+    applySnapshot(next)
+  }
+}
+
+function markActionResponse(): void {
+  actionSequence += 1
+}
+
 function applySnapshot(next: RecorderSnapshot | undefined): void {
   if (next === undefined) {
     return
   }
 
+  if (next.status === 'recording' && snapshot.status === 'paused') {
+    next = { ...next, startedAt: new Date(Date.now() - pausedElapsedSeconds * 1000).toISOString() }
+    pausedElapsedSeconds = 0
+  }
+
+  if (
+    next.status === 'paused' &&
+    snapshot.status === 'recording' &&
+    snapshot.startedAt !== undefined
+  ) {
+    pausedElapsedSeconds = secondsBetween(snapshot.startedAt, new Date().toISOString())
+  }
+
+  if (next.status === 'idle') {
+    pausedElapsedSeconds = 0
+  }
+
   snapshot = next
-  planNameInput.value = next.planName
-  status.textContent = `${labelFor(next.status)} — ${next.requestCount} captured request${next.requestCount === 1 ? '' : 's'}`
+  if (!planNameEdited) {
+    planNameInput.value = next.planName
+  }
+  status.textContent = statusTextFor(next.status)
+  status.className = `status status-${next.status}`
+  elapsedTime.textContent = formatElapsed(snapshot.startedAt)
   start.disabled = next.status === 'recording' || next.status === 'paused'
   pause.disabled = next.status !== 'recording'
   resume.disabled = next.status !== 'paused'
   stop.disabled = !next.recording
   exportBtn.disabled = next.requestCount === 0
-  clear.disabled = next.requestCount === 0 && !next.recording
+  clear.disabled = !hasStoppedRecording && next.requestCount === 0 && !next.recording
+}
+
+function appendTransaction(request: CapturedRequest): void {
+  const existingIndex = transactions.findIndex((transaction) => transaction.id === request.id)
+
+  if (existingIndex >= 0) {
+    transactions.splice(existingIndex, 1)
+  }
+
+  transactions.push(request)
+  trimTransactions()
+  renderTransactions()
+}
+
+function trimTransactions(): void {
+  while (transactions.length > transactionPanelOptions.maxTransactions) {
+    transactions.shift()
+  }
+}
+
+function renderTransactions(): void {
+  const filteredTransactions = filterTransactions()
+
+  transactionList.replaceChildren()
+  transactionSummary.textContent =
+    filteredTransactions.length === transactions.length
+      ? `${transactions.length} recent request${transactions.length === 1 ? '' : 's'}`
+      : `Showing ${filteredTransactions.length} of ${transactions.length} requests`
+
+  for (const request of [...filteredTransactions].reverse()) {
+    transactionList.append(createTransactionRow(request))
+  }
+}
+
+function filterTransactions(): CapturedRequest[] {
+  const method = transactionMethodFilter.value
+  const statusFilter = transactionStatusFilter.value
+  const search = transactionSearch.value.trim().toLowerCase()
+
+  return transactions.filter((request) => matchesTransaction(request, method, statusFilter, search))
+}
+
+function matchesTransaction(
+  request: CapturedRequest,
+  method: string,
+  statusFilter: string,
+  search: string
+): boolean {
+  if (!matchesMethod(request, method)) {
+    return false
+  }
+
+  if (!matchesStatus(request, statusFilter)) {
+    return false
+  }
+
+  return matchesSearch(request, search)
+}
+
+function matchesMethod(request: CapturedRequest, method: string): boolean {
+  return method === 'all' || request.method === method
+}
+
+function matchesStatus(request: CapturedRequest, statusFilter: string): boolean {
+  return statusFilter === 'all' || statusBucket(request) === statusFilter
+}
+
+function matchesSearch(request: CapturedRequest, search: string): boolean {
+  return search.length === 0 || request.url.toLowerCase().includes(search)
+}
+
+function createTransactionRow(request: CapturedRequest): HTMLButtonElement {
+  const row = document.createElement('button')
+  const method = document.createElement('span')
+  const url = document.createElement('span')
+  const requestStatus = document.createElement('span')
+  const time = document.createElement('span')
+  const detailsId = `transaction-details-${safeId(request.id)}`
+
+  row.type = 'button'
+  row.className = 'transaction-row'
+  row.setAttribute('aria-expanded', 'false')
+  row.setAttribute('aria-controls', detailsId)
+  row.setAttribute('aria-label', transactionAriaLabel(request))
+  row.title = request.url
+
+  method.textContent = request.method
+  method.className = transactionMethodClass(request.method)
+
+  url.textContent = shortenUrl(request.url)
+  url.className = 'transaction-url'
+
+  requestStatus.textContent = transactionStatusText(request)
+  requestStatus.className = transactionStatusClass(request)
+
+  time.textContent = formatTime(request.timestamp)
+  time.className = 'transaction-time'
+
+  row.append(method, url, requestStatus, time)
+  row.addEventListener('click', () => {
+    toggleTransactionDetails(row, request, detailsId, method, url, requestStatus, time)
+  })
+
+  return row
+}
+
+function toggleTransactionDetails(
+  row: HTMLButtonElement,
+  request: CapturedRequest,
+  detailsId: string,
+  method: HTMLSpanElement,
+  url: HTMLSpanElement,
+  requestStatus: HTMLSpanElement,
+  time: HTMLSpanElement
+): void {
+  const expanded = row.getAttribute('aria-expanded') === 'true'
+
+  row.setAttribute('aria-expanded', String(!expanded))
+
+  if (expanded) {
+    row.replaceChildren(method, url, requestStatus, time)
+    return
+  }
+
+  row.replaceChildren(method, url, requestStatus, time, createDetails(request, detailsId))
+}
+
+function transactionAriaLabel(request: CapturedRequest): string {
+  return `${request.method} ${shortenUrl(request.url)} ${transactionStatusText(request).toLowerCase()}`
+}
+
+function transactionMethodClass(method: string): string {
+  return `method ${methodClass(method)}`
+}
+
+function transactionStatusText(request: CapturedRequest): string {
+  if (request.error) {
+    return 'Error'
+  }
+
+  return statusLabel(request.statusCode)
+}
+
+function transactionStatusClass(request: CapturedRequest): string {
+  return `status-badge ${statusClass(request)}`
+}
+
+function createDetails(request: CapturedRequest, detailsId: string): HTMLPreElement {
+  const details = document.createElement('pre')
+
+  details.id = detailsId
+  details.className = 'transaction-details'
+  details.textContent = JSON.stringify(
+    {
+      url: request.url,
+      method: request.method,
+      timestamp: request.timestamp,
+      completedAt: request.completedAt,
+      statusCode: request.statusCode,
+      duration: formatDurationBetween(request.timestamp, request.completedAt),
+      headers: request.headers,
+      responseHeaders: request.responseHeaders,
+      body: truncate(request.body, 4000),
+      responseBody: responseBodyFor(request),
+    },
+    null,
+    2
+  )
+
+  return details
 }
 
 function isDomainsResponse(
@@ -255,12 +1038,25 @@ function updateJmxDomainSelectionState(): void {
 function isStateBroadcast(
   message: unknown
 ): message is { type: 'STATE_CHANGED'; snapshot: RecorderSnapshot } {
+  return isMessageWithType(message, 'STATE_CHANGED') && isRecorderSnapshot(message.snapshot)
+}
+
+function isRequestCapturedMessage(message: unknown): message is RequestCapturedMessage {
+  return isMessageWithType(message, 'REQUEST_CAPTURED') && isCapturedRequest(message.request)
+}
+
+function isMessageWithType(message: unknown, type: string): message is Record<string, unknown> {
   return (
     typeof message === 'object' &&
     message !== null &&
-    (message as Record<string, unknown>).type === 'STATE_CHANGED' &&
-    typeof (message as Record<string, unknown>).snapshot === 'object'
+    (message as Record<string, unknown>).type === type
   )
+}
+
+function isRequestsResponse(
+  response: BackgroundResponse
+): response is { success: true; requests: unknown[] } {
+  return response.success && Array.isArray((response as { requests?: unknown }).requests)
 }
 
 function isSnapshotResponse(response: BackgroundResponse): response is ResponseWithSnapshot {
@@ -284,19 +1080,137 @@ function isBackgroundResponse(response: unknown): response is BackgroundResponse
   )
 }
 
-function labelFor(statusValue: RecorderSnapshot['status']): string {
+function isRecorderSnapshot(value: unknown): value is RecorderSnapshot {
+  if (typeof value !== 'object' || value === null) {
+    return false
+  }
+
+  const record = value as Record<string, unknown>
+
+  return (
+    (record.status === 'idle' || record.status === 'recording' || record.status === 'paused') &&
+    typeof record.recording === 'boolean' &&
+    typeof record.planName === 'string' &&
+    typeof record.requestCount === 'number'
+  )
+}
+
+function isCapturedRequest(value: unknown): value is CapturedRequest {
+  if (!isRecord(value)) {
+    return false
+  }
+
+  if (hasAllStringFields(value, capturedRequestStringFields)) {
+    return hasAllObjectFields(value, capturedRequestObjectFields)
+  }
+
+  return false
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function hasAllStringFields(record: Record<string, unknown>, fields: readonly string[]): boolean {
+  return fields.every((field) => typeof record[field] === 'string')
+}
+
+function hasAllObjectFields(record: Record<string, unknown>, fields: readonly string[]): boolean {
+  return fields.every((field) => {
+    const value = record[field]
+    return typeof value === 'object' && value !== null
+  })
+}
+
+function normalizeTransactionPanelOptions(
+  options: Partial<TransactionPanelOptions>
+): TransactionPanelOptions {
+  return {
+    maxTransactions: boundedNumber(
+      options.maxTransactions,
+      20,
+      500,
+      defaultTransactionPanelOptions.maxTransactions
+    ),
+    openDetachedInspector: options.openDetachedInspector === true,
+    captureResponseBody: options.captureResponseBody === true,
+    theme: normalizeTheme(options.theme),
+  }
+}
+
+function openDetachedInspectorWindowIfEnabled(): void {
+  if (transactionPanelOptions.openDetachedInspector) {
+    openDetachedInspectorWindow()
+  }
+}
+
+function openDetachedInspectorWindow(): void {
+  if (detachedWindowId !== null) {
+    chrome.windows.update(detachedWindowId, { focused: true }).catch(() => {
+      detachedWindowId = null
+      openDetachedInspectorWindow()
+    })
+    return
+  }
+
+  void chrome.windows
+    .create({
+      url: chrome.runtime.getURL('popup/popup.html?detached=1'),
+      type: 'popup',
+      width: 420,
+      height: 720,
+      focused: true,
+    })
+    .then((win) => {
+      if (win?.id !== undefined) {
+        detachedWindowId = win.id
+      }
+    })
+}
+
+function statusTextFor(statusValue: RecorderSnapshot['status']): string {
   switch (statusValue) {
     case 'recording':
       return 'Recording'
     case 'paused':
-      return 'Paused'
+      return 'Paused recorder state...'
     case 'idle':
-      return 'Idle'
+      return 'Please start recording'
   }
 }
 
+function statusLabel(statusCode: number | undefined): string {
+  return statusCode === undefined ? 'Pending' : `${statusCode}`
+}
+
+function statusBucket(request: CapturedRequest): string {
+  if (request.error) {
+    return 'error'
+  }
+
+  const statusCode = request.statusCode ?? 0
+  const bucketIndex = Math.min(4, Math.max(0, Math.floor((statusCode - 200) / 100)))
+  return statusBuckets[bucketIndex]!
+}
+
+function statusClass(request: CapturedRequest): string {
+  return `status-${statusBucket(request)}`
+}
+
+function methodClass(method: string): string {
+  return `method-${method.toLowerCase()}`
+}
+
+function responseBodyFor(request: TransactionRequest): string {
+  if (!transactionPanelOptions.captureResponseBody) {
+    return 'Response body capture disabled'
+  }
+
+  return request.responseBody ?? 'Unavailable from webRequest (enable capture in options)'
+}
+
 function download(contents: string, filename: string): void {
-  const blob = new Blob([contents], { type: 'text/typescript' })
+  const blob = new Blob([contents], { type: 'text/plain' })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
 
@@ -304,16 +1218,6 @@ function download(contents: string, filename: string): void {
   link.download = filename
   link.click()
   URL.revokeObjectURL(url)
-}
-
-function requireElement<T extends HTMLElement>(id: string): T {
-  const element = document.getElementById(id)
-
-  if (element === null) {
-    throw new Error(`Missing popup element: ${id}`)
-  }
-
-  return element as T
 }
 
 function showError(message: string): void {
@@ -333,6 +1237,72 @@ function clearJmxDomainError(): void {
   jmxDomainError.textContent = ''
 }
 
-function toErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : 'Unexpected error'
+function cleanupTimer(): void {
+  if (elapsedTimer !== null) {
+    globalThis.clearInterval(elapsedTimer)
+    elapsedTimer = null
+  }
+}
+
+function updateElapsed(): void {
+  // Only update elapsed time while actively recording (not paused or idle)
+  if (snapshot.status === 'recording' && snapshot.startedAt !== undefined) {
+    elapsedTime.textContent = formatElapsed(snapshot.startedAt)
+  }
+}
+
+function formatElapsed(startedAt: string | undefined): string {
+  if (startedAt === undefined) {
+    return 'Elapsed: 00:00'
+  }
+  return `Elapsed: ${formatDurationBetween(startedAt)}`
+}
+
+function formatDurationBetween(startedAt: string | undefined, completedAt?: string): string {
+  const totalSeconds = secondsBetween(startedAt, completedAt)
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+}
+
+function secondsBetween(startedAt: string | undefined, completedAt?: string): number {
+  const start = startedAt === undefined ? Date.now() : new Date(startedAt).getTime()
+  const end = completedAt === undefined ? Date.now() : new Date(completedAt).getTime()
+
+  if (!Number.isFinite(start) || !Number.isFinite(end)) {
+    return 0
+  }
+
+  return Math.max(0, Math.floor((end - start) / 1000))
+}
+
+function formatTime(isoTimestamp: string): string {
+  const timestamp = new Date(isoTimestamp)
+
+  return Number.isNaN(timestamp.getTime())
+    ? isoTimestamp
+    : timestamp.toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      })
+}
+
+function shortenUrl(url: string): string {
+  try {
+    const parsed = new URL(url)
+
+    return `${parsed.hostname}${parsed.pathname}${parsed.search}`
+  } catch {
+    return url
+  }
+}
+
+function truncate(value: string | undefined, maxLength: number): string | undefined {
+  return value !== undefined && value.length > maxLength ? `${value.slice(0, maxLength)}…` : value
+}
+
+function safeId(value: string): string {
+  return value.replace(/[^a-z0-9_-]+/gi, '-')
 }

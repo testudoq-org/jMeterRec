@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { CapturedRequest } from '../models/captured-request'
 import {
+  createCompletedRequest,
+  createErrorRequest,
   createPendingRequest,
+  createRedirectFollowUp,
   mergeBeforeSendHeaders,
   mergeCompleted,
   mergeResponseStarted,
@@ -25,6 +28,36 @@ function beforeRequest(overrides: Partial<chrome.webRequest.OnBeforeRequestDetai
 
 function headers(name: string, value: string): chrome.webRequest.HttpHeader[] {
   return [{ name, value }]
+}
+
+function completed(
+  overrides: Partial<chrome.webRequest.OnCompletedDetails> = {}
+): chrome.webRequest.OnCompletedDetails {
+  return {
+    fromCache: false,
+    requestId: 'r-1',
+    method: 'POST',
+    statusCode: 200,
+    statusLine: 'HTTP/1.1 200 OK',
+    tabId: 10,
+    timeStamp: 1_700_000_000_200,
+    url: 'https://api.example.com/submit?tenant=acme',
+    responseHeaders: headers('content-type', 'application/json'),
+    ...overrides,
+  } as chrome.webRequest.OnCompletedDetails
+}
+
+function errorOccurred(
+  overrides: Partial<chrome.webRequest.OnErrorOccurredDetails> = {}
+): chrome.webRequest.OnErrorOccurredDetails {
+  return {
+    error: 'net::ERR_FAILED',
+    requestId: 'r-1',
+    tabId: 10,
+    timeStamp: 1_700_000_000_200,
+    url: 'https://api.example.com/submit?tenant=acme',
+    ...overrides,
+  } as chrome.webRequest.OnErrorOccurredDetails
 }
 
 describe('traffic-normalizer', () => {
@@ -57,6 +90,19 @@ describe('traffic-normalizer', () => {
     })
 
     expect(pending.contentType).toBe('application/json')
+  })
+
+  it('strips XML illegal characters from decoded request body bytes', () => {
+    const bytes = new Uint8Array([0x00, 0x01, 0x41, 0x42]) // NUL, SOH, 'A', 'B'
+    const pending = createPendingRequest(
+      beforeRequest({
+        requestBody: { raw: [{ bytes: bytes.buffer }] },
+      })
+    )
+
+    expect(pending.body).not.toContain('\x00')
+    expect(pending.body).not.toContain('\x01')
+    expect(pending.body).toContain('AB')
   })
 
   it('merges response status and response headers', () => {
@@ -93,5 +139,77 @@ describe('traffic-normalizer', () => {
 
     expect(request.path).toBeUndefined()
     expect(request.statusCode).toBe(200)
+  })
+
+  it('creates a minimal completed request when only completion details are available', () => {
+    const request = createCompletedRequest(completed())
+
+    expect(request).toEqual(
+      expect.objectContaining({
+        id: '10-r-1',
+        method: 'POST',
+        url: 'https://api.example.com/submit?tenant=acme',
+        statusCode: 200,
+        responseHeaders: { 'content-type': 'application/json' },
+        completedAt: '2023-11-14T22:13:20.200Z',
+      })
+    )
+  })
+
+  it('preserves the method from the pending request when available', () => {
+    const request = createErrorRequest(errorOccurred(), 'POST')
+
+    expect(request).toEqual(
+      expect.objectContaining({
+        id: '10-r-1',
+        method: 'POST',
+        error: 'net::ERR_FAILED',
+        completedAt: '2023-11-14T22:13:20.200Z',
+      })
+    )
+  })
+
+  it('defaults to GET when no pending method is supplied', () => {
+    const request = createErrorRequest(errorOccurred())
+
+    expect(request).toEqual(
+      expect.objectContaining({
+        id: '10-r-1',
+        method: 'GET',
+        error: 'net::ERR_FAILED',
+      })
+    )
+  })
+
+  it('creates a redirect follow-up pending request with followRedirects=false', () => {
+    const source = {
+      ...createPendingRequest(beforeRequest()),
+      followRedirects: true,
+    } as const
+
+    const details = {
+      documentLifecycle: 'active' as const,
+      frameId: 0,
+      frameType: 'outermost_frame' as const,
+      method: 'GET',
+      parentFrameId: -1,
+      requestId: 'r-2',
+      tabId: 10,
+      timeStamp: 1_700_000_000_500,
+      type: 'xmlhttprequest' as const,
+      url: 'https://api.example.com/next?token=abc',
+    }
+
+    const followUp = createRedirectFollowUp(source, details)
+
+    expect(followUp).toEqual(
+      expect.objectContaining({
+        id: '10-r-2',
+        url: 'https://api.example.com/next?token=abc',
+        followRedirects: false,
+        path: '/next?token=abc',
+        queryParams: { token: 'abc' },
+      })
+    )
   })
 })

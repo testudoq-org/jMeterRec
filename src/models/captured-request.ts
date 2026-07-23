@@ -19,6 +19,13 @@ export interface CapturedRequest {
   error?: string
   completedAt?: string
   transactionKey?: string
+  responseBody?: string
+  responseBodyTruncated?: boolean
+  responseBodyRedacted?: boolean
+  responseBodySize?: number
+  responseBodyCapturedAt?: string
+  responseBodyContentType?: string
+  followRedirects?: boolean
 }
 
 export interface ActionStep {

@@ -1,3 +1,4 @@
+import type { RecorderSnapshot } from '../messages'
 import type { ActionStep } from '../models/captured-request'
 
 export class SelectorBuilder {
@@ -50,8 +51,28 @@ function isExtensionContext(): boolean {
   return typeof chrome !== 'undefined' && chrome !== null && 'runtime' in chrome
 }
 
+type RecorderMessageType =
+  | 'START_RECORDING'
+  | 'STOP_RECORDING'
+  | 'PAUSE_RECORDING'
+  | 'RESUME_RECORDING'
+  | 'OPEN_RECORDING'
+  | 'STATE_CHANGED'
+  | 'REQUEST_CAPTURED'
+
+const recorderMessageTypes = new Set<RecorderMessageType>([
+  'START_RECORDING',
+  'STOP_RECORDING',
+  'PAUSE_RECORDING',
+  'RESUME_RECORDING',
+  'OPEN_RECORDING',
+  'STATE_CHANGED',
+  'REQUEST_CAPTURED',
+])
+
 interface RecorderMessage {
-  type: string
+  type: RecorderMessageType
+  snapshot?: RecorderSnapshot
   transactionKey?: string
   request?: { transactionKey?: string }
 }
@@ -68,29 +89,64 @@ export class ActionRecorder {
     }
   }
 
+  applySnapshot(snapshot: RecorderSnapshot): void {
+    this.recording = snapshot.recording
+    this.currentTransactionKey = undefined
+
+    if (this.recording) {
+      this.attachListeners()
+      return
+    }
+
+    this.detachListeners()
+  }
+
   private setupMessageListener(): void {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     chrome.runtime!.onMessage.addListener((message: unknown) => {
-      if (this.isRecorderMessage(message)) {
-        if (message.type === 'START_RECORDING') {
-          this.recording = true
-          this.currentTransactionKey = undefined
-          this.attachListeners()
-        } else if (message.type === 'STOP_RECORDING' || message.type === 'PAUSE_RECORDING') {
-          this.recording = false
-          this.detachListeners()
-        } else if (message.type === 'RESUME_RECORDING') {
-          this.recording = true
-          this.attachListeners()
-        } else if (message.type === 'OPEN_RECORDING') {
-          this.recording = true
-          this.currentTransactionKey = message.transactionKey
-          this.attachListeners()
-        } else if (message.type === 'REQUEST_CAPTURED') {
-          this.currentTransactionKey = message.request?.transactionKey
-        }
+      if (!this.isRecorderMessage(message)) {
+        return
       }
+
+      this.handleRecorderMessage(message)
     })
+  }
+
+  private handleRecorderMessage(message: RecorderMessage): void {
+    const handlers: Record<RecorderMessageType, () => void> = {
+      START_RECORDING: () => {
+        this.recording = true
+        this.currentTransactionKey = undefined
+        this.attachListeners()
+      },
+      STOP_RECORDING: () => {
+        this.recording = false
+        this.detachListeners()
+      },
+      PAUSE_RECORDING: () => {
+        this.recording = false
+        this.detachListeners()
+      },
+      RESUME_RECORDING: () => {
+        this.recording = true
+        this.attachListeners()
+      },
+      OPEN_RECORDING: () => {
+        this.recording = true
+        this.currentTransactionKey = message.transactionKey
+        this.attachListeners()
+      },
+      STATE_CHANGED: () => {
+        if (message.snapshot !== undefined) {
+          this.applySnapshot(message.snapshot)
+        }
+      },
+      REQUEST_CAPTURED: () => {
+        this.currentTransactionKey = message.request?.transactionKey
+      },
+    }
+
+    handlers[message.type]?.()
   }
 
   private isRecorderMessage(message: unknown): message is RecorderMessage {
@@ -98,18 +154,15 @@ export class ActionRecorder {
       return false
     }
 
-    const record = message as Record<string, unknown>
-    return (
-      record.type === 'START_RECORDING' ||
-      record.type === 'STOP_RECORDING' ||
-      record.type === 'PAUSE_RECORDING' ||
-      record.type === 'RESUME_RECORDING' ||
-      record.type === 'OPEN_RECORDING' ||
-      record.type === 'REQUEST_CAPTURED'
-    )
+    const type = (message as Record<string, unknown>).type as RecorderMessageType
+    return recorderMessageTypes.has(type)
   }
 
   private attachListeners(): void {
+    if (this.actionHandlers.size > 0) {
+      return
+    }
+
     this.attachListener('click', this.handleClick)
     this.attachListener('change', this.handleChange)
     this.attachListener('submit', this.handleSubmit)
@@ -183,11 +236,7 @@ export class ActionRecorder {
   }
 
   private getValueForElement(element: Element): string | undefined {
-    if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
-      return element.value
-    }
-
-    if (element instanceof HTMLSelectElement) {
+    if (isValueElement(element)) {
       return element.value
     }
 
@@ -202,8 +251,14 @@ export class ActionRecorder {
   }
 }
 
-// Initialize the action recorder when loaded (only in extension context)
-if (isExtensionContext()) {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-  new ActionRecorder()
+function isValueElement(
+  element: Element
+): element is HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement {
+  return (
+    element instanceof HTMLInputElement ||
+    element instanceof HTMLTextAreaElement ||
+    element instanceof HTMLSelectElement
+  )
 }
+
+export const actionRecorder = new ActionRecorder()
