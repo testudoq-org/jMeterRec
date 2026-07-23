@@ -76,6 +76,27 @@ npm run build  # production bundle
 npm run pack-crx  # produces signed .crx and enterprise-install.json for ExtensionInstallForcelist
 ```
 
+## Release process
+
+The source Chrome extension package used for releases is the signed CRX generated in `dist/capultura.crx`.
+
+After building and signing with `npm run pack-crx`, place a versioned copy of the CRX in the `releases/` folder using the naming convention:
+
+```
+releases/capultura-mv3-{version}-beta.crx
+# e.g. releases/capultura-mv3-0.2.1-beta.crx
+```
+
+The release script (`node scripts/release.mjs --skip-git`) also creates an auto-generated zip archive of the `dist/` contents. Retain this zip in the `releases/` folder alongside the versioned CRX:
+
+```
+releases/
+├── capultura-mv3-0.2.1-beta.zip      # auto-generated zip of dist/
+└── capultura-mv3-0.2.1-beta.crx      # versioned CRX for upload
+```
+
+Upload the versioned CRX file directly to the [Chrome Web Store Developer Dashboard](https://chrome.google.com/webstore/devconsole).
+
 ## Permissions
 
 Each manifest permission is required for core functionality:
