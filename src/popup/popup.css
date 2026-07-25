@@ -654,3 +654,44 @@ select:focus-visible,
     transform: none !important;
   }
 }
+
+/* JMX VALIDATION result styles */
+.validation-summary {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.validation-result:empty {
+  display: none;
+}
+
+.validation-message {
+  margin: 0 0 6px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  background: var(--status-background);
+  color: var(--color-muted);
+}
+
+.validation-error {
+  background: var(--status-error-background);
+  color: var(--color-error);
+}
+
+.validation-warning {
+  background: var(--status-warning-background);
+  color: var(--color-warning);
+}
+
+.validation-info {
+  background: var(--status-success-background);
+  color: var(--color-success);
+}
+
+.validation-remediation {
+  margin-top: 4px;
+  font-size: 11px;
+  opacity: 0.9;
+}

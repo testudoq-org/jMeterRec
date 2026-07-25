@@ -209,13 +209,31 @@ export function buildJmx(
  * is written or handed off to strict validators like BlazeMeter.
  */
 function assertJmxWellFormedInDom(jmx: string): void {
-  if (typeof DOMParser !== 'undefined') {
-    const doc = new DOMParser().parseFromString(jmx, 'application/xml')
-    const error = doc.querySelector('parsererror')
-    if (error !== null) {
-      throw new Error(`Generated JMX is not valid XML: ${error.textContent}`)
-    }
+  const error = validateJmxSyntax(jmx)
+  if (error !== undefined) {
+    throw new Error(`Generated JMX is not valid XML: ${error}`)
   }
+}
+
+/**
+ * Client-side syntax guard for JMX strings. Returns an error description
+ * when the XML is not well-formed, or `undefined` when it passes.
+ *
+ * This is safe to call in popup and test environments where `DOMParser`
+ * is available. It is a no-op in service-worker runtimes.
+ */
+export function validateJmxSyntax(jmx: string): string | undefined {
+  if (typeof DOMParser === 'undefined') {
+    return undefined
+  }
+
+  const doc = new DOMParser().parseFromString(jmx, 'application/xml')
+  const parserError = doc.querySelector('parsererror')
+  if (parserError === null) {
+    return undefined
+  }
+
+  return parserError.textContent?.trim() ?? 'Malformed XML'
 }
 
 // ---------------------------------------------------------------------------

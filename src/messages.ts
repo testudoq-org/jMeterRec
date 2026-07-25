@@ -1,5 +1,6 @@
 import type { ActionStep } from './models/captured-request'
 import type { HAR } from './jmx/har-to-jmx'
+import type { ValidationReport } from './jmx/validator'
 
 export type RecorderStatus = 'idle' | 'recording' | 'paused'
 
@@ -28,6 +29,8 @@ export type BackgroundRequest =
   | { type: 'RESPONSE_BODY_CAPTURED'; payload: ResponseBodyPayload }
   // EXTERNAL HAR IMPORT: New message type for importing HAR files and converting to JMX
   | { type: 'IMPORT_HAR'; har: HAR; includedDomains: string[] }
+  // JMX VALIDATION: Reserved for future server-side fallback (v1 runs in popup only)
+  | { type: 'VALIDATE_JMX'; jmx: string }
 
 export type BackgroundResponse =
   | { success: true; snapshot?: RecorderSnapshot; requests?: unknown[] }
@@ -36,6 +39,8 @@ export type BackgroundResponse =
   | { success: true; jmx: string; filename: string }
   | { success: true; playwright: string; filename: string }
   | { success: true; downloadUrl: string }
+  // JMX VALIDATION: Reserved response shape; no handler in v1
+  | { success: true; validation: ValidationReport }
   | { success: false; error: string }
 
 export type BackgroundBroadcast =

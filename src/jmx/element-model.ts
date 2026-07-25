@@ -659,6 +659,7 @@ export const ELEMENT_HIERARCHY: Record<string, string[]> = {
   TestPlan: [
     'ThreadGroup',
     'HTTPRequestDefaults',
+    'ConfigTestElement',
     'HeaderManager',
     'CookieManager',
     'CacheManager',
@@ -671,6 +672,7 @@ export const ELEMENT_HIERARCHY: Record<string, string[]> = {
     'ResponseAssertion',
     'DurationAssertion',
     'HTTPRequestDefaults',
+    'ConfigTestElement',
     'HeaderManager',
     'CookieManager',
     'CacheManager',

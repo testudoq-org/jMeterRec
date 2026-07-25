@@ -156,6 +156,12 @@ function buildPopupHtml(): string {
           <button id="convertHarToJmx"></button>
         </fieldset>
       </div>
+      <!-- JMX VALIDATION -->
+      <div id="validateJmxSection">
+        <input id="validateJmxFile" type="file" accept=".jmx,application/xml" />
+        <div id="validateJmxError"></div>
+        <div id="validateJmxResult"></div>
+      </div>
       <div id="playwrightOptions"></div>
       <input id="baseUrl" />
       <p id="transactionSummary"></p>
@@ -216,7 +222,11 @@ async function loadPopupModule() {
   chromeStub.storage.local.get.mockClear()
   chromeStub.storage.local.set.mockClear()
 
-  vi.stubGlobal('document', new JSDOM(buildPopupHtml()).window.document)
+  const jsdomWindow = new JSDOM(buildPopupHtml()).window as unknown as Window & {
+    DOMParser: new () => unknown
+  }
+  vi.stubGlobal('document', jsdomWindow.document)
+  vi.stubGlobal('DOMParser', jsdomWindow.DOMParser)
 
   await import('./popup.ts')
   await flushRuntimeResponse()
@@ -1064,6 +1074,208 @@ describe('popup HAR import', () => {
       expect(URL.createObjectURL).toHaveBeenCalled()
 
       URL.createObjectURL = originalCreateObjectURL
+    })
+  })
+})
+
+// JMX VALIDATION: Tests for JMX file validation functionality
+describe('popup JMX validation', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    chromeStub.storage.local.get.mockImplementation(async (keys: unknown) => {
+      storageGetCalls.push({ keys })
+      return {}
+    })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    const fileInput = document.getElementById('validateJmxFile') as HTMLInputElement | null
+    if (fileInput) {
+      Object.defineProperty(fileInput, 'files', {
+        value: null,
+        writable: true,
+      })
+    }
+  })
+
+  interface JmxContext {
+    fileInput: HTMLInputElement
+    errorEl: HTMLDivElement
+    resultEl: HTMLDivElement
+    section: HTMLDivElement
+  }
+
+  async function setupJmxValidationTest(): Promise<JmxContext> {
+    await loadPopupModule()
+    return {
+      fileInput: document.getElementById('validateJmxFile') as HTMLInputElement,
+      errorEl: document.getElementById('validateJmxError') as HTMLDivElement,
+      resultEl: document.getElementById('validateJmxResult') as HTMLDivElement,
+      section: document.getElementById('validateJmxSection') as HTMLDivElement,
+    }
+  }
+
+  async function loadJmxFile(
+    fileInput: HTMLInputElement,
+    jmxContent: string,
+    filename = 'test.jmx'
+  ): Promise<void> {
+    const mockFile = new File([jmxContent], filename, { type: 'application/xml' })
+    Object.defineProperty(fileInput, 'files', {
+      value: { 0: mockFile, length: 1, item: (i: number) => (i === 0 ? mockFile : null) },
+      writable: true,
+    })
+    const event = document.createEvent('HTMLEvents')
+    event.initEvent('change', true, false)
+    fileInput.dispatchEvent(event)
+    await flushRuntimeResponse()
+  }
+
+  const VALID_JMX = `<?xml version="1.0" encoding="UTF-8"?>
+<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
+<hashTree>
+<TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="Test Plan" enabled="true">
+<stringProp name="TestPlan.comments"></stringProp>
+<stringProp name="TestPlan.functional_mode">false</stringProp>
+<boolProp name="TestPlan.serialize_threadgroups">false</boolProp>
+<elementProp name="TestPlan.user_defined_variables" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+<collectionProp name="Arguments.arguments" />
+</elementProp>
+</TestPlan>
+<hashTree>
+<ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Thread Group" enabled="true">
+<stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+<elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController" testname="Loop Controller" enabled="true">
+<boolProp name="LoopController.continue_forever">false</boolProp>
+<stringProp name="LoopController.loops">1</stringProp>
+</elementProp>
+<stringProp name="ThreadGroup.num_threads">10</stringProp>
+<stringProp name="ThreadGroup.ramp_time">5</stringProp>
+<boolProp name="ThreadGroup.scheduler">false</boolProp>
+<stringProp name="ThreadGroup.duration"></stringProp>
+<stringProp name="ThreadGroup.delay"></stringProp>
+<boolProp name="ThreadGroup.same_user_on_next_iteration">true</boolProp>
+</ThreadGroup>
+<hashTree>
+<HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="GET example.com #0" enabled="true">
+<boolProp name="HTTPSampler.postBodyRaw">false</boolProp>
+<elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+<collectionProp name="Arguments.arguments">
+<elementProp name="" elementType="HTTPArgument" guiclass="HTTPArgumentGui" testclass="HTTPArgument" testname="Argument" enabled="true">
+<boolProp name="HTTPArgument.always_encode">false</boolProp>
+<stringProp name="Argument.name"></stringProp>
+<stringProp name="Argument.value"></stringProp>
+<stringProp name="Argument.metadata">=</stringProp>
+</elementProp>
+</collectionProp>
+</elementProp>
+<stringProp name="HTTPSampler.domain">example.com</stringProp>
+<stringProp name="HTTPSampler.port">80</stringProp>
+<stringProp name="HTTPSampler.protocol">http</stringProp>
+<stringProp name="HTTPSampler.path">/api</stringProp>
+<stringProp name="HTTPSampler.method">GET</stringProp>
+<boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+<boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+<boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+<boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+<stringProp name="HTTPSampler.embedded_url_re"></stringProp>
+<stringProp name="HTTPSampler.connect_timeout"></stringProp>
+<stringProp name="HTTPSampler.response_timeout"></stringProp>
+<elementProp name="HTTPsampler.Headers" elementType="HeaderManager" guiclass="HeaderPanel" testclass="HeaderManager" testname="HTTP Default Headers" enabled="true">
+<collectionProp name="HeaderManager.headers" />
+</elementProp>
+</HTTPSamplerProxy>
+<hashTree/>
+</hashTree>
+</hashTree>
+</hashTree>
+</jmeterTestPlan>`
+
+  describe('mode visibility', () => {
+    it('shows JMX validation section when JMX mode is selected', async () => {
+      const { section } = await setupJmxValidationTest()
+      const exportModeEl = document.getElementById('exportMode') as HTMLSelectElement
+
+      exportModeEl.value = 'jmx'
+      const event = document.createEvent('HTMLEvents')
+      event.initEvent('change', true, false)
+      exportModeEl.dispatchEvent(event)
+
+      expect(section.style.display).not.toBe('none')
+    })
+
+    it('hides JMX validation section when Playwright mode is selected', async () => {
+      const { section } = await setupJmxValidationTest()
+      const exportModeEl = document.getElementById('exportMode') as HTMLSelectElement
+
+      exportModeEl.value = 'playwright'
+      const event = document.createEvent('HTMLEvents')
+      event.initEvent('change', true, false)
+      exportModeEl.dispatchEvent(event)
+
+      expect(section.style.display).toBe('none')
+    })
+  })
+
+  describe('file parsing', () => {
+    it('validates a valid JMX file and renders summary', async () => {
+      const { fileInput, resultEl, errorEl } = await setupJmxValidationTest()
+      await loadJmxFile(fileInput, VALID_JMX)
+
+      expect(errorEl.textContent).toBe('')
+      expect(resultEl.textContent).toContain('Passed')
+    })
+
+    it('shows error when no file is selected', async () => {
+      const { fileInput, errorEl, resultEl } = await setupJmxValidationTest()
+
+      Object.defineProperty(fileInput, 'files', { value: null, writable: true })
+      const event = document.createEvent('HTMLEvents')
+      event.initEvent('change', true, false)
+      fileInput.dispatchEvent(event)
+
+      await flushRuntimeResponse()
+
+      expect(errorEl.textContent).toContain('Empty JMX file')
+      expect(resultEl.textContent).toBe('')
+    })
+
+    it('shows error for zero-byte file', async () => {
+      const { fileInput, errorEl, resultEl } = await setupJmxValidationTest()
+
+      const emptyFile = new File([''], 'empty.jmx', { type: 'application/xml' })
+      Object.defineProperty(fileInput, 'files', {
+        value: { 0: emptyFile, length: 1, item: (i: number) => (i === 0 ? emptyFile : null) },
+        writable: true,
+      })
+
+      const event = document.createEvent('HTMLEvents')
+      event.initEvent('change', true, false)
+      fileInput.dispatchEvent(event)
+
+      await flushRuntimeResponse()
+
+      expect(errorEl.textContent).toContain('Empty JMX file')
+      expect(resultEl.textContent).toBe('')
+    })
+
+    it('shows error for malformed XML', async () => {
+      const { fileInput, errorEl, resultEl } = await setupJmxValidationTest()
+      await loadJmxFile(fileInput, '<?xml version="1.0"?><jmeterTestPlan><TestPlan>')
+
+      expect(errorEl.textContent).toBe('')
+      expect(resultEl.textContent).toContain('Malformed XML')
+      expect(resultEl.textContent).toContain('Failed')
+    })
+
+    it('renders Failed summary for invalid JMX', async () => {
+      const { fileInput, resultEl } = await setupJmxValidationTest()
+      const invalidJmx = VALID_JMX.replace('num_threads">10', 'num_threads">0')
+      await loadJmxFile(fileInput, invalidJmx)
+
+      expect(resultEl.textContent).toContain('Failed')
+      expect(resultEl.textContent).toContain('zero-threads')
     })
   })
 })

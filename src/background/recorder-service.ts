@@ -89,6 +89,13 @@ export class RecorderService {
       // EXTERNAL HAR IMPORT: Handler for importing HAR files and converting to JMX
       IMPORT_HAR: (message) =>
         this.handleImportHarMessage(message as Extract<BackgroundRequest, { type: 'IMPORT_HAR' }>),
+      // JMX VALIDATION: Reserved for future server-side fallback; v1 validates in popup
+      VALIDATE_JMX: () =>
+        Promise.resolve({
+          success: false,
+          error:
+            'JMX validation is not supported in the background in v1. Use the popup validation instead.',
+        } as { success: false; error: string }),
     }
   }
 

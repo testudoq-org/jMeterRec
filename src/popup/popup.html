@@ -96,6 +96,23 @@
         </fieldset>
       </div>
 
+      <!-- JMX VALIDATION: Client-side validation for uploaded JMX files -->
+      <div id="validateJmxSection" class="card" style="display: none; margin-bottom: 12px">
+        <div class="card-header">
+          <h2>Validate JMX file</h2>
+        </div>
+        <p class="muted" style="font-size: 12px; margin: 0 0 8px">
+          Select a .jmx file to validate against common JMeter structure and best-practice rules.
+          Processing is local; the file is never uploaded.
+        </p>
+        <div class="field">
+          <label for="validateJmxFile">JMX file</label>
+          <input id="validateJmxFile" type="file" accept=".jmx,application/xml" />
+        </div>
+        <div id="validateJmxError" class="error" aria-live="polite"></div>
+        <div id="validateJmxResult" class="validation-result" aria-live="polite"></div>
+      </div>
+
       <div class="row">
         <button id="clear" class="secondary" type="button">Clear</button>
       </div>

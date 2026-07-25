@@ -20,6 +20,12 @@ import type { BackgroundRequest, BackgroundResponse, RecorderSnapshot } from '..
 import type { CapturedRequest } from '../models/captured-request'
 import type { HAR } from '../jmx/har-to-jmx'
 import { validateHar, extractHarDomains } from '../jmx/har-to-jmx'
+import {
+  initJmxValidation,
+  validateJmxSection,
+  clearValidationError,
+  clearValidationResult,
+} from './jmx-validation'
 
 type ResponseWithSnapshot = Extract<BackgroundResponse, { snapshot?: RecorderSnapshot }>
 type TransactionRequest = CapturedRequest & { responseBody?: string }
@@ -139,11 +145,14 @@ exportMode.addEventListener('change', () => {
 
   jmxOptions.style.display = isJmx ? 'block' : 'none'
   importHarSection.style.display = isJmx ? 'block' : 'none'
+  validateJmxSection.style.display = isJmx ? 'block' : 'none'
   if (playwrightOptions !== null) {
     playwrightOptions.style.display = exportMode.value === 'playwright' ? 'block' : 'none'
   }
   clearJmxDomainError()
   clearImportHarError()
+  clearValidationError()
+  clearValidationResult()
 })
 
 start.addEventListener('click', () => {
@@ -198,6 +207,8 @@ clear.addEventListener('click', () => {
       importHarFieldset.hidden = true
       importHarDomains.replaceChildren()
       clearImportHarError()
+      clearValidationError()
+      clearValidationResult()
       renderTransactions()
     }
   })
@@ -215,6 +226,8 @@ exportJmxSelected.addEventListener('click', () => {
 importHarFile.addEventListener('change', () => {
   void handleImportHarFile()
 })
+
+initJmxValidation()
 
 convertHarToJmx.addEventListener('click', () => {
   void convertImportedHarToJmx()
