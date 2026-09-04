@@ -25,7 +25,7 @@ Relevant evidence:
 - `specs/004-improve-ux-ui-implementation.md` marks the UX/UI transaction inspector as implemented but leaves response body capture and background port forwarding deferred (`specs/004-improve-ux-ui-implementation.md:435-467`).
 - `specs/003-playwright-record-mode.md` marks Playwright export and action recording as implemented with follow-ups, including E2E tests and generated test format documentation (`specs/003-playwright-record-mode.md:3-16`, `specs/003-playwright-record-mode.md:194-199`).
 - `specs/002-codebase-analysis.md` identifies content body fallback, mid-flight request persistence, response body capture, background port forwarding, basic JMX coverage, options metadata, E2E coverage, and CRX packaging as areas still needing improvement (`specs/002-codebase-analysis.md:528-538`).
-- `specs/XXX-backlog-ideas.md` tracks golden E2E, in-flight persistence, request-body fallback, JMX manager/extractor coverage, CRX packaging, and response body capture as backlog items (`specs/XXX-backlog-ideas.md:17-46`).
+- `specs/xxx-progress-master.md` tracks golden E2E, in-flight persistence, request-body fallback, JMX manager/extractor coverage, CRX packaging, and response body capture as backlog items (`specs/xxx-progress-master.md`).
 
 ## Progress
 
