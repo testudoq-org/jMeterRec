@@ -1054,7 +1054,7 @@ re-opening this spec.
 | `008-extension-permissions-refresh` | Re-audit permissions (`G13`, `G14`, `G15`). Requires UX/enterprise sign-off before any manifest change. | G13, G14, G15, §6.3 item 8 |
 | `009-jmx-export-quality` | G20 enhancements: `postBodyRaw` fix, error-request method fix, think-time timers, response assertions, `CookieManager`, redirect deduplication, query-param serialization. | G20, §4.4 |
 | `010-advanced-recorder-options` | G21 Advanced Options UI and persistence: recording depth, UA override, filter pattern, parallel downloads, think-time randomization. | G21 |
-| *(backlog only)* | Domain-filter exact-match toggle, select-all/select-none, plan-name hint, filename sanitization, content-script body fallback, in-flight state persistence, chunked export. | §6.1–6.3, `specs/XXX-backlog-ideas.md` |
+| *(backlog only)* | Domain-filter exact-match toggle, select-all/select-none, plan-name hint, filename sanitization, content-script body fallback, in-flight state persistence, chunked export. | §6.1–6.3, `specs/xxx-progress-master.md` |
 
 **Integration notes for new specs:**
 - Each future spec should include its own acceptance criteria, affected modules,
