@@ -2,9 +2,9 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased] - 0.2.0
+## [0.2.1] - 2026-07-23
 
-_Expected 2026-07-23_
+_Released 2026-07-23 (Chrome Web Store: Capultura BETA v0.2.1)_
 
 - **JMX export hardening:** strip XML 1.0 illegal characters (NUL, controls, DEL, C1 ranges) from request/response bodies, headers, cookies, query args, and regex extractors so generated JMX passes strict validators like BlazeMeter.
 - **Serializer refactor:** extracted `buildSamplerSequence()`, `buildAssertionXml()`, `buildDurationAssertionXml()`, and `EXTRACTOR_BUILDERS` lookup table from `buildJmx()`; replaced extractor `if/else if` chain with `Map`-based dispatch.
