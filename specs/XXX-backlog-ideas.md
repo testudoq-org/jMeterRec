@@ -1,3 +1,5 @@
+> **Deprecated:** This backlog file is superseded by [`specs/xxx-progress-master.md`](./xxx-progress-master.md), which is the single progress map for all feature work. New feature planning and status tracking live there. This file is retained for historical reference only.
+
 ### Backlog — newest first
 
 - [ ] **015-improve-export-to-jmx** — Sanitize XML 1.0 illegal characters (NUL bytes, control characters) in JMX export pipeline so generated files are valid for strict XML parsers such as BlazeMeter. Fix CDATA contamination from binary POST bodies and HAR imports.

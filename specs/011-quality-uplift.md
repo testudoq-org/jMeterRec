@@ -26,7 +26,7 @@ The extension now supports:
 - Advanced recorder options (URL filtering, resource types, User-Agent override, cookie control)
 - In-flight request persistence across service-worker restarts
 
-Open risks identified in prior reviews (`specs/005`, `specs/006`, `specs/009`, `specs/XXX-backlog-ideas`) remain relevant:
+Open risks identified in prior reviews (`specs/005`, `specs/006`, `specs/009`, `specs/xxx-progress-master`) remain relevant:
 
 - MV3 service-worker lifecycle and in-flight request persistence
 - Popup performance at realistic traffic volumes
@@ -835,4 +835,4 @@ All 12 action items (011-A1 through 011-A12) completed. See §7 Progress table f
 - `specs/008-extension-permissions-refresh.md`
 - `specs/009-jmx-export-quality.md`
 - `specs/010-advanced-recorder-options.md`
-- `specs/XXX-backlog-ideas.md` (011 outline)
+- `specs/xxx-progress-master.md` (progress tracking)

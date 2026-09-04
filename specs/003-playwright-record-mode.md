@@ -9,7 +9,7 @@
 - Exposes the Playwright export mode from the compact popup UI
 - Supports an optional base URL for Playwright exports
 
-Remaining follow-ups are tracked in `specs/XXX-backlog-ideas.md` and are not blockers for the Playwright export path itself:
+Remaining follow-ups are tracked in `specs/xxx-progress-master.md` and are not blockers for the Playwright export path itself:
 - Frame context tracking
 - Additional action commands such as select and more complete wait handling
 - E2E tests for action recording and generated Playwright output

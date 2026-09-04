@@ -206,7 +206,7 @@ Spec files may retain historical references if contextually accurate.
 
 ### 4.14 014-N — Backlog update
 
-Update `specs/XXX-backlog-ideas.md`:
+Update `specs/xxx-progress-master.md`:
 
 - Close pre-013 items with outcomes.
 - Add "Released in 014" section.
