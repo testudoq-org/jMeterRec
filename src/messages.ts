@@ -1,5 +1,4 @@
-import type { ActionStep } from './models/captured-request'
-import type { BodyEncoding } from './models/captured-request'
+import type { ActionStep, BodyAvailability, BodyEncoding } from './models/captured-request'
 import type { HAR } from './jmx/har-to-jmx'
 import type { ValidationReport } from './jmx/validator'
 

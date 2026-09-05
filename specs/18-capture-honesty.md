@@ -1,6 +1,6 @@
 # Feature 18 — Capture Honesty
 
-**Branch:** `feature/18-capture-honesty`  
+**Branch:** `feature/18-capture-honesty` (merged to `master` 2026-09-05)  
 **Depends on:** Feature 17 merged  
 **Blocks:** Feature 19+  
 **Type:** Capture + model extension  
@@ -152,9 +152,9 @@ Do not move all of `traffic-capture.ts` in this branch unless required.
 ## 7. Behavioural rules
 
 1. If response body capture is disabled → `available: 'not-requested'`.
-2. If capture enabled but content script never saw the request → `unavailable` + reason.
+2. If capture enabled but content script never sent a capture message for the request (e.g. main-document navigation, non-fetch/XHR subresource) → `not-requested` with `source: webRequest`. If the content script sent a message with an explicit error → `unavailable` + reason.
 3. If match ambiguous or expired → `unavailable` + reason; do not attach wrong body.
-4. If content type forbidden/redacted (current HTML policy) → `blocked` or `redacted` meta; preserve policy unless product explicitly changes it in this branch (default: keep current HTML policy, make it explicit in meta).
+4. Forbidden content types (`text/html`, `application/xhtml+xml`) intercepted by the content-script fetch/XHR wrap → `blocked` meta with `redacted: true`. Main-document HTML navigation is not intercepted by the content script → `not-requested` with `source: webRequest`.
 5. Non-text binary → prefer `encoding: 'base64'` with data, or `unavailable` with reason if not stored; never corrupt UTF-8 paths.
 6. Truncation remains allowed; set `truncated: true` and size.
 7. Diagnostics array is append-only explanations suitable for developer UI (no raw cookies/tokens).
@@ -163,12 +163,12 @@ Do not move all of `traffic-capture.ts` in this branch unless required.
 
 ## 8. Implementation steps (suggested commits)
 
-1. `recording-schema` + migrate defaults + tests  
-2. `CapturedBodyMeta` fields on model + normalizer apply path  
-3. Provider interface + content-script adapter + unsupported  
-4. Matching diagnostics  
-5. Serializer/export tolerance + tests  
-6. Fixtures + docs (`docs/capture-limits.md` or README section)  
+1. `recording-schema` + migrate defaults + tests + fixture validation  
+2. `CapturedBodyMeta` fields on model + normalizer apply path + non-match meta annotation  
+3. Provider interface + content-script adapter + unsupported + registry + MAIN-world injection  
+4. Matching diagnostics + expired/ambiguous request annotation  
+5. Serializer/export tolerance + tests + body-aware sampler creation  
+6. Fixtures + docs (`docs/capture-limits.md`) + E2E capture scenarios  
 
 ---
 
@@ -198,8 +198,8 @@ No real credentials.
 | V1.4 | Ambiguous match | Unit matching service | No body attached; diagnostic set |
 | V1.5 | Binary safety | Unit | No invalid UTF-8 injection into JMX path |
 | V1.6 | Export | Unit serializer | JMX still well-formed without body |
-| V1.7 | Regression | Full `npm run test` + E2E | Green |
-| V1.8 | Complexity | `npm run crap` / `dry` | No large unexplained spike on new files |
+| V1.7 | Regression | Full `npm run test` + `npm run build` + `npx playwright test` | 510/510 unit tests + 17/17 E2E tests green |
+| V1.8 | Complexity | `npm run crap` / `npm run dry` | 0 high/moderate risk functions; pre-existing duplicates only, no new duplicates in Feature 18 files |
 | V1.9 | Secrets | Grep fixtures | No live tokens |
 
 ---
@@ -211,9 +211,31 @@ No real credentials.
 - Content-script capture reports source; failures explain why.
 - Existing JMX/Playwright export paths work.
 - Spec verification audit signed off in PR description.
-- `progress-master.md` → Feature 18 `Merged`.
+- `progress-master.md` → Feature 18 `Merged` (verified 2026-09-05).
 
 ---
+
+## 12. Spec verification audit
+
+**Audited:** 2026-09-05  
+**Auditor:** Kilo (automated audit against `master` at commit `58b660e`)  
+**Result:** All exit criteria met; two minor spec wording clarifications applied to match implemented behaviour (§7 rules 2 and 4). No implementation changes required after audit.
+
+### Signed-off checks
+
+| Check | Evidence |
+| ----- | -------- |
+| V1.1 Legacy load | `src/models/recording-schema.test.ts` — 5 tests covering legacy, current, newer, round-trip, and invalid input |
+| V1.2 Body available | Unit: `traffic-normalizer.test.ts`, `response-body-capture.test.ts`; E2E: `spec-001-extension.spec.ts:235` |
+| V1.3 Missing reason | `traffic-normalizer.test.ts` — `unavailable` meta with error string; `buildBodyReason` covers all codes |
+| V1.4 Ambiguous match | `response-body-matching-service.test.ts` + `recorder-service.ts:469-488` — meta set on all candidates, diagnostic appended |
+| V1.5 Binary safety | `measureBytes` in `src/utils/response-body.ts` — text decoded/sanitized, binary base64 within cap, over-cap returns `unavailable` |
+| V1.6 Export | `src/jmx/element-model.ts:568-576` — body-aware sampler; `serializer.ts` validates XML well-formedness |
+| V1.7 Regression | `npm run test` 510/510; `npm run build`; `npx playwright test` 17/17 |
+| V1.8 Complexity | `npm run crap` 0 high/moderate; `npm run dry` no new duplicates |
+| V1.9 Secrets | Fixtures sanitised; `synthetic-fetch-token` is non-real placeholder |
+---
+
 
 ## 12. Manual validation
 
