@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "requests": [
+    {
+      "id": "partial-1",
+      "timestamp": "2024-01-01T00:00:00.000Z",
+      "method": "GET",
+      "url": "https://example.com/api/data",
+      "headers": {
+        "accept": "text/plain"
+      },
+      "queryParams": {},
+      "statusCode": 200,
+      "responseHeaders": {
+        "content-type": "text/plain; charset=utf-8"
+      },
+      "responseBody": "partial-content-here",
+      "responseBodySize": 18,
+      "responseBodyTruncated": true,
+      "responseBodyContentType": "text/plain",
+      "responseBodyMeta": {
+        "available": "partial",
+        "encoding": "utf8",
+        "mimeType": "text/plain",
+        "size": 18,
+        "truncated": true,
+        "source": "content-fetch"
+      },
+      "captureSources": ["webRequest", "content-fetch"],
+      "diagnostics": []
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "requests": [
+    {
+      "id": "html-1",
+      "timestamp": "2024-01-01T00:00:00.000Z",
+      "method": "GET",
+      "url": "https://example.com/page.html",
+      "headers": {
+        "accept": "text/html"
+      },
+      "queryParams": {},
+      "statusCode": 200,
+      "responseHeaders": {
+        "content-type": "text/html; charset=utf-8"
+      },
+      "responseBody": "[REDACTED]",
+      "responseBodyRedacted": true,
+      "responseBodySize": 0,
+      "responseBodyContentType": "text/html",
+      "responseBodyMeta": {
+        "available": "blocked",
+        "mimeType": "text/html",
+        "redacted": true,
+        "size": 0,
+        "source": "content-fetch"
+      },
+      "captureSources": ["webRequest", "content-fetch"],
+      "diagnostics": []
+    }
+  ]
+}

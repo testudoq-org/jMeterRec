@@ -104,7 +104,13 @@ export function applyCapturedResponseBody(
     return
   }
 
-  if (payload.body === undefined && payload.error === undefined) {
+  const source = payload.source
+
+  if (source === 'none') {
+    request.responseBodyMeta = {
+      available: 'not-requested',
+      source,
+    }
     return
   }
 
@@ -112,6 +118,37 @@ export function applyCapturedResponseBody(
     request.responseBody = '[REDACTED]'
     request.responseBodyRedacted = true
     request.responseBodySize = payload.size
+    request.responseBodyMeta = {
+      available: 'blocked',
+      source,
+      mimeType: payload.contentType,
+      redacted: true,
+      size: payload.size,
+    }
+    return
+  }
+
+  if (payload.body === undefined && payload.error === undefined) {
+    request.responseBodyMeta = {
+      available: 'not-requested',
+      source,
+    }
+    return
+  }
+
+  if (payload.available === 'capture-error') {
+    request.responseBody = undefined
+    request.responseBodyTruncated = false
+    request.responseBodyRedacted = false
+    request.responseBodySize = 0
+    request.responseBodyCapturedAt = new Date(payload.capturedAtMs).toISOString()
+    request.responseBodyMeta = {
+      available: 'capture-error',
+      source,
+      error: payload.error,
+      mimeType: payload.contentType,
+      size: 0,
+    }
     return
   }
 
@@ -121,6 +158,13 @@ export function applyCapturedResponseBody(
     request.responseBodyRedacted = false
     request.responseBodySize = 0
     request.responseBodyCapturedAt = new Date(payload.capturedAtMs).toISOString()
+    request.responseBodyMeta = {
+      available: 'unavailable',
+      source,
+      error: payload.error,
+      mimeType: payload.contentType,
+      size: 0,
+    }
     return
   }
 
@@ -130,6 +174,14 @@ export function applyCapturedResponseBody(
   request.responseBodySize = payload.size
   request.responseBodyCapturedAt = new Date(payload.capturedAtMs).toISOString()
   request.responseBodyContentType = payload.contentType
+  request.responseBodyMeta = {
+    available: 'available',
+    source,
+    encoding: payload.encoding,
+    mimeType: payload.contentType,
+    size: payload.size,
+    truncated: payload.truncated ?? false,
+  }
 }
 
 export function isResponseBodyCandidate(request: PendingRequest): boolean {

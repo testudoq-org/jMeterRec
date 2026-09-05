@@ -1,5 +1,27 @@
 /// <reference types="chrome" />
 
+export type BodyEncoding = 'utf8' | 'base64' | 'urlencoded' | 'json' | 'unknown'
+
+export type BodyAvailability =
+  | 'available'
+  | 'unavailable'
+  | 'partial'
+  | 'blocked'
+  | 'not-requested'
+  | 'capture-error'
+
+export interface CapturedBodyMeta {
+  available: BodyAvailability
+  encoding?: BodyEncoding
+  mimeType?: string
+  contentEncoding?: string
+  size?: number
+  error?: string
+  truncated?: boolean
+  redacted?: boolean
+  source?: string
+}
+
 export interface CapturedRequest {
   id: string
   timestamp: string
@@ -25,6 +47,9 @@ export interface CapturedRequest {
   responseBodySize?: number
   responseBodyCapturedAt?: string
   responseBodyContentType?: string
+  responseBodyMeta?: CapturedBodyMeta
+  captureSources?: string[]
+  diagnostics?: string[]
   followRedirects?: boolean
 }
 

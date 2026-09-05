@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "requests": [
+    {
+      "id": "unavailable-1",
+      "timestamp": "2024-01-01T00:00:00.000Z",
+      "method": "GET",
+      "url": "https://example.com/api/data",
+      "headers": {
+        "accept": "application/json"
+      },
+      "queryParams": {},
+      "statusCode": 200,
+      "responseHeaders": {
+        "content-type": "application/json; charset=utf-8"
+      },
+      "responseBodyMeta": {
+        "available": "unavailable",
+        "error": "Response body unavailable: content-script interception did not observe request",
+        "mimeType": "application/json",
+        "size": 0,
+        "source": "content-fetch"
+      },
+      "captureSources": ["webRequest", "content-fetch"],
+      "diagnostics": [
+        "Response body unavailable: content-script interception did not observe request for unavailable-1"
+      ]
+    }
+  ]
+}

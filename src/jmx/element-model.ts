@@ -565,7 +565,15 @@ export function createHTTPSampler(
   const port = hasExplicitPort ? url.port : defaults !== undefined ? '' : defaultPort
 
   const name = `${req.method} ${hostname}${path} #${index}`
-  const body = req.responseBody ?? req.body ?? ''
+  const responseBody =
+    req.responseBodyMeta?.available === 'available'
+      ? req.responseBody
+      : req.responseBodyRedacted === true
+        ? '[REDACTED]'
+        : req.responseBodyMeta === undefined
+          ? req.responseBody
+          : undefined
+  const body = responseBody ?? req.body ?? ''
 
   // Determine which properties are inherited from HTTPRequestDefaults.
   // — Domain: inherited when hostname matches defaults.domain

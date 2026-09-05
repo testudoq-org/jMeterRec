@@ -1,6 +1,8 @@
 import type { CapturedRequest, ActionStep } from '../models/captured-request'
 import type { RecorderSnapshot, RecorderStatus } from '../messages'
 import { getCapturedRequestDomains } from '../jmx/domains'
+import { appendDiagnostic, capDiagnostics, toDisplay } from '../utils/diagnostics'
+import { migrateRecording } from '../models/recording-schema'
 
 export interface RecorderStorage {
   get(keys: string[]): Promise<Record<string, unknown>>
@@ -14,6 +16,7 @@ export class RecorderState {
   private planName = 'Untitled Plan'
   private tabId: number | undefined
   private startedAt: string | undefined
+  private diagnostics: string[] = []
 
   constructor(
     private readonly storage: RecorderStorage = chrome.storage.local,
@@ -24,15 +27,23 @@ export class RecorderState {
     const state = await this.storage.get([
       'status',
       'recording',
+      'schemaVersion',
       'requests',
       'actions',
       'planName',
       'tabId',
       'startedAt',
+      'diagnostics',
     ])
 
+    const migrated = migrateRecording(state)
+
     this.status = this.readStatus(state.status, state.recording)
-    this.requests = this.readRequests(state.requests)
+    this.diagnostics = this.readDiagnostics(state.diagnostics)
+    for (const warning of migrated.warnings) {
+      this.appendDiagnostic(warning)
+    }
+    this.requests = this.readRequests(migrated.recording.requests)
     this.actions = this.readActions(state.actions)
     this.planName =
       typeof state.planName === 'string' && state.planName.length > 0
@@ -46,11 +57,13 @@ export class RecorderState {
     await this.setStorage({
       status: this.status,
       recording: this.status === 'recording' || this.status === 'paused',
+      schemaVersion: 1,
       requests: this.requests,
       actions: this.actions,
       planName: this.planName,
       tabId: this.tabId,
       startedAt: this.startedAt,
+      diagnostics: toDisplay(this.diagnostics),
     })
   }
 
@@ -128,6 +141,14 @@ export class RecorderState {
     }
   }
 
+  getDiagnostics(): string[] {
+    return [...this.diagnostics]
+  }
+
+  appendDiagnostic(msg: string): void {
+    appendDiagnostic(this.diagnostics, msg)
+  }
+
   isCapturing(): boolean {
     return this.status === 'recording'
   }
@@ -158,6 +179,16 @@ export class RecorderState {
     }
 
     return value.filter(this.isActionStep)
+  }
+
+  private readDiagnostics(value: unknown): string[] {
+    if (!Array.isArray(value)) {
+      return []
+    }
+
+    const raw = value.filter((item): item is string => typeof item === 'string')
+    capDiagnostics(raw)
+    return toDisplay(raw)
   }
 
   private isCapturedRequest(value: unknown): value is CapturedRequest {

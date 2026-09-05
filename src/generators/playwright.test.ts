@@ -24,6 +24,8 @@ describe('buildPlaywrightTest', () => {
         url: 'https://app.example.com/api/users',
         headers: { accept: 'application/json' },
         queryParams: {},
+        responseBody: '{"users":[]}',
+        responseBodyMeta: { available: 'available' },
         stepType: 'http',
       },
       {
@@ -34,6 +36,8 @@ describe('buildPlaywrightTest', () => {
         headers: { 'content-type': 'application/json' },
         queryParams: {},
         body: '{"username":"user","password":"pass"}',
+        responseBody: '{"token":"abc"}',
+        responseBodyMeta: { available: 'available' },
         stepType: 'http',
       },
     ]
@@ -115,6 +119,8 @@ describe('buildPlaywrightTest', () => {
         headers: { 'content-type': 'application/json' },
         queryParams: {},
         body: '{"action":"save"}',
+        responseBody: '{"result":"ok"}',
+        responseBodyMeta: { available: 'available' },
         stepType: 'http',
       },
     ]

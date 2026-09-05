@@ -1,0 +1,14 @@
+{
+  "requests": [
+    {
+      "id": "legacy-1",
+      "timestamp": "2024-01-01T00:00:00.000Z",
+      "method": "GET",
+      "url": "https://example.com/api/legacy",
+      "headers": {
+        "accept": "application/json"
+      },
+      "queryParams": {}
+    }
+  ]
+}

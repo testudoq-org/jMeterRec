@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Capture Binary Test</title>
+</head>
+<body>
+  <h1>Capture Binary Test</h1>
+  <pre id="result">Loading...</pre>
+  <script>
+    fetch('/binary-70k')
+      .then((res) => res.blob())
+      .then((blob) => {
+        document.getElementById('result').textContent = 'Binary size: ' + blob.size + ' bytes'
+      })
+      .catch((err) => {
+        document.getElementById('result').textContent = 'Error: ' + err.message
+      })
+  </script>
+</body>
+</html>

@@ -8,7 +8,9 @@ import {
   mergeBeforeSendHeaders,
   mergeCompleted,
   mergeResponseStarted,
+  applyCapturedResponseBody,
 } from './traffic-normalizer'
+import type { ResponseBodyPayload } from '../messages'
 
 function beforeRequest(overrides: Partial<chrome.webRequest.OnBeforeRequestDetails> = {}) {
   return {
@@ -211,5 +213,102 @@ describe('traffic-normalizer', () => {
         queryParams: { token: 'abc' },
       })
     )
+  })
+
+  describe('applyCapturedResponseBody', () => {
+    const basePayload = (overrides: Partial<ResponseBodyPayload> = {}): ResponseBodyPayload => ({
+      requestId: 'content-1',
+      tabId: 10,
+      frameId: 0,
+      url: 'https://api.example.com/submit?tenant=acme',
+      method: 'POST',
+      status: 200,
+      responseHeaders: {},
+      body: undefined,
+      error: undefined,
+      truncated: false,
+      redacted: false,
+      size: 0,
+      capturedAtMs: 1_700_000_000_200,
+      contentType: 'application/json',
+      ...overrides,
+    })
+
+    it('sets not-requested meta when source is none', () => {
+      const request = createCompletedRequest(completed())
+      applyCapturedResponseBody(request, basePayload({ source: 'none' }))
+
+      expect(request.responseBodyMeta).toEqual({
+        available: 'not-requested',
+        source: 'none',
+      })
+    })
+
+    it('sets blocked meta when payload is redacted', () => {
+      const request = createCompletedRequest(completed())
+      applyCapturedResponseBody(
+        request,
+        basePayload({ redacted: true, body: undefined, error: undefined, size: 4 })
+      )
+
+      expect(request.responseBody).toBe('[REDACTED]')
+      expect(request.responseBodyRedacted).toBe(true)
+      expect(request.responseBodyMeta).toEqual({
+        available: 'blocked',
+        source: undefined,
+        mimeType: 'application/json',
+        redacted: true,
+        size: 4,
+      })
+    })
+
+    it('sets unavailable meta on error without body', () => {
+      const request = createCompletedRequest(completed())
+      applyCapturedResponseBody(request, basePayload({ body: undefined, error: 'capture failed' }))
+
+      expect(request.responseBody).toBeUndefined()
+      expect(request.responseBodyMeta).toEqual({
+        available: 'unavailable',
+        source: undefined,
+        error: 'capture failed',
+        mimeType: 'application/json',
+        size: 0,
+      })
+    })
+
+    it('sets available meta with encoding when body is present', () => {
+      const request = createCompletedRequest(completed())
+      applyCapturedResponseBody(
+        request,
+        basePayload({ body: '{"ok":true}', encoding: 'json', size: 4 })
+      )
+
+      expect(request.responseBody).toBe('{"ok":true}')
+      expect(request.responseBodyMeta).toEqual({
+        available: 'available',
+        source: undefined,
+        encoding: 'json',
+        mimeType: 'application/json',
+        size: 4,
+        truncated: false,
+      })
+    })
+
+    it('preserves capture-error availability when payload has error and no body', () => {
+      const request = createCompletedRequest(completed())
+      applyCapturedResponseBody(
+        request,
+        basePayload({ body: undefined, error: 'measure failed', available: 'capture-error' })
+      )
+
+      expect(request.responseBody).toBeUndefined()
+      expect(request.responseBodyMeta).toEqual({
+        available: 'capture-error',
+        source: undefined,
+        error: 'measure failed',
+        mimeType: 'application/json',
+        size: 0,
+      })
+    })
   })
 })

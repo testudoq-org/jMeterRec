@@ -1,4 +1,5 @@
 import type { ActionStep } from './models/captured-request'
+import type { BodyEncoding } from './models/captured-request'
 import type { HAR } from './jmx/har-to-jmx'
 import type { ValidationReport } from './jmx/validator'
 
@@ -27,6 +28,8 @@ export type BackgroundRequest =
   | { type: 'EXPORT_JMX'; includedDomains: string[] }
   | { type: 'EXPORT_PLAYWRIGHT'; baseUrl?: string; suiteName?: string; testCaseName?: string }
   | { type: 'RESPONSE_BODY_CAPTURED'; payload: ResponseBodyPayload }
+  // PAGE CONTEXT INJECTION: Request background to inject capture script into the page
+  | { type: 'INJECT_PAGE_CONTEXT_SCRIPT' }
   // EXTERNAL HAR IMPORT: New message type for importing HAR files and converting to JMX
   | { type: 'IMPORT_HAR'; har: HAR; includedDomains: string[] }
   // JMX VALIDATION: Reserved for future server-side fallback (v1 runs in popup only)
@@ -39,6 +42,8 @@ export type BackgroundResponse =
   | { success: true; jmx: string; filename: string }
   | { success: true; playwright: string; filename: string }
   | { success: true; downloadUrl: string }
+  // PAGE CONTEXT INJECTION: Response for page context script injection
+  | { success: true; injected: boolean; tabId?: number }
   // JMX VALIDATION: Reserved response shape; no handler in v1
   | { success: true; validation: ValidationReport }
   | { success: false; error: string }
@@ -64,6 +69,9 @@ export interface ResponseBodyPayload {
   size: number
   capturedAtMs: number
   contentType?: string
+  source?: string
+  encoding?: BodyEncoding
+  available?: BodyAvailability
 }
 
 export const RESPONSE_BODY_CAPTURED = 'RESPONSE_BODY_CAPTURED' as const

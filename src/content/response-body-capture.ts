@@ -1,19 +1,26 @@
 import { RESPONSE_BODY_CAPTURED, type ResponseBodyPayload } from '../messages'
-import { createResponseBodyCapture } from '../utils/response-body'
+import { ContentScriptResponseBodyProvider } from '../capture/providers/content-script-response-body-provider'
+import { UnsupportedResponseBodyProvider } from '../capture/providers/unsupported-response-body-provider'
+import { ProviderRegistry } from '../capture/provider-registry'
+import type { ProviderContext, ResponseBodyCaptureResult } from '../capture/response-body-provider'
 
-const FORBIDDEN_RESPONSE_CONTENT_TYPES = [/text\/html/i, /application\/xhtml\+xml/i]
-
-type FetchListener = (response: Response, request: Request) => Promise<void>
+const PAGE_CONTEXT_MESSAGE_TYPE = '__capitura_capture'
 
 class ResponseBodyCapture {
-  private readonly capture = createResponseBodyCapture()
-  private fetchListener: FetchListener | undefined
-  private xhrHandler: ((this: XMLHttpRequest, ev: Event) => void) | undefined
+  private readonly registry: ProviderRegistry
   private enabled = false
+  private pageContextListener: ((event: MessageEvent) => void) | undefined
+  private injectRequested = false
+  private tabId = 0
 
-  constructor() {
-    this.fetchListener = this.createFetchListener()
-    this.xhrHandler = this.createXhrHandler()
+  constructor(registry?: ProviderRegistry) {
+    this.registry =
+      registry ??
+      new ProviderRegistry([
+        new ContentScriptResponseBodyProvider('content-fetch'),
+        new ContentScriptResponseBodyProvider('content-xhr'),
+        new UnsupportedResponseBodyProvider(),
+      ])
   }
 
   setEnabled(enabled: boolean): void {
@@ -22,216 +29,111 @@ class ResponseBodyCapture {
     }
 
     this.enabled = enabled
-    this.applyWrappers()
-  }
 
-  private applyWrappers(): void {
-    if (this.enabled) {
-      this.wrapFetch()
-      this.wrapXhr()
+    if (enabled) {
+      this.requestPageContextInjection()
+      this.attachPageContextListener()
     } else {
-      this.unwrapFetch()
-      this.unwrapXhr()
+      this.detachPageContextListener()
+      this.injectRequested = false
     }
   }
 
-  private wrapFetch(): void {
-    const nativeFetch = window.fetch.bind(window)
-    const listener = this.fetchListener
-
-    window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-      const response = await nativeFetch(input, init)
-
-      if (listener !== undefined) {
-        ;(async () => {
-          try {
-            const request = input instanceof Request ? input : new Request(input, init)
-            await listener(response.clone(), request)
-          } catch {
-            // Swallow capture errors so page fetch behavior is never blocked.
-          }
-        })()
-      }
-
-      return response
+  private requestPageContextInjection(): void {
+    if (this.injectRequested) {
+      return
     }
+
+    this.injectRequested = true
+    console.log('[Capitura] requesting page context injection')
+
+    chrome.runtime
+      .sendMessage({ type: 'INJECT_PAGE_CONTEXT_SCRIPT' })
+      .then((response) => {
+        console.log('[Capitura] injection response:', response)
+        if (typeof response?.tabId === 'number') {
+          this.tabId = response.tabId
+        }
+      })
+      .catch((err) => {
+        console.error('[Capitura] injection failed:', err)
+      })
   }
 
-  private unwrapFetch(): void {
-    try {
-      const descriptor = Object.getOwnPropertyDescriptor(window, 'fetch')
-      const original = descriptor?.value
-
-      if (typeof original === 'function' && original !== this.fetchListener) {
-        window.fetch = original
-      }
-    } catch {
-      // Best-effort unwrap only.
+  private attachPageContextListener(): void {
+    if (this.pageContextListener !== undefined) {
+      return
     }
-  }
 
-  private wrapXhr(): void {
-    const nativeSend = XMLHttpRequest.prototype.send.bind(XMLHttpRequest.prototype)
-    const handler = this.xhrHandler
-
-    XMLHttpRequest.prototype.send = function (
-      this: XMLHttpRequest,
-      body: Document | XMLHttpRequestBodyInit | null | undefined
-    ) {
-      if (handler !== undefined) {
-        this.addEventListener('load', handler, { once: true })
-      }
-
-      return nativeSend.call(this, body)
-    }
-  }
-
-  private unwrapXhr(): void {
-    try {
-      const descriptor = Object.getOwnPropertyDescriptor(XMLHttpRequest.prototype, 'send')
-      const original = descriptor?.value
-
-      if (typeof original === 'function' && original !== this.xhrHandler) {
-        XMLHttpRequest.prototype.send = original
-      }
-    } catch {
-      // Best-effort unwrap only.
-    }
-  }
-
-  private createFetchListener(): FetchListener {
-    return async (response: Response, _request: Request): Promise<void> => {
-      const url = this.resolveUrl(response.url)
-      const method = _request.method.toUpperCase()
-      const contentType = response.headers.get('content-type') ?? undefined
-      const status = response.status
-
-      if (this.isForbiddenContentType(contentType)) {
-        this.send({
-          url,
-          method,
-          status,
-          contentType,
-          error: 'Forbidden content type.',
-          body: undefined,
-        })
+    this.pageContextListener = (event: MessageEvent) => {
+      if (!this.enabled) {
         return
       }
 
-      try {
-        const text = await response.clone().text()
-        const captured = this.capture.capture(text, contentType)
-        this.send({
-          url,
-          method,
-          status,
-          contentType,
-          body: captured.body,
-          error: captured.error,
-          truncated: captured.truncated,
-          redacted: captured.redacted,
-          size: captured.size,
-          capturedAtMs: captured.capturedAtMs,
-        })
-      } catch (err) {
-        this.send({
-          url,
-          method,
-          status,
-          error: err instanceof Error ? err.message : 'Unable to read fetch response body.',
-        })
-      }
-    }
-  }
-
-  private createXhrHandler(): (this: XMLHttpRequest, ev: Event) => void {
-    return function (this: XMLHttpRequest, _ev: Event): void {
-      const url = responseBodyCapture.resolveUrl(this.responseURL)
-      const method = responseBodyCapture.readMethod(this)
-      const status = this.status
-      const contentType = this.getResponseHeader('content-type') ?? undefined
-
-      if (responseBodyCapture.isForbiddenContentType(contentType)) {
-        responseBodyCapture.send({
-          url,
-          method,
-          status,
-          contentType,
-          error: 'Forbidden content type.',
-          body: undefined,
-        })
+      const data = event.data
+      console.log('[Capitura] page context message received:', data?.type)
+      if (
+        typeof data !== 'object' ||
+        data === null ||
+        data.type !== PAGE_CONTEXT_MESSAGE_TYPE ||
+        typeof data.payload !== 'object' ||
+        data.payload === null
+      ) {
         return
       }
 
-      try {
-        const text = typeof this.responseText === 'string' ? this.responseText : ''
-        const captured = responseBodyCapture.capture.capture(text, contentType)
-        responseBodyCapture.send({
-          url,
-          method,
-          status,
-          contentType,
-          body: captured.body,
-          error: captured.error,
-          truncated: captured.truncated,
-          redacted: captured.redacted,
-          size: captured.size,
-          capturedAtMs: captured.capturedAtMs,
-        })
-      } catch (err) {
-        responseBodyCapture.send({
-          url,
-          method,
-          status,
-          error: err instanceof Error ? err.message : 'Unable to read XHR response body.',
-        })
+      const payload = data.payload as Record<string, unknown>
+
+      if (payload.injected === true) {
+        return
       }
+
+      console.log('[Capitura] page context payload:', JSON.stringify(payload))
+
+      this.dispatch({
+        url: typeof payload.url === 'string' ? payload.url : '',
+        method: typeof payload.method === 'string' ? payload.method : 'GET',
+        status: typeof payload.status === 'number' ? payload.status : undefined,
+        contentType: typeof payload.contentType === 'string' ? payload.contentType : undefined,
+        body: typeof payload.body === 'string' ? payload.body : undefined,
+        error: typeof payload.error === 'string' ? payload.error : undefined,
+        source: payload.source === 'content-xhr' ? 'content-xhr' : 'content-fetch',
+      })
+    }
+
+    window.addEventListener('message', this.pageContextListener)
+  }
+
+  private detachPageContextListener(): void {
+    if (this.pageContextListener !== undefined) {
+      window.removeEventListener('message', this.pageContextListener)
+      this.pageContextListener = undefined
     }
   }
 
-  private dispatch(payload: {
+  private async dispatch(payload: {
     url: string
     method: string
     status?: number
     contentType?: string
     body?: string
     error?: string
-    truncated?: boolean
-    redacted?: boolean
-    size?: number
-    capturedAtMs?: number
-  }): void {
-    if (!this.enabled) {
-      return
-    }
-
-    const captured =
-      payload.body !== undefined
-        ? this.capture.capture(payload.body, payload.contentType)
-        : undefined
-    const body = captured?.body
-    const size = captured?.size ?? 0
-    const capturedAtMs = captured?.capturedAtMs ?? Date.now()
-
-    const message: { type: typeof RESPONSE_BODY_CAPTURED; payload: ResponseBodyPayload } = {
-      type: RESPONSE_BODY_CAPTURED,
-      payload: {
-        requestId: this.generateRequestId(payload.url, payload.method, payload.status),
-        tabId: this.readTabId(),
-        frameId: 0,
-        url: payload.url,
-        method: payload.method,
-        status: payload.status,
-        responseHeaders: {},
-        body,
-        error: payload.error ?? captured?.error,
-        truncated: captured ? captured.truncated : false,
-        redacted: captured ? captured.redacted : false,
-        size,
-        capturedAtMs,
-        contentType: payload.contentType,
+    source: 'content-fetch' | 'content-xhr'
+  }): Promise<void> {
+    const ctx: ProviderContext = {
+      url: payload.url,
+      method: payload.method,
+      status: payload.status,
+      contentType: payload.contentType,
+      body: payload.body,
+      options: {
+        bodiesEnabled: this.enabled,
       },
     }
+
+    const result = await this.registry.capture(ctx)
+    const message = this.buildMessage(payload, result)
+    console.log('[Capitura] dispatch', message.type, payload.url, result.available)
 
     try {
       chrome.runtime.sendMessage(message).catch(() => {
@@ -242,19 +144,40 @@ class ResponseBodyCapture {
     }
   }
 
-  private send(payload: {
-    url: string
-    method: string
-    status?: number
-    contentType?: string
-    body?: string
-    error?: string
-    truncated?: boolean
-    redacted?: boolean
-    size?: number
-    capturedAtMs?: number
-  }): void {
-    this.dispatch(payload)
+  private buildMessage(
+    payload: {
+      url: string
+      method: string
+      status?: number
+      contentType?: string
+      body?: string
+      error?: string
+      source: 'content-fetch' | 'content-xhr'
+    },
+    result: ResponseBodyCaptureResult
+  ): { type: typeof RESPONSE_BODY_CAPTURED; payload: ResponseBodyPayload } {
+    return {
+      type: RESPONSE_BODY_CAPTURED,
+      payload: {
+        requestId: this.generateRequestId(payload.url, payload.method, payload.status),
+        tabId: this.readTabId(),
+        frameId: 0,
+        url: payload.url,
+        method: payload.method,
+        status: payload.status,
+        responseHeaders: {},
+        body: result.available === 'available' ? result.body : undefined,
+        error: result.error ?? payload.error,
+        truncated: result.truncated ?? false,
+        redacted: result.redacted ?? false,
+        size: result.size ?? 0,
+        capturedAtMs: Date.now(),
+        contentType: payload.contentType,
+        source: result.source,
+        encoding: result.encoding,
+        available: result.available,
+      },
+    }
   }
 
   private generateRequestId(url: string, method: string, status?: number): string {
@@ -271,31 +194,26 @@ class ResponseBodyCapture {
 
   private readTabId(): number {
     try {
+      const dataAttr = document.documentElement.dataset.capituraTabId
+      if (dataAttr) {
+        const parsed = Number.parseInt(dataAttr, 10)
+        if (!Number.isNaN(parsed)) {
+          return parsed
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    if (this.tabId !== 0) {
+      return this.tabId
+    }
+
+    try {
       return (window as { chrome?: { tabs?: { TAB_ID?: number } } }).chrome?.tabs?.TAB_ID ?? 0
     } catch {
       return 0
     }
-  }
-
-  private resolveUrl(raw: string): string {
-    try {
-      return new URL(raw, document.baseURI ?? location.href).toString()
-    } catch {
-      return raw
-    }
-  }
-
-  private readMethod(xhr: XMLHttpRequest): string {
-    const extended = xhr as XMLHttpRequest & { _capulturaMethod?: string }
-    return extended._capulturaMethod ?? 'GET'
-  }
-
-  private isForbiddenContentType(contentType?: string): boolean {
-    if (!contentType) {
-      return false
-    }
-
-    return FORBIDDEN_RESPONSE_CONTENT_TYPES.some((regex) => regex.test(contentType))
   }
 }
 

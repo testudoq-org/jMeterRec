@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "requests": [
+    {
+      "id": "available-1",
+      "timestamp": "2024-01-01T00:00:00.000Z",
+      "method": "GET",
+      "url": "https://example.com/api/data",
+      "headers": {
+        "accept": "application/json"
+      },
+      "queryParams": {},
+      "statusCode": 200,
+      "responseHeaders": {
+        "content-type": "application/json; charset=utf-8"
+      },
+      "responseBody": "{\"key\":\"value\"}",
+      "responseBodySize": 16,
+      "responseBodyTruncated": false,
+      "responseBodyContentType": "application/json",
+      "responseBodyMeta": {
+        "available": "available",
+        "encoding": "utf8",
+        "mimeType": "application/json",
+        "size": 16,
+        "truncated": false,
+        "source": "content-fetch"
+      },
+      "captureSources": ["webRequest", "content-fetch"],
+      "diagnostics": []
+    }
+  ]
+}

@@ -49,47 +49,62 @@ const completed = (overrides: Partial<CapturedRequest> = {}): CapturedRequest =>
 })
 
 describe('ResponseBodyMatchingService', () => {
-  it('matches a pending request by tab, frame, method, and url', () => {
+  it('returns match for a pending request by tab, frame, method, and url', () => {
     const service = new ResponseBodyMatchingService()
-    const match = service.findMatch(buildPayload(), [pending()], [])
+    const outcome = service.findMatch(buildPayload(), [pending()], [])
 
-    expect(match).toEqual({ requestId: 'pending-1', pending: true })
+    expect(outcome.kind).toBe('match')
+    if (outcome.kind === 'match') {
+      expect(outcome.match.requestId).toBe('pending-1')
+      expect(outcome.match.pending).toBe(true)
+    }
   })
 
-  it('matches a completed request when no pending candidate exists', () => {
+  it('returns match for a completed request when no pending candidate exists', () => {
     const service = new ResponseBodyMatchingService()
-    const match = service.findMatch(buildPayload(), [], [completed()])
+    const outcome = service.findMatch(buildPayload(), [], [completed()])
 
-    expect(match).toEqual({ requestId: 'completed-1', pending: false })
+    expect(outcome.kind).toBe('match')
+    if (outcome.kind === 'match') {
+      expect(outcome.match.requestId).toBe('completed-1')
+      expect(outcome.match.pending).toBe(false)
+    }
   })
 
-  it('rejects when status code does not align', () => {
+  it('returns zero when status code does not align', () => {
     const service = new ResponseBodyMatchingService()
-    const match = service.findMatch(
+    const outcome = service.findMatch(
       buildPayload({ status: 200 }),
       [pending({ statusCode: 404 })],
       []
     )
 
-    expect(match).toBeUndefined()
+    expect(outcome.kind).toBe('zero')
   })
 
-  it('returns undefined when more than one candidate matches', () => {
+  it('returns ambiguous when more than one candidate matches', () => {
     const service = new ResponseBodyMatchingService()
-    const match = service.findMatch(buildPayload(), [pending()], [completed()])
+    const outcome = service.findMatch(buildPayload(), [pending()], [completed()])
 
-    expect(match).toBeUndefined()
+    expect(outcome.kind).toBe('ambiguous')
+    if (outcome.kind === 'ambiguous') {
+      expect(outcome.candidateCount).toBe(2)
+      expect(outcome.requestIds).toEqual(['pending-1', 'completed-1'])
+    }
   })
 
-  it('rejects expired completed requests after maxAgeMs', () => {
+  it('returns expired for completed requests older than maxAgeMs', () => {
     const service = new ResponseBodyMatchingService({ maxAgeMs: 1000 })
-    const match = service.findMatch(
+    const outcome = service.findMatch(
       buildPayload(),
       [],
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       [completed({ startedAtMs: Date.now() - 2000 } as any)]
     )
 
-    expect(match).toBeUndefined()
+    expect(outcome.kind).toBe('expired')
+    if (outcome.kind === 'expired') {
+      expect(outcome.requestId).toBe('completed-1')
+    }
   })
 })

@@ -25,6 +25,25 @@ const server = createServer((request, response) => {
     return
   }
 
+  if (url.pathname === '/api/fetch') {
+    writeJson(response, { token: 'synthetic-fetch-token', user: 'tester' })
+    return
+  }
+
+  if (url.pathname === '/binary-70k') {
+    const body = Buffer.alloc(70 * 1024)
+    for (let i = 0; i < body.length; i += 1) {
+      body[i] = i % 256
+    }
+    response.writeHead(200, {
+      'content-type': 'application/octet-stream',
+      'content-length': String(body.length),
+      'cache-control': 'no-store',
+    })
+    response.end(body)
+    return
+  }
+
   if (url.pathname === '/favicon.ico') {
     writeJson(response, { error: 'not found' }, 404)
     return
@@ -49,7 +68,6 @@ server.listen(port, '127.0.0.1', () => {
 
 function writeJson(response, payload, statusCode = 200) {
   const body = JSON.stringify(payload)
-
   response.writeHead(statusCode, {
     'content-type': 'application/json; charset=utf-8',
     'cache-control': 'no-store',

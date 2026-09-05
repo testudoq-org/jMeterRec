@@ -214,6 +214,7 @@ export class TrafficCaptureService {
       }
 
       await this.removePending(id)
+      request.captureSources = ['webRequest']
       this.addCompletedRequest(request)
     } finally {
       this.finalizing.delete(id)
@@ -223,6 +224,13 @@ export class TrafficCaptureService {
   private addCompletedRequest(request: PendingRequest): void {
     if (this.isForbiddenUrl(request.url)) {
       return
+    }
+
+    if (request.responseBodyMeta === undefined) {
+      request.responseBodyMeta = {
+        available: 'not-requested',
+        source: 'webRequest',
+      }
     }
 
     this.state.addRequest(request)
@@ -256,6 +264,7 @@ export class TrafficCaptureService {
       }
 
       await this.removePending(id)
+      request.captureSources = ['webRequest']
       this.addCompletedRequest(request)
     } finally {
       this.finalizing.delete(id)

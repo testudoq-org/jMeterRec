@@ -1,5 +1,3 @@
-import type { PendingRequest } from '../models/pending-web-request'
-import type { CapturedRequest } from '../models/captured-request'
 import type { ResponseBodyPayload } from '../messages'
 
 export interface ResponseBodyMatchingServiceOptions {
@@ -11,6 +9,12 @@ export interface ResponseBodyMatch {
   readonly pending: boolean
 }
 
+export type MatchOutcome =
+  | { readonly kind: 'match'; readonly match: ResponseBodyMatch }
+  | { readonly kind: 'zero' }
+  | { readonly kind: 'ambiguous'; readonly candidateCount: number; readonly requestIds: string[] }
+  | { readonly kind: 'expired'; readonly requestId: string }
+
 export class ResponseBodyMatchingService {
   private readonly maxAgeMs: number
 
@@ -19,32 +23,39 @@ export class ResponseBodyMatchingService {
   }
 
   findMatch(
-    payload: ResponseBodyPayload,
-    pending: readonly PendingRequest[],
-    completed: readonly CapturedRequest[]
-  ): ResponseBodyMatch | undefined {
+    payload: import('../messages').ResponseBodyPayload,
+    pending: readonly import('../models/pending-web-request').PendingRequest[],
+    completed: readonly import('../models/captured-request').CapturedRequest[]
+  ): MatchOutcome {
     const pendingCandidates = this.collectCandidates(payload, pending)
     const completedCandidates = this.collectCandidates(payload, completed)
     const candidates = [...pendingCandidates, ...completedCandidates]
 
     if (candidates.length === 0) {
-      return undefined
+      return { kind: 'zero' }
     }
 
     if (candidates.length > 1) {
-      return undefined
+      return {
+        kind: 'ambiguous',
+        candidateCount: candidates.length,
+        requestIds: candidates.map((candidate) => candidate.id),
+      }
     }
 
     const candidate = candidates[0]!
     const now = Date.now()
 
     if (this.isExpired(candidate, now)) {
-      return undefined
+      return { kind: 'expired', requestId: candidate.id }
     }
 
     return {
-      requestId: candidate.id,
-      pending: pending.some((request) => request.id === candidate.id),
+      kind: 'match',
+      match: {
+        requestId: candidate.id,
+        pending: pending.some((request) => request.id === candidate.id),
+      },
     }
   }
 
@@ -75,7 +86,7 @@ export class ResponseBodyMatchingService {
     payload: ResponseBodyPayload,
     method: string
   ): boolean {
-    if (request.tabId !== payload.tabId) {
+    if (payload.tabId !== 0 && request.tabId !== payload.tabId) {
       return false
     }
 

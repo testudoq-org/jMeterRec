@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Capture Fetch Test</title>
+</head>
+<body>
+  <h1>Capture Fetch Test</h1>
+  <pre id="result">Loading...</pre>
+  <script>
+    fetch('/api/fetch')
+      .then((res) => res.json())
+      .then((data) => {
+        document.getElementById('result').textContent = JSON.stringify(data, null, 2)
+      })
+      .catch((err) => {
+        document.getElementById('result').textContent = 'Error: ' + err.message
+      })
+  </script>
+</body>
+</html>

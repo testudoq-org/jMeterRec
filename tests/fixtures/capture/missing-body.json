@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "requests": [
+    {
+      "id": "missing-body-1",
+      "timestamp": "2024-01-01T00:00:00.000Z",
+      "method": "GET",
+      "url": "https://example.com/api/empty",
+      "headers": {
+        "accept": "application/json"
+      },
+      "queryParams": {},
+      "statusCode": 204,
+      "responseHeaders": {
+        "content-type": "application/json; charset=utf-8"
+      },
+      "responseBodyMeta": {
+        "available": "unavailable",
+        "error": "Response body unavailable: no content",
+        "mimeType": "application/json",
+        "size": 0,
+        "source": "webRequest"
+      },
+      "captureSources": ["webRequest"],
+      "diagnostics": [
+        "Response body unavailable: no content for missing-body-1"
+      ]
+    }
+  ]
+}

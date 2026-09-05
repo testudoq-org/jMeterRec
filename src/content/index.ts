@@ -93,6 +93,8 @@ chrome.runtime.onMessage.addListener((message: unknown) => {
     return
   }
 
+  console.log('[Capitura] content script received message:', message.type)
+
   switch (message.type) {
     case 'ADD_TRANSACTION_POPUP_UI':
       updatePanel({
@@ -106,6 +108,7 @@ chrome.runtime.onMessage.addListener((message: unknown) => {
       removePanel()
       break
     case 'STATE_CHANGED':
+      ;(window as unknown as Record<string, unknown>).__capulturaStateChanged = true
       actionRecorder.applySnapshot(message.snapshot)
       updatePanel(message.snapshot)
       applyResponseBodyCaptureState(message.snapshot)
@@ -131,7 +134,7 @@ chrome.runtime
     }
   })
   .catch((err: unknown) => {
-    console.warn('Unable to read recorder state in content script.', err)
+    console.error('Unable to read recorder state in content script.', err)
   })
 
 function isStateResponse(
@@ -146,6 +149,10 @@ function isStateResponse(
 }
 
 async function applyResponseBodyCaptureState(snapshot: RecorderSnapshot): Promise<void> {
+  const marker = `capitura-capture-${snapshot.status}`
+  ;(document.documentElement.dataset as Record<string, string>).capituraMarker = marker
+  ;(window as unknown as Record<string, unknown>).__capituraApplyState = snapshot.status
+  console.log('[Capitura] applyResponseBodyCaptureState:', snapshot.status)
   const enabled = snapshot.status === 'recording' || snapshot.status === 'paused'
 
   if (!enabled) {
@@ -155,8 +162,10 @@ async function applyResponseBodyCaptureState(snapshot: RecorderSnapshot): Promis
 
   try {
     const stored = await chrome.storage.local.get({ captureResponseBody: false })
+    console.log('[Capitura] stored captureResponseBody:', stored.captureResponseBody)
     responseBodyCapture.setEnabled(stored.captureResponseBody === true)
-  } catch {
+  } catch (err) {
+    console.error('[Capitura] failed to read captureResponseBody:', err)
     responseBodyCapture.setEnabled(false)
   }
 }

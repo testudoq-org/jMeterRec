@@ -69,7 +69,24 @@ describe('RecorderState', () => {
     await second.load()
 
     expect(second.getSnapshot().status).toBe('recording')
-    expect(second.getRequests()).toEqual([request('one'), request('two')])
+    expect(second.getRequests()).toEqual([
+      expect.objectContaining({
+        id: 'one',
+        method: 'GET',
+        url: 'https://example.com/one',
+        responseBodyMeta: { available: 'not-requested' },
+        captureSources: [],
+        diagnostics: [],
+      }),
+      expect.objectContaining({
+        id: 'two',
+        method: 'GET',
+        url: 'https://example.com/two',
+        responseBodyMeta: { available: 'not-requested' },
+        captureSources: [],
+        diagnostics: [],
+      }),
+    ])
   })
 
   it('does not add requests while paused or stopped', () => {
@@ -154,6 +171,107 @@ describe('RecorderState', () => {
 
     expect(state.getActions()).toEqual([])
     expect(set).toHaveBeenCalledWith(expect.objectContaining({ actions: [] }))
+  })
+
+  it('persists schemaVersion 1 on save and restores it on load', async () => {
+    const storage = new MemoryStorage()
+    const set = vi.fn(async (values: Record<string, unknown>) => {
+      await storage.set(values)
+    })
+    const state = new RecorderState(storage, set)
+
+    await state.load()
+    state.start('Schema Plan')
+    await state.save()
+
+    const raw = await storage.get()
+    expect(raw.schemaVersion).toBe(1)
+
+    const reloaded = new RecorderState(storage)
+    await reloaded.load()
+
+    expect(reloaded.getSnapshot().status).toBe('recording')
+  })
+
+  it('exposes recording-level diagnostics capped at 20 entries', async () => {
+    const storage = new MemoryStorage()
+    const state = new RecorderState(storage)
+
+    await state.load()
+
+    for (let i = 0; i < 25; i += 1) {
+      state.appendDiagnostic(`diag-${i}`)
+    }
+
+    expect(state.getDiagnostics()).toHaveLength(20)
+    expect(state.getDiagnostics()[0]).toBe('diag-5')
+  })
+
+  it('masks secret header values in persisted diagnostics', async () => {
+    const storage = new MemoryStorage()
+    const set = vi.fn(async (values: Record<string, unknown>) => {
+      await storage.set(values)
+    })
+    const state = new RecorderState(storage, set)
+
+    await state.load()
+    state.appendDiagnostic('Authorization: Bearer ey-secret')
+    await state.save()
+
+    const raw = await storage.get()
+    expect((raw.diagnostics as string[])[0]).toBe('Authorization: ***')
+  })
+
+  it('migrates legacy recordings on load and populates default meta', async () => {
+    const storage = new MemoryStorage()
+    await storage.set({
+      status: 'idle',
+      recording: false,
+      requests: [
+        {
+          id: '1',
+          timestamp: '2024-01-01T00:00:00.000Z',
+          method: 'GET',
+          url: 'https://example.com',
+          headers: {},
+          queryParams: {},
+        },
+      ],
+    })
+
+    const state = new RecorderState(storage)
+    await state.load()
+
+    const requests = state.getRequests()
+    expect(requests).toHaveLength(1)
+    expect(requests[0]!.responseBodyMeta).toEqual({ available: 'not-requested' })
+    expect(requests[0]!.captureSources).toEqual([])
+    expect(requests[0]!.diagnostics).toEqual([])
+  })
+
+  it('surfaces newer-than-known schema warnings in diagnostics on load', async () => {
+    const storage = new MemoryStorage()
+    await storage.set({
+      status: 'idle',
+      recording: false,
+      schemaVersion: 999,
+      requests: [
+        {
+          id: '1',
+          timestamp: '2024-01-01T00:00:00.000Z',
+          method: 'GET',
+          url: 'https://example.com',
+          headers: {},
+          queryParams: {},
+        },
+      ],
+    })
+
+    const state = new RecorderState(storage)
+    await state.load()
+
+    expect(state.getDiagnostics()).toHaveLength(1)
+    expect(state.getDiagnostics()[0]).toContain('newer than supported')
   })
 
   // Hardening audit tests: state transition edge cases

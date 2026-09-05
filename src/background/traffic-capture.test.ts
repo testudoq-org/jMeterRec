@@ -284,6 +284,7 @@ describe('TrafficCaptureService P2 persistence', () => {
         method: 'POST',
         error: 'net::ERR_FAILED',
         completedAt: '2023-11-14T22:13:20.200Z',
+        captureSources: ['webRequest'],
       })
     )
     await expect(storage.get(['pendingWebRequests'])).resolves.toEqual({

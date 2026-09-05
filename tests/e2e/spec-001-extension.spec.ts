@@ -2,6 +2,7 @@ import { chromium, expect, test, type BrowserContext, type Page } from '@playwri
 import { join } from 'node:path'
 
 const extensionPath = join(process.cwd(), 'dist')
+const E2E_BASE = `http://127.0.0.1:${Number(process.env.E2E_PORT ?? 3144)}`
 
 test.describe('Recorder UI state lifecycle', () => {
   test('updates status text and button states through recording lifecycle', async () => {
@@ -230,6 +231,210 @@ test.describe('Recorder UI state lifecycle', () => {
   })
 })
 
+test.describe('Capture scenarios', () => {
+  test('captures a same-origin fetch with available response body', async () => {
+    const context = await launchExtensionContext()
+    const extensionId = await extensionIdFromContext(context)
+    const popup = await context.newPage()
+
+    await popup.setViewportSize({ width: 420, height: 760 })
+    await popup.goto(`chrome-extension://${extensionId}/popup/popup.html`)
+
+    // Enable response body capture for this scenario
+    await popup.evaluate(async () => {
+      await chrome.storage.local.set({ captureResponseBody: true })
+    })
+
+    // Navigate to the page first so the content script can load before recording starts
+    const page = await context.newPage()
+    await page.goto(`${E2E_BASE}/capture-fetch.html`)
+    await page.waitForTimeout(1000)
+
+    // Start recording
+    await popup.locator('#start').click()
+    await expect(popup.locator('#status')).toContainText('Recording')
+
+    // Give the content script time to enable capture after STATE_CHANGED
+    await page.waitForTimeout(1000)
+
+    // Trigger a same-origin fetch
+    await page.evaluate(() => {
+      return fetch('/api/fetch')
+        .then((r) => r.json())
+        .then((data) => {
+          const result = document.getElementById('result')
+          if (result) result.textContent = data.token
+        })
+    })
+
+    // Wait for fetch to complete and result to render
+    await expect(page.locator('#result')).toContainText('synthetic-fetch-token', { timeout: 15000 })
+
+    // Small grace period for content-script capture to reach the background
+    await page.waitForTimeout(2000)
+
+    // Stop recording
+    await popup.locator('#stop').click()
+    await expect(popup.locator('#status')).toContainText('Please start recording')
+
+    // Allow background to finalize any in-flight response body captures
+    await page.waitForTimeout(2000)
+
+    // Read captured requests from the extension popup context
+    const requests = await getRequestsFromPage(popup, extensionId)
+    const fetchRequest = requests.find(
+      (r: Record<string, unknown>) => r.url === `${E2E_BASE}/api/fetch` && r.method === 'GET'
+    )
+
+    expect(fetchRequest).toBeDefined()
+    const meta = fetchRequest?.responseBodyMeta as Record<string, unknown> | undefined
+    expect(meta?.available).toBe('available')
+    expect(typeof meta?.size).toBe('number')
+    expect(meta?.size).toBeGreaterThan(0)
+
+    await context.close()
+  })
+
+  test('captures HTML navigation with blocked response body', async () => {
+    const context = await launchExtensionContext()
+    const extensionId = await extensionIdFromContext(context)
+    const popup = await context.newPage()
+
+    await popup.setViewportSize({ width: 420, height: 760 })
+    await popup.goto(`chrome-extension://${extensionId}/popup/popup.html`)
+
+    // Enable response body capture for this scenario
+    await popup.evaluate(async () => {
+      await chrome.storage.local.set({ captureResponseBody: true })
+    })
+
+    // Navigate to the page first so the content script can load before recording starts
+    const page = await context.newPage()
+    await page.goto(`${E2E_BASE}/capture-html.html`)
+    await page.waitForTimeout(1000)
+
+    // Start recording
+    await popup.locator('#start').click()
+    await expect(popup.locator('#status')).toContainText('Recording')
+
+    // Give the content script time to enable capture after STATE_CHANGED
+    await page.waitForTimeout(1000)
+
+    // Re-trigger navigation to capture the HTML request while recording
+    await page.goto(`${E2E_BASE}/capture-html.html`)
+    await page.waitForTimeout(2000)
+
+    // Stop recording
+    await popup.locator('#stop').click()
+    await expect(popup.locator('#status')).toContainText('Please start recording')
+
+    // Allow background to finalize any in-flight response body captures
+    await page.waitForTimeout(500)
+
+    // Verify the HTML request was captured and body is blocked/unavailable
+    const requests = await getRequestsFromPage(popup, extensionId)
+    const htmlRequest = requests.find(
+      (r: Record<string, unknown>) => r.url === `${E2E_BASE}/capture-html.html` && r.method === 'GET'
+    )
+
+    expect(htmlRequest).toBeDefined()
+    const meta = htmlRequest?.responseBodyMeta as Record<string, unknown> | undefined
+    expect(meta?.available === 'blocked' || meta?.available === 'not-requested').toBe(true)
+
+    await context.close()
+  })
+
+  test('captures 70 KB binary request without corrupting JMX path', async () => {
+    const context = await launchExtensionContext()
+    const extensionId = await extensionIdFromContext(context)
+    const popup = await context.newPage()
+
+    await popup.setViewportSize({ width: 420, height: 760 })
+    await popup.goto(`chrome-extension://${extensionId}/popup/popup.html`)
+
+    // Enable response body capture for this scenario
+    await popup.evaluate(async () => {
+      await chrome.storage.local.set({ captureResponseBody: true })
+    })
+
+    // Navigate to the page first so the content script can load before recording starts
+    const page = await context.newPage()
+    await page.goto(`${E2E_BASE}/capture-binary.html`)
+    await page.waitForTimeout(1000)
+
+    // Start recording
+    await popup.locator('#start').click()
+    await expect(popup.locator('#status')).toContainText('Recording')
+
+    // Give the content script time to enable capture after STATE_CHANGED
+    await page.waitForTimeout(1000)
+
+    // Trigger the binary fetch manually while recording is active
+    await page.evaluate(() => {
+      return fetch('/binary-70k')
+        .then((r) => r.arrayBuffer())
+        .then((buf) => {
+          const result = document.getElementById('result')
+          if (result) result.textContent = `Binary size: ${buf.byteLength}`
+        })
+    })
+
+    // Wait for binary fetch to complete
+    await expect(page.locator('#result')).toContainText('Binary size: 71680', { timeout: 15000 })
+
+    // Grace period for content-script capture to finish
+    await page.waitForTimeout(2000)
+
+    // Stop recording
+    await popup.locator('#stop').click()
+    await expect(popup.locator('#status')).toContainText('Please start recording')
+
+    // Allow background to finalize any in-flight response body captures
+    await page.waitForTimeout(500)
+
+    // Verify the binary request was captured and marked unavailable due to cap
+    const requests = await getRequestsFromPage(popup, extensionId)
+    const binaryRequest = requests.find(
+      (r: Record<string, unknown>) => r.url === `${E2E_BASE}/binary-70k` && r.method === 'GET'
+    )
+
+    expect(binaryRequest).toBeDefined()
+    const meta = binaryRequest?.responseBodyMeta as Record<string, unknown> | undefined
+    expect(meta?.available).toBe('unavailable')
+    expect(typeof meta?.error).toBe('string')
+    expect(meta?.error as string).toContain('binary payload exceeds')
+
+    await context.close()
+  })
+})
+
+async function getRequestsFromPage(page: Page, extensionId: string): Promise<unknown[]> {
+  return page.evaluate(
+    (extId: string) => {
+      return new Promise<unknown[]>((resolve, reject) => {
+        chrome.runtime.sendMessage(
+          extId,
+          { type: 'GET_REQUESTS' },
+          (response: unknown) => {
+            if (chrome.runtime.lastError) {
+              reject(new Error(chrome.runtime.lastError.message))
+              return
+            }
+
+            const record = response as { success?: boolean; requests?: unknown[] } | undefined
+            if (record?.success && Array.isArray(record.requests)) {
+              resolve(record.requests)
+            } else {
+              resolve([])
+            }
+          }
+        )
+      })
+    },
+    extensionId
+  )
+}
+
 async function launchExtensionContext(): Promise<BrowserContext> {
   return chromium.launchPersistentContext('', {
     headless: false,
@@ -253,4 +458,22 @@ async function extensionIdFromContext(context: BrowserContext): Promise<string> 
   }
 
   return match[1]!
+}
+
+async function pollForRequest<T>(
+  page: Page,
+  extensionId: string,
+  predicate: (request: Record<string, unknown>) => boolean,
+  timeout = 10000
+): Promise<T | undefined> {
+  const start = Date.now()
+  while (Date.now() - start < timeout) {
+    const requests = await getRequestsFromPage(page, extensionId)
+    const match = requests.find((r) => predicate(r as Record<string, unknown>))
+    if (match !== undefined) {
+      return match as T
+    }
+    await page.waitForTimeout(500)
+  }
+  return undefined
 }

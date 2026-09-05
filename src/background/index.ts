@@ -7,9 +7,14 @@ service.initialize().catch((err: unknown) => {
   console.error('Failed to initialize Capultura.', err)
 })
 
-chrome.runtime.onMessage.addListener((message: BackgroundRequest, _sender, sendResponse) => {
+console.log(
+  '[Capitura] background loaded, scripting available:',
+  typeof (chrome as { scripting?: unknown }).scripting
+)
+
+chrome.runtime.onMessage.addListener((message: BackgroundRequest, sender, sendResponse) => {
   void service
-    .handleMessage(message)
+    .handleMessage(message, sender)
     .then((response: BackgroundResponse) => sendResponse(response))
     .catch((err: unknown) => {
       sendResponse({

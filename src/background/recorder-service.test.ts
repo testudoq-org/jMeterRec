@@ -579,7 +579,14 @@ describe('RecorderService', () => {
     // Verify state recovered correctly after restart
     expect(recoveredState.getSnapshot().status).toBe('recording')
     expect(recoveredState.getSnapshot().planName).toBe('Restart Recovery Plan')
-    expect(recoveredState.getRequests()).toEqual(storedRequests)
+    expect(recoveredState.getRequests()).toEqual(
+      storedRequests.map((req) => ({
+        ...req,
+        responseBodyMeta: { available: 'not-requested' },
+        captureSources: [],
+        diagnostics: [],
+      }))
+    )
     expect(recoveredState.isCapturing()).toBe(true)
   })
 

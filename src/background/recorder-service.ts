@@ -14,12 +14,16 @@ import type { HAR } from '../jmx/har-to-jmx'
 import { PendingWebRequestStore } from './pending-web-request-store'
 import { ResponseBodyMatchingService } from './response-body-matching-service'
 import { applyCapturedResponseBody } from './traffic-normalizer'
+import { toExportView } from '../utils/diagnostics'
 import type { PendingRequest } from './traffic-normalizer'
 import type { CapturedRequest, PlanMeta, PlaywrightStep } from '../models/captured-request'
 import { RecorderState } from './recorder-state'
 import { TrafficCaptureService } from './traffic-capture'
 
-type MessageHandler = (message: BackgroundRequest) => Promise<BackgroundResponse>
+type MessageHandler = (
+  message: BackgroundRequest,
+  sender?: chrome.runtime.MessageSender
+) => Promise<BackgroundResponse>
 type ContentRecorderMessage =
   | { type: 'START_RECORDING' }
   | { type: 'STOP_RECORDING' }
@@ -85,6 +89,12 @@ export class RecorderService {
       RESPONSE_BODY_CAPTURED: (message) =>
         this.handleResponseBodyCapturedMessage(
           message as Extract<BackgroundRequest, { type: 'RESPONSE_BODY_CAPTURED' }>
+        ),
+      // PAGE CONTEXT INJECTION: Inject capture script into page context via scripting API
+      INJECT_PAGE_CONTEXT_SCRIPT: (message, sender) =>
+        this.handleInjectPageContextScriptMessage(
+          message as Extract<BackgroundRequest, { type: 'INJECT_PAGE_CONTEXT_SCRIPT' }>,
+          sender
         ),
       // EXTERNAL HAR IMPORT: Handler for importing HAR files and converting to JMX
       IMPORT_HAR: (message) =>
@@ -206,7 +216,10 @@ export class RecorderService {
     return snapshotPlanName === 'Untitled Plan' ? options.name : snapshotPlanName
   }
 
-  async handleMessage(message: BackgroundRequest): Promise<BackgroundResponse> {
+  async handleMessage(
+    message: BackgroundRequest,
+    sender?: chrome.runtime.MessageSender
+  ): Promise<BackgroundResponse> {
     try {
       const handler = this.handlers[message.type]
 
@@ -214,7 +227,7 @@ export class RecorderService {
         return unreachable(message as never)
       }
 
-      return handler(message)
+      return handler(message, sender)
     } catch (err) {
       return { success: false, error: toErrorMessage(err) }
     }
@@ -395,7 +408,8 @@ export class RecorderService {
       },
     }
 
-    const har = buildHar(requests)
+    const exportRequests = requests.map(toExportView)
+    const har = buildHar(exportRequests)
     const jmx = convertHarToJmx(
       har,
       meta,
@@ -444,25 +458,246 @@ export class RecorderService {
     const payload = message.payload
     const pending = this.trafficCapture.getPendingRequests()
     const completed = this.state.getRequests()
-    const match = this.responseBodyMatchingService.findMatch(payload, pending, completed)
+    const outcome = this.responseBodyMatchingService.findMatch(payload, pending, completed)
 
-    if (match === undefined) {
-      return { success: true }
-    }
+    switch (outcome.kind) {
+      case 'zero':
+        this.state.appendDiagnostic(
+          `Response body unavailable: no matching candidate for ${payload.requestId}`
+        )
+        break
+      case 'ambiguous': {
+        this.state.appendDiagnostic(
+          `Response body unavailable: ambiguous match (${outcome.candidateCount} candidates) for ${payload.requestId}`
+        )
 
-    const target = this.findRequestById(match.requestId, pending, completed)
+        for (const requestId of outcome.requestIds) {
+          const target = this.findRequestById(requestId, pending, completed)
 
-    if (target === undefined) {
-      return { success: true }
-    }
+          if (target !== undefined && !target.responseBodyMeta) {
+            target.responseBodyMeta = {
+              available: 'unavailable',
+              source: payload.source,
+              error: 'Ambiguous match.',
+              mimeType: payload.contentType,
+              size: 0,
+            }
+          }
+        }
 
-    applyCapturedResponseBody(target, payload)
+        break
+      }
+      case 'expired': {
+        this.state.appendDiagnostic(
+          `Response body unavailable: match expired for ${payload.requestId}`
+        )
 
-    if (!match.pending) {
-      this.state.save().catch(() => undefined)
+        const target = this.findRequestById(outcome.requestId, pending, completed)
+
+        if (target !== undefined && !target.responseBodyMeta) {
+          target.responseBodyMeta = {
+            available: 'unavailable',
+            source: payload.source,
+            error: 'Match expired.',
+            mimeType: payload.contentType,
+            size: 0,
+          }
+
+          if (!pending.some((item) => item.id === outcome.requestId)) {
+            await this.state.save()
+          }
+        }
+
+        break
+      }
+      case 'match': {
+        const target = this.findRequestById(outcome.match.requestId, pending, completed)
+
+        if (target !== undefined) {
+          applyCapturedResponseBody(target, payload)
+
+          if (payload.source) {
+            target.captureSources = ['webRequest', payload.source]
+          }
+
+          if (!outcome.match.pending) {
+            await this.state.save()
+          }
+        }
+        break
+      }
     }
 
     return { success: true }
+  }
+
+  private async handleInjectPageContextScriptMessage(
+    _message: Extract<BackgroundRequest, { type: 'INJECT_PAGE_CONTEXT_SCRIPT' }>,
+    sender?: chrome.runtime.MessageSender
+  ): Promise<BackgroundResponse> {
+    const tabId = sender?.tab?.id
+
+    if (typeof tabId !== 'number') {
+      return { success: true, injected: false }
+    }
+
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        world: 'MAIN',
+        func: () => {
+          ;(window as unknown as Record<string, unknown>).__capituraTestInjected = true
+        },
+      })
+
+      // If the test injection worked, inject the actual capture script
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        world: 'MAIN',
+        args: [tabId],
+        func: (injectedTabId: number) => {
+          if (
+            (window as unknown as Record<string, unknown>).__capituraPageContextInjected === true
+          ) {
+            return
+          }
+          ;(window as unknown as Record<string, unknown>).__capituraPageContextInjected = true
+          ;(window as unknown as Record<string, unknown>).__capituraTabId = injectedTabId
+          ;(document.documentElement as HTMLElement).dataset.capituraTabId = String(injectedTabId)
+
+          const MESSAGE_TYPE = '__capitura_capture'
+
+          function sendCapture(data: unknown) {
+            try {
+              window.postMessage({ type: MESSAGE_TYPE, payload: data }, '*')
+            } catch {
+              // Ignore postMessage failures.
+            }
+          }
+
+          function isForbiddenContentType(contentType: string | null | undefined): boolean {
+            if (!contentType) {
+              return false
+            }
+            const patterns = ['text/html', 'application/xhtml+xml'] as const
+            const lower = contentType.toLowerCase()
+            return patterns.some((prefix) => lower.startsWith(prefix))
+          }
+
+          function readBody(
+            response: Response,
+            maxBytes: number
+          ): Promise<{
+            body: string | undefined
+            error: string | undefined
+            truncated: boolean
+            size: number
+          }> {
+            maxBytes = maxBytes || 65536
+            return response
+              .text()
+              .then((text: string) => {
+                if (text.length > maxBytes) {
+                  return {
+                    body: text.slice(0, maxBytes),
+                    error: undefined,
+                    truncated: true,
+                    size: text.length,
+                  }
+                }
+                return { body: text, error: undefined, truncated: false, size: text.length }
+              })
+              .catch((err: unknown) => {
+                return {
+                  body: undefined,
+                  error: err instanceof Error ? err.message : 'Unable to read response body.',
+                  truncated: false,
+                  size: 0,
+                }
+              })
+          }
+
+          const nativeFetch = window.fetch.bind(window)
+          window.fetch = async function (input: RequestInfo | URL, init?: RequestInit) {
+            const response = await nativeFetch(input, init)
+            let method = 'GET'
+            if (input instanceof Request) {
+              method = input.method || method
+            } else if (init?.method) {
+              method = init.method
+            }
+            if (isForbiddenContentType(response.headers.get('content-type'))) {
+              sendCapture({
+                url: response.url,
+                method,
+                status: response.status,
+                contentType: response.headers.get('content-type'),
+                body: undefined,
+                error: 'Forbidden content type.',
+                source: 'content-fetch',
+              })
+              return response
+            }
+            const result = await readBody(response.clone(), 65536)
+            sendCapture({
+              url: response.url,
+              method,
+              status: response.status,
+              contentType: response.headers.get('content-type'),
+              body: result.body,
+              error: result.error,
+              truncated: result.truncated,
+              size: result.size,
+              source: 'content-fetch',
+            })
+            return response
+          }
+
+          const nativeSend = XMLHttpRequest.prototype.send
+          XMLHttpRequest.prototype.send = function (
+            this: XMLHttpRequest,
+            body: Document | XMLHttpRequestBodyInit | null | undefined
+          ) {
+            const xhr = this as XMLHttpRequest & { _capituraMethod?: string }
+            const method = xhr._capituraMethod || 'GET'
+            xhr.addEventListener(
+              'load',
+              function () {
+                const eventXhr = this as XMLHttpRequest
+                if (isForbiddenContentType(eventXhr.getResponseHeader('content-type'))) {
+                  sendCapture({
+                    url: eventXhr.responseURL,
+                    method,
+                    status: eventXhr.status,
+                    contentType: eventXhr.getResponseHeader('content-type'),
+                    body: undefined,
+                    error: 'Forbidden content type.',
+                    source: 'content-xhr',
+                  })
+                  return
+                }
+                const text = typeof eventXhr.responseText === 'string' ? eventXhr.responseText : ''
+                sendCapture({
+                  url: eventXhr.responseURL,
+                  method,
+                  status: eventXhr.status,
+                  contentType: eventXhr.getResponseHeader('content-type'),
+                  body: text,
+                  source: 'content-xhr',
+                })
+              },
+              { once: true }
+            )
+            return nativeSend.call(this, body)
+          }
+
+          sendCapture({ injected: true })
+        },
+      })
+      return { success: true, injected: true, tabId }
+    } catch {
+      return { success: true, injected: false }
+    }
   }
 
   private findRequestById(
@@ -489,7 +724,8 @@ export class RecorderService {
       baseUrl: message.baseUrl,
     }
 
-    const httpSteps: PlaywrightStep[] = this.state.getRequests().map((req) => ({
+    const exportRequests = this.state.getRequests().map(toExportView)
+    const httpSteps: PlaywrightStep[] = exportRequests.map((req) => ({
       ...req,
       stepType: 'http' as const,
     }))
