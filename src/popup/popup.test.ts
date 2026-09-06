@@ -153,7 +153,7 @@ function buildPopupHtml(): string {
           <div id="importHarDomains"></div>
           <div id="importHarDomainStatus"></div>
           <div id="importHarDomainError"></div>
-          <button id="convertHarToJmx"></button>
+          <button id="convertHarToJmx" class="secondary" disabled type="button"></button>
         </fieldset>
       </div>
       <!-- JMX VALIDATION -->
@@ -171,6 +171,12 @@ function buildPopupHtml(): string {
       <div id="transactionList"></div>
       <button id="openDetachedInspector"></button>
       <select id="themeMode"><option value="light">light</option><option value="dark">dark</option></select>
+      <section id="analysis-panel" hidden>
+        <h2></h2>
+        <button id="runAnalysis" type="button"></button>
+        <p id="analysisSummary"></p>
+        <div id="analysisList"></div>
+      </section>
       <section class="advanced-options">
         <div class="advanced-options__header">
           <h2 id="advancedOptionsTitle"></h2>
@@ -222,7 +228,8 @@ async function loadPopupModule() {
   chromeStub.storage.local.get.mockClear()
   chromeStub.storage.local.set.mockClear()
 
-  const jsdomWindow = new JSDOM(buildPopupHtml()).window as unknown as Window & {
+  const jsdomWindow = new JSDOM(buildPopupHtml(), { url: 'http://localhost/' })
+    .window as unknown as Window & {
     DOMParser: new () => unknown
   }
   vi.stubGlobal('document', jsdomWindow.document)
@@ -1277,5 +1284,260 @@ describe('popup JMX validation', () => {
       expect(resultEl.textContent).toContain('Failed')
       expect(resultEl.textContent).toContain('zero-threads')
     })
+  })
+})
+
+// ANALYSIS PANEL: Tests for analysis functionality
+vi.mock('../analysis/run-analysis', () => ({
+  runAnalysis: vi.fn(() => ({
+    recordingVersion: 1,
+    recordingId: 'test-recording',
+    candidates: [
+      {
+        id: 'candidate-1',
+        value: 'masked-token',
+        sourceExchangeId: 'req-1',
+        sourceLocation: 'response.body.json:$.token',
+        consumerExchangeIds: ['req-2'],
+        consumerLocations: ['POST https://example.com/api'],
+        candidateType: 'authorization',
+        variableName: 'token',
+        confidence: 0.8,
+        reasons: ['Producer body available', '1 consumer(s)'],
+        proposedExtractor: {
+          kind: 'jsonpath',
+          expression: '$.token',
+          matchNo: 1,
+          defaultValue: 'NOT_FOUND',
+          variableName: 'token',
+        },
+        warnings: [],
+        scope: { producerIndex: 0, consumerIndices: [1] },
+      },
+    ],
+    rejectedNoise: [],
+    diagnostics: [],
+  })),
+}))
+
+describe('popup analysis panel', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime('2026-01-01T00:00:00.000Z')
+    chromeStub.storage.local.get.mockImplementation(async (keys: unknown) => {
+      storageGetCalls.push({ keys })
+      return {}
+    })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('shows analysis panel after recording stops', async () => {
+    await loadPopupModule()
+
+    const startBtn = document.getElementById('start') as HTMLButtonElement
+    const stopBtn = document.getElementById('stop') as HTMLButtonElement
+    const analysisPanel = document.getElementById('analysis-panel') as HTMLElement
+
+    startBtn.click()
+    await flushRuntimeResponse()
+
+    expect(analysisPanel.hidden).toBe(true)
+
+    stopBtn.click()
+    await flushRuntimeResponse()
+
+    expect(analysisPanel.hidden).toBe(false)
+  })
+
+  it('renders candidates after clicking Analyse', async () => {
+    await loadPopupModule()
+
+    const stopBtn = document.getElementById('stop') as HTMLButtonElement
+    const runAnalysisBtn = document.getElementById('runAnalysis') as HTMLButtonElement
+    const analysisList = document.getElementById('analysisList') as HTMLDivElement
+
+    stopBtn.click()
+    await flushRuntimeResponse()
+
+    runAnalysisBtn.click()
+    await flushRuntimeResponse()
+
+    expect(analysisList.children.length).toBeGreaterThan(0)
+  })
+
+  it('hides analysis panel when recording is cleared', async () => {
+    await loadPopupModule()
+
+    const startBtn = document.getElementById('start') as HTMLButtonElement
+    const stopBtn = document.getElementById('stop') as HTMLButtonElement
+    const clearBtn = document.getElementById('clear') as HTMLButtonElement
+    const analysisPanel = document.getElementById('analysis-panel') as HTMLElement
+
+    startBtn.click()
+    await flushRuntimeResponse()
+
+    stopBtn.click()
+    await flushRuntimeResponse()
+
+    expect(analysisPanel.hidden).toBe(false)
+
+    clearBtn.click()
+    await flushRuntimeResponse()
+
+    expect(analysisPanel.hidden).toBe(true)
+  })
+
+  it('accept button moves candidate to Accepted section', async () => {
+    await loadPopupModule()
+
+    const stopBtn = document.getElementById('stop') as HTMLButtonElement
+    const runAnalysisBtn = document.getElementById('runAnalysis') as HTMLButtonElement
+    const analysisList = document.getElementById('analysisList') as HTMLDivElement
+
+    stopBtn.click()
+    await flushRuntimeResponse()
+
+    runAnalysisBtn.click()
+    await flushRuntimeResponse()
+
+    // Find the Accept button (it's in the actions div alongside Reject)
+    const acceptBtn = Array.from(analysisList.querySelectorAll('button')).find(
+      (btn) => btn.textContent === 'Accept'
+    ) as HTMLButtonElement | undefined
+    expect(acceptBtn).toBeDefined()
+    acceptBtn!.click()
+    await flushRuntimeResponse()
+
+    // Candidate should have moved to Accepted section
+    const acceptedHeader = Array.from(
+      analysisList.querySelectorAll('.analysis-section-header')
+    ).find((h) => h.textContent === 'Accepted')
+    expect(acceptedHeader).toBeDefined()
+
+    // No more Accept button visible (candidate moved to Accepted section)
+    const remainingAcceptBtn = Array.from(analysisList.querySelectorAll('button')).find(
+      (btn) => btn.textContent === 'Accept'
+    )
+    expect(remainingAcceptBtn).toBeUndefined()
+  })
+
+  it('renaming variable updates the rendered name and stores edit', async () => {
+    await loadPopupModule()
+
+    const stopBtn = document.getElementById('stop') as HTMLButtonElement
+    const runAnalysisBtn = document.getElementById('runAnalysis') as HTMLButtonElement
+    const analysisList = document.getElementById('analysisList') as HTMLDivElement
+
+    stopBtn.click()
+    await flushRuntimeResponse()
+
+    runAnalysisBtn.click()
+    await flushRuntimeResponse()
+
+    // Find the analysis name element
+    const nameEl = analysisList.querySelector('.analysis-name') as HTMLElement
+    expect(nameEl).toBeDefined()
+    expect(nameEl.textContent).toBe('token')
+
+    // Double-click to start editing
+    const dblClickEvent = document.createEvent('MouseEvents')
+    dblClickEvent.initEvent('dblclick', true, false)
+    nameEl.dispatchEvent(dblClickEvent)
+    await flushRuntimeResponse()
+
+    // An input should now be inside the name element
+    const input = nameEl.querySelector('input.analysis-rename-input') as HTMLInputElement
+    expect(input).toBeDefined()
+    expect(input.value).toBe('token')
+
+    // Change the value
+    input.value = 'my_custom_token'
+
+    // Press Enter to save
+    const keydownEvent = document.createEvent('KeyboardEvent')
+    keydownEvent.initEvent('keydown', true, false)
+    Object.defineProperty(keydownEvent, 'key', { value: 'Enter' })
+    input.dispatchEvent(keydownEvent)
+    await flushRuntimeResponse()
+
+    // Name should be updated in the DOM
+    expect(nameEl.textContent).toBe('my_custom_token')
+  })
+
+  it('clear button resets acceptedIds and edits', async () => {
+    await loadPopupModule()
+
+    const startBtn = document.getElementById('start') as HTMLButtonElement
+    const stopBtn = document.getElementById('stop') as HTMLButtonElement
+    const runAnalysisBtn = document.getElementById('runAnalysis') as HTMLButtonElement
+    const clearBtn = document.getElementById('clear') as HTMLButtonElement
+    const analysisList = document.getElementById('analysisList') as HTMLDivElement
+
+    startBtn.click()
+    await flushRuntimeResponse()
+    stopBtn.click()
+    await flushRuntimeResponse()
+    await flushRuntimeResponse()
+    await flushRuntimeResponse()
+
+    runAnalysisBtn.click()
+    await flushRuntimeResponse()
+
+    // Accept a candidate
+    const acceptBtn = Array.from(analysisList.querySelectorAll('button')).find(
+      (btn) => btn.textContent === 'Accept'
+    ) as HTMLButtonElement | undefined
+    acceptBtn!.click()
+    await flushRuntimeResponse()
+
+    // Verify Accepted section exists
+    let acceptedHeader = Array.from(analysisList.querySelectorAll('.analysis-section-header')).find(
+      (h) => h.textContent === 'Accepted'
+    )
+    expect(acceptedHeader).toBeDefined()
+
+    // Verify clear button is enabled (hasStoppedRecording should be true after Stop)
+    if (clearBtn.disabled) {
+      throw new Error(`clearBtn is disabled before click`)
+    }
+    clearBtn.click()
+
+    // Give async send + then callback time to complete
+    await flushRuntimeResponse()
+    await flushRuntimeResponse()
+    await flushRuntimeResponse()
+    await flushRuntimeResponse()
+
+    // Debug: check if sendMessage was called
+    const resetCalls = chromeStub.runtime.sendMessage.mock.calls.filter(
+      (call) =>
+        typeof call[0] === 'object' &&
+        call[0] !== null &&
+        (call[0] as Record<string, unknown>).type === 'RESET'
+    )
+    if (resetCalls.length === 0) {
+      throw new Error('sendMessage was NOT called with RESET type after clear click')
+    }
+
+    // Debug: check if an error was shown
+    const errorEl = document.getElementById('error') as HTMLDivElement
+    if (errorEl.textContent) {
+      throw new Error(`Unexpected error after Clear: ${errorEl.textContent}`)
+    }
+
+    // Accepted section should be gone (no accepted IDs)
+    acceptedHeader = Array.from(analysisList.querySelectorAll('.analysis-section-header')).find(
+      (h) => h.textContent === 'Accepted'
+    )
+    expect(acceptedHeader).toBeUndefined()
+
+    // Candidates should be back in the main list
+    const candidatesHeader = Array.from(
+      analysisList.querySelectorAll('.analysis-section-header')
+    ).find((h) => h.textContent === 'Candidates')
+    expect(candidatesHeader).toBeDefined()
   })
 })

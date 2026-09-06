@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "exchanges": [
+    {
+      "id": "form-post-1",
+      "timestamp": "2024-01-01T00:00:00.000Z",
+      "method": "POST",
+      "url": "https://example.com/api/login",
+      "headers": {
+        "accept": "text/html",
+        "content-type": "application/x-www-form-urlencoded"
+      },
+      "queryParams": {},
+      "body": "username=test&password=secret&csrf_token=form-csrf-789",
+      "statusCode": 200,
+      "responseHeaders": {
+        "content-type": "text/html; charset=utf-8"
+      },
+      "responseBody": "<html><body>Welcome</body></html>",
+      "responseBodySize": 38,
+      "responseBodyTruncated": false,
+      "responseBodyContentType": "text/html",
+      "responseBodyMeta": {
+        "available": "available",
+        "encoding": "utf8",
+        "mimeType": "text/html",
+        "size": 38,
+        "truncated": false,
+        "source": "content-fetch"
+      },
+      "captureSources": ["webRequest", "content-fetch"],
+      "diagnostics": []
+    }
+  ]
+}
