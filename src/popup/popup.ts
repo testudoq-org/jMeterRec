@@ -26,6 +26,9 @@ import {
   clearValidationError,
   clearValidationResult,
 } from './jmx-validation'
+import { runAnalysis } from '../analysis/run-analysis'
+import type { AnalysisInput } from '../analysis/types'
+import type { ValueCandidate } from '../analysis/types'
 
 type ResponseWithSnapshot = Extract<BackgroundResponse, { snapshot?: RecorderSnapshot }>
 type TransactionRequest = CapturedRequest & { responseBody?: string }
@@ -83,6 +86,10 @@ const transactionSearch = requireElement<HTMLInputElement>('transactionSearch')
 const transactionList = requireElement<HTMLDivElement>('transactionList')
 const openDetachedInspector = requireElement<HTMLButtonElement>('openDetachedInspector')
 const themeMode = requireElement<HTMLSelectElement>('themeMode')
+const analysisPanel = requireElement<HTMLElement>('analysis-panel')
+const runAnalysisBtn = requireElement<HTMLButtonElement>('runAnalysis')
+const analysisSummary = requireElement<HTMLParagraphElement>('analysisSummary')
+const analysisList = requireElement<HTMLDivElement>('analysisList')
 
 // Advanced options elements
 const toggleAdvancedOptions = requireElement<HTMLButtonElement>('toggleAdvancedOptions')
@@ -124,6 +131,18 @@ let snapshot: RecorderSnapshot = {
 
 let actionSequence = 0
 let hasStoppedRecording = false
+
+let analysisDraft: {
+  candidates: ValueCandidate[]
+  rejectedIds: Set<string>
+  acceptedIds: Set<string>
+  edits: Map<string, { variableName?: string }>
+} = {
+  candidates: [],
+  rejectedIds: new Set(),
+  acceptedIds: new Set(),
+  edits: new Map(),
+}
 
 let elapsedTimer: number | null = null
 let detachedWindowId: number | null = null
@@ -197,6 +216,12 @@ clear.addEventListener('click', () => {
     if (response.success) {
       hasStoppedRecording = false
       planNameEdited = false
+      analysisDraft = {
+        candidates: [],
+        rejectedIds: new Set(),
+        acceptedIds: new Set(),
+        edits: new Map(),
+      }
       applySuccessSnapshot(response)
       transactions.splice(0, transactions.length)
       availableDomains = []
@@ -210,6 +235,7 @@ clear.addEventListener('click', () => {
       clearValidationError()
       clearValidationResult()
       renderTransactions()
+      renderAnalysisList()
     }
   })
 })
@@ -249,6 +275,25 @@ themeMode.addEventListener('change', () => {
 transactionMethodFilter.addEventListener('change', renderTransactions)
 transactionStatusFilter.addEventListener('change', renderTransactions)
 transactionSearch.addEventListener('input', renderTransactions)
+
+runAnalysisBtn.addEventListener('click', () => {
+  const input: AnalysisInput = {
+    primary: {
+      id: snapshot.planName,
+      schemaVersion: 1,
+      exchanges: [...transactions],
+    },
+  }
+
+  const result = runAnalysis(input)
+  analysisDraft = {
+    candidates: result.candidates,
+    rejectedIds: new Set(),
+    acceptedIds: new Set(),
+    edits: new Map(),
+  }
+  renderAnalysisList()
+})
 
 chrome.runtime.onMessage.addListener((message: unknown) => {
   if (isStateBroadcast(message)) {
@@ -831,6 +876,8 @@ function applySnapshot(next: RecorderSnapshot | undefined): void {
   stop.disabled = !next.recording
   exportBtn.disabled = next.requestCount === 0
   clear.disabled = !hasStoppedRecording && next.requestCount === 0 && !next.recording
+
+  analysisPanel.hidden = !hasStoppedRecording
 }
 
 function appendTransaction(request: CapturedRequest): void {
@@ -1318,4 +1365,145 @@ function truncate(value: string | undefined, maxLength: number): string | undefi
 
 function safeId(value: string): string {
   return value.replace(/[^a-z0-9_-]+/gi, '-')
+}
+
+function renderAnalysisList(): void {
+  analysisList.replaceChildren()
+
+  const visibleCandidates = analysisDraft.candidates.filter(
+    (c) => !analysisDraft.rejectedIds.has(c.id) && !analysisDraft.acceptedIds.has(c.id)
+  )
+  const acceptedCandidates = analysisDraft.candidates.filter((c) =>
+    analysisDraft.acceptedIds.has(c.id)
+  )
+
+  const candidatesHeader = document.createElement('div')
+  candidatesHeader.className = 'analysis-section-header'
+  candidatesHeader.textContent = 'Candidates'
+
+  analysisList.appendChild(candidatesHeader)
+
+  analysisSummary.textContent = `${visibleCandidates.length} candidate${visibleCandidates.length === 1 ? '' : 's'}`
+
+  for (const candidate of visibleCandidates) {
+    analysisList.appendChild(createAnalysisRow(candidate))
+  }
+
+  if (acceptedCandidates.length > 0) {
+    const acceptedHeader = document.createElement('div')
+    acceptedHeader.className = 'analysis-section-header'
+    acceptedHeader.textContent = 'Accepted'
+
+    analysisList.appendChild(acceptedHeader)
+
+    for (const candidate of acceptedCandidates) {
+      analysisList.appendChild(createAnalysisRow(candidate))
+    }
+  }
+}
+
+function createAnalysisRow(candidate: ValueCandidate): HTMLDivElement {
+  const row = document.createElement('div')
+  row.className = 'analysis-row'
+
+  const badge = document.createElement('span')
+  badge.className = `analysis-badge analysis-badge--${candidate.confidence >= 0.7 ? 'high' : candidate.confidence >= 0.4 ? 'medium' : 'low'}`
+  badge.textContent = `${Math.round(candidate.confidence * 100)}%`
+
+  const meta = document.createElement('div')
+  meta.className = 'analysis-meta'
+
+  const name = document.createElement('div')
+  name.className = 'analysis-name'
+  name.textContent = candidate.variableName
+  name.title = 'Double-click to rename'
+  name.style.cursor = 'text'
+
+  let isEditing = false
+
+  function startEditing(): void {
+    if (isEditing) return
+    isEditing = true
+
+    const input = document.createElement('input')
+    input.type = 'text'
+    input.className = 'analysis-rename-input'
+    input.value = candidate.variableName
+    input.size = Math.max(candidate.variableName.length, 8)
+
+    name.replaceChildren(input)
+    input.focus()
+    input.select()
+
+    const finish = (save: boolean): void => {
+      isEditing = false
+      if (save) {
+        const newName = input.value.trim()
+        if (newName.length > 0 && newName !== candidate.variableName) {
+          analysisDraft.edits.set(candidate.id, { variableName: newName })
+          candidate.variableName = newName
+          name.textContent = newName
+        } else {
+          name.textContent = candidate.variableName
+        }
+      } else {
+        name.textContent = candidate.variableName
+      }
+    }
+
+    input.addEventListener('blur', () => finish(false))
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        finish(true)
+      } else if (e.key === 'Escape') {
+        finish(false)
+      }
+    })
+  }
+
+  name.addEventListener('dblclick', startEditing)
+
+  const location = document.createElement('div')
+  location.className = 'analysis-location'
+  location.textContent = candidate.sourceLocation
+
+  meta.append(name, location)
+
+  const actions = document.createElement('div')
+  actions.className = 'analysis-actions'
+
+  const isAccepted = analysisDraft.acceptedIds.has(candidate.id)
+
+  if (!isAccepted) {
+    const acceptBtn = document.createElement('button')
+    acceptBtn.className = 'secondary'
+    acceptBtn.textContent = 'Accept'
+    acceptBtn.type = 'button'
+    acceptBtn.addEventListener('click', () => {
+      analysisDraft.acceptedIds.add(candidate.id)
+      analysisDraft.rejectedIds.delete(candidate.id)
+      renderAnalysisList()
+    })
+    actions.appendChild(acceptBtn)
+  }
+
+  const rejectBtn = document.createElement('button')
+  rejectBtn.className = 'secondary'
+  rejectBtn.textContent = 'Reject'
+  rejectBtn.type = 'button'
+  rejectBtn.addEventListener('click', () => {
+    analysisDraft.rejectedIds.add(candidate.id)
+    analysisDraft.acceptedIds.delete(candidate.id)
+    renderAnalysisList()
+  })
+
+  actions.appendChild(rejectBtn)
+
+  row.append(badge, meta, actions)
+
+  if (isAccepted) {
+    row.classList.add('analysis-row--accepted')
+  }
+
+  return row
 }

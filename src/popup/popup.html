@@ -233,6 +233,15 @@
         role="list"
         aria-label="Recent HTTP transactions"
       ></div>
+
+      <section id="analysis-panel" class="analysis-panel" hidden>
+        <div class="analysis-panel__header">
+          <h2>Correlation candidates</h2>
+          <button id="runAnalysis" class="secondary" type="button">Analyse</button>
+        </div>
+        <p id="analysisSummary" class="muted"></p>
+        <div id="analysisList" class="analysis-list"></div>
+      </section>
     </section>
 
     <footer style="text-align: center; padding: 8px; font-size: 11px; color: #666; margin-top: 8px">

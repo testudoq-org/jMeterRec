@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "exchanges": [
+    {
+      "id": "token-producer",
+      "timestamp": "2024-01-01T00:00:00.000Z",
+      "method": "GET",
+      "url": "https://example.com/api/token",
+      "headers": {
+        "accept": "application/json"
+      },
+      "queryParams": {},
+      "statusCode": 200,
+      "responseHeaders": {
+        "content-type": "application/json; charset=utf-8"
+      },
+      "responseBody": "{\"token\":\"primary-token-123\",\"user\":\"test\"}",
+      "responseBodySize": 38,
+      "responseBodyTruncated": false,
+      "responseBodyContentType": "application/json",
+      "responseBodyMeta": {
+        "available": "available",
+        "encoding": "utf8",
+        "mimeType": "application/json",
+        "size": 38,
+        "truncated": false,
+        "source": "content-fetch"
+      },
+      "captureSources": ["webRequest", "content-fetch"],
+      "diagnostics": []
+    },
+    {
+      "id": "token-consumer",
+      "timestamp": "2024-01-01T00:00:01.000Z",
+      "method": "POST",
+      "url": "https://example.com/api/action",
+      "headers": {
+        "accept": "application/json",
+        "authorization": "Bearer primary-token-123",
+        "content-type": "application/json"
+      },
+      "queryParams": {},
+      "body": "{\"action\":\"do\"}",
+      "statusCode": 200,
+      "responseHeaders": {
+        "content-type": "application/json; charset=utf-8"
+      },
+      "responseBody": "{\"status\":\"ok\"}",
+      "responseBodySize": 16,
+      "responseBodyTruncated": false,
+      "responseBodyContentType": "application/json",
+      "responseBodyMeta": {
+        "available": "available",
+        "encoding": "utf8",
+        "mimeType": "application/json",
+        "size": 16,
+        "truncated": false,
+        "source": "content-fetch"
+      },
+      "captureSources": ["webRequest", "content-fetch"],
+      "diagnostics": []
+    }
+  ]
+}

@@ -53,7 +53,7 @@ function truncateDiagnostic(msg: string): string {
   return msg.length > MAX_DIAGNOSTIC_LENGTH ? `${msg.slice(0, MAX_DIAGNOSTIC_LENGTH - 3)}...` : msg
 }
 
-function maskSecretHeaders(entry: string): string {
+export function maskSecretHeaders(entry: string): string {
   return entry.replace(SECRET_HEADER_PATTERN, (match) => {
     const colonIndex = match.indexOf(':')
     return `${match.slice(0, colonIndex + 1)} ***`

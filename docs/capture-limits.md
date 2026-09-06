@@ -90,3 +90,41 @@ pending or completed request. Three outcomes are possible:
 | `expired` | Single candidate but older than `maxAgeMs` (default 15 min). | `match expired` |
 
 Matching failures never attach a body to the wrong request.
+
+## 8. Analysis limits
+
+The offline analysis library (`src/analysis/`) consumes recordings but does not mutate
+them. Its behaviour is bounded by the same capture limits documented above.
+
+### Body availability
+
+When `responseBodyMeta.available` is not `'available'`, the analysis extractors skip
+that response body. The scoring function applies a `-0.25` penalty for missing producer
+bodies (`unavailable`, `blocked`, `capture-error`, or `partial`). A `partial` body is
+still parsed, but the truncation flag is surfaced as a warning on the candidate.
+
+### Header collapse
+
+`responseHeaders` is a `Record<string, string>`, so duplicate headers (e.g. multiple
+`Set-Cookie` values) are collapsed to a single entry by the normalizer. Header/cookie
+analysis sees only one cookie per name. This is an accepted limitation for Feature 19;
+flag it in diagnostics when the original response contained multiple values.
+
+### Reuse detection scope
+
+Reuse detection matches values by exact string equality after lowercasing and trimming.
+By default it is limited to the same tab (`sameTabOnly: true`). Cross-tab reuse is an
+explicit opt-in because it increases false positives.
+
+### Two-recording diff
+
+When a baseline recording is provided, steps are matched by `url + method` within a
+configurable `correlationWindowMs`. Only matched steps receive the value-changes
+confidence bonus (`+0.15`).
+
+### Variable naming
+
+Proposed variable names are sanitised to JMeter-safe identifiers (`[A-Za-z_][A-Za-z0-9_]*`).
+Invalid characters are replaced with `_`, leading digits are prefixed with `_`, and
+collisions are deduplicated with `_1`, `_2`, … suffixes. Names are owned by analysis;
+Feature 20 consumes them without re-parsing bodies.
