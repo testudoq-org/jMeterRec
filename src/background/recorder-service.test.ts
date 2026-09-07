@@ -6,6 +6,8 @@ import type { ActionStep, CapturedRequest } from '../models/captured-request'
 import type { JmxOptionsStore } from '../options/jmx-options'
 import type { AdvancedOptionsStore } from '../options/advanced-options'
 import type { HAR } from '../jmx/har-to-jmx'
+import type { ScriptTransformationPlan } from '../transform/types'
+import { PlanStore, MemoryPlanStore } from '../transform/plan-store'
 import { DEFAULT_JMX_OPTIONS } from '../options/jmx-options'
 import { DEFAULT_ADVANCED_OPTIONS } from '../options/advanced-options'
 
@@ -720,5 +722,92 @@ describe('RecorderService', () => {
     }
     expect(response.jmx).toContain('JSONPostProcessor')
     expect(response.jmx).toContain('referenceNames">token')
+  })
+
+  it('creates per-sampler extractors when plan is loaded from store', async () => {
+    const mockState = createMockState()
+    const requests: CapturedRequest[] = [
+      {
+        id: 'producer-1',
+        timestamp: '2024-01-01T00:00:00.000Z',
+        method: 'POST',
+        url: 'https://example.com/api/login',
+        headers: { 'content-type': 'application/json' },
+        queryParams: {},
+        body: '{"token":"abc123"}',
+        statusCode: 200,
+        responseBody: '{"token":"abc123","user":"test"}',
+        responseBodySize: 30,
+        responseBodyTruncated: false,
+        responseBodyContentType: 'application/json',
+        responseBodyMeta: {
+          available: 'available',
+          encoding: 'utf8',
+          mimeType: 'application/json',
+          size: 30,
+          source: 'content-fetch',
+        },
+        captureSources: ['content-fetch'],
+        diagnostics: [],
+      },
+    ]
+
+    mockState.getRequests = vi.fn(() => [...requests])
+    mockState.getSnapshot = vi.fn(() => ({
+      status: 'idle' as const,
+      recording: false,
+      planName: 'Plan Injection Test',
+      requestCount: requests.length,
+    }))
+
+    const planStore = new PlanStore(new MemoryPlanStore())
+    const plan: ScriptTransformationPlan = {
+      version: 1,
+      correlations: [
+        {
+          id: 'cand-1',
+          variableName: 'csrf_token',
+          confidence: 0.9,
+          producerExchangeId: 'producer-1',
+          consumerExchangeIds: [],
+          extractor: {
+            type: 'jsonpath',
+            expression: '$.token',
+            defaultValue: 'NOT_FOUND',
+          },
+          replacements: [],
+          explanation: 'JSON token',
+          accepted: true,
+        },
+      ],
+      parameterizations: [],
+      replacements: [],
+      warnings: [],
+    }
+    await planStore.save(plan)
+
+    const service = new RecorderService({
+      state: mockState,
+      trafficCapture: createMockTrafficCapture(),
+      jmxOptionsStore: createMockJmxOptionsStore({
+        ...DEFAULT_JMX_OPTIONS,
+        extractorsJson: '[]',
+      }),
+      advancedOptionsStore: createMockAdvancedOptionsStore(),
+      planStore,
+    })
+
+    const response = await service.handleMessage({
+      type: 'EXPORT_JMX',
+      includedDomains: ['example.com'],
+    })
+
+    expect(response.success).toBe(true)
+    if (!response.success || !('jmx' in response)) {
+      throw new Error('Expected successful JMX export response')
+    }
+
+    expect(response.jmx).toContain('JSONPostProcessor')
+    expect(response.jmx).toContain('referenceNames">csrf_token')
   })
 })
