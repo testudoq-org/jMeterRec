@@ -58,7 +58,7 @@ Features 21 and 22 may proceed in parallel after 20 if staffing allows; both req
 | 18 | Capture honesty | `feature/18-capture-honesty` | Trustworthy recordings | Bodies still silent or export breaks | [spec-18](./specs/18-capture-honesty.md) | Merged |
 | 19 | Analysis library | `feature/19-analysis-library` | Reviewable candidates | Recording mutated or analysis needs browser | [spec-19](./specs/19-analysis-library.md) | Merged |
 | 20 | Transformation plan | `feature/20-transformation-plan` | Real autocorrelation + parameterisation in JMX | Auto-apply without accept | [spec-20](./specs/20-transformation-plan.md) | Merged |
-| 21 | User paths | `feature/21-user-paths` | Business-shaped scripts | Groups not editable | [spec-21](./specs/21-user-paths.md) | Not started |
+| 21 | User paths | `feature/21-user-paths` | Business-shaped scripts | Groups not editable | [spec-21](./specs/21-user-paths.md) | Merged |
 | 22 | JMX hardening | `feature/22-jmx-hardening` | CI-ready scripts | Goldens unstable | [spec-22](./specs/22-jmx-hardening.md) | Not started |
 | 23 | Debugger provider | `feature/23-debugger-provider` | Broader bodies | Permission rejected | [spec-23](./specs/23-debugger-provider.md) | Optional / gated |
 | 24 | Plugin design | `feature/24-plugin-design` | Clear boundary | Features inventable with stock JMX | [spec-24](./specs/24-plugin-design.md) | Design only |
