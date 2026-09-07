@@ -20,7 +20,11 @@ import type { CapturedRequest, PlanMeta, PlaywrightStep } from '../models/captur
 import { RecorderState } from './recorder-state'
 import { TrafficCaptureService } from './traffic-capture'
 import { PlanStore, MemoryPlanStore } from '../transform/plan-store'
-import { applyPlan, buildProducerIndexMap } from '../transform/jmx-plan-applier'
+import {
+  applyPlan,
+  buildProducerIndexMap,
+  validateExportReady,
+} from '../transform/jmx-plan-applier'
 
 type MessageHandler = (
   message: BackgroundRequest,
@@ -432,15 +436,44 @@ export class RecorderService {
 
     if (plan !== undefined) {
       const producerIndexMap = buildProducerIndexMap(exportRequests)
-      const { perSamplerExtractors, consumerSubstitutions, perSamplerAssertions, csvDataSets } =
-        applyPlan(plan, producerIndexMap)
-
-      serializerOptions = {
-        ...baseOptions,
+      const {
         perSamplerExtractors,
         consumerSubstitutions,
         perSamplerAssertions,
         csvDataSets,
+        groups,
+      } = applyPlan(plan, producerIndexMap)
+
+      // V4.4 confirmation gate: when the plan carries groups but none of them
+      // have been locked by a user edit, refuse to export and ask the UI to
+      // confirm first. A plan with no groups (pre-Feature-21) is unaffected.
+      if (groups.length > 0) {
+        const readiness = validateExportReady({ ...plan, groups: plan.groups ?? [] })
+        if (!readiness.ready) {
+          return {
+            success: false,
+            error: readiness.reason ?? 'Export requires user confirmation.',
+            requiresConfirmation: true,
+          }
+        }
+
+        serializerOptions = {
+          ...baseOptions,
+          perSamplerExtractors,
+          consumerSubstitutions,
+          perSamplerAssertions,
+          csvDataSets,
+          groups,
+          groupSeparator: true,
+        }
+      } else {
+        serializerOptions = {
+          ...baseOptions,
+          perSamplerExtractors,
+          consumerSubstitutions,
+          perSamplerAssertions,
+          csvDataSets,
+        }
       }
     }
 

@@ -810,4 +810,217 @@ describe('RecorderService', () => {
     expect(response.jmx).toContain('JSONPostProcessor')
     expect(response.jmx).toContain('referenceNames">csrf_token')
   })
+
+  // Feature 21 V4.4: confirmation gate + grouped export
+  function groupedRequest(id: string, url: string): CapturedRequest {
+    return {
+      id,
+      timestamp: '2024-01-01T00:00:00.000Z',
+      method: 'GET',
+      url,
+      headers: {},
+      queryParams: {},
+    }
+  }
+
+  it('exports groups wrapped in TransactionController when plan has locked groups', async () => {
+    const mockState = createMockState()
+    const requests: CapturedRequest[] = [
+      groupedRequest('login-get', 'https://example.com/login'),
+      groupedRequest('login-post', 'https://example.com/login'),
+      groupedRequest('dashboard', 'https://example.com/dashboard'),
+    ]
+    mockState.getRequests = vi.fn(() => [...requests])
+    mockState.getSnapshot = vi.fn(() => ({
+      status: 'idle' as const,
+      recording: false,
+      planName: 'Grouped Plan',
+      requestCount: requests.length,
+    }))
+
+    const planStore = new PlanStore(new MemoryPlanStore())
+    const plan: ScriptTransformationPlan = {
+      version: 1,
+      correlations: [],
+      parameterizations: [],
+      replacements: [],
+      warnings: [],
+      groups: [
+        {
+          id: 'g1',
+          name: 'Login Flow',
+          memberExchangeIds: ['login-get', 'login-post'],
+          controllerKind: 'TransactionController',
+          locked: true,
+          thinkTimeEnabled: false,
+        },
+        {
+          id: 'g2',
+          name: 'Dashboard',
+          memberExchangeIds: ['dashboard'],
+          controllerKind: 'SimpleController',
+          locked: false,
+          thinkTimeEnabled: false,
+        },
+      ],
+    }
+    await planStore.save(plan)
+
+    const service = new RecorderService({
+      state: mockState,
+      trafficCapture: createMockTrafficCapture(),
+      jmxOptionsStore: createMockJmxOptionsStore({
+        ...DEFAULT_JMX_OPTIONS,
+        extractorsJson: '[]',
+      }),
+      advancedOptionsStore: createMockAdvancedOptionsStore(),
+      planStore,
+    })
+
+    const response = await service.handleMessage({
+      type: 'EXPORT_JMX',
+      includedDomains: ['example.com'],
+    })
+
+    expect(response.success).toBe(true)
+    if (!response.success || !('jmx' in response)) {
+      throw new Error('Expected successful JMX export response')
+    }
+
+    expect(response.jmx).toContain('TransactionController')
+    expect(response.jmx).toContain('testname="Login Flow"')
+    expect(response.jmx).toContain('testname="Dashboard"')
+    expect(response.jmx).toContain('GenericController')
+  })
+
+  it('V4.4: returns requiresConfirmation:true when all groups are locked:false', async () => {
+    const mockState = createMockState()
+    const requests: CapturedRequest[] = [
+      groupedRequest('a', 'https://example.com/a'),
+      groupedRequest('b', 'https://example.com/b'),
+    ]
+    mockState.getRequests = vi.fn(() => [...requests])
+    mockState.getSnapshot = vi.fn(() => ({
+      status: 'idle' as const,
+      recording: false,
+      planName: 'Unlocked Plan',
+      requestCount: requests.length,
+    }))
+
+    const planStore = new PlanStore(new MemoryPlanStore())
+    const plan: ScriptTransformationPlan = {
+      version: 1,
+      correlations: [],
+      parameterizations: [],
+      replacements: [],
+      warnings: [],
+      groups: [
+        {
+          id: 'g1',
+          name: 'Group 1',
+          memberExchangeIds: ['a'],
+          controllerKind: 'SimpleController',
+          locked: false,
+          thinkTimeEnabled: false,
+        },
+        {
+          id: 'g2',
+          name: 'Group 2',
+          memberExchangeIds: ['b'],
+          controllerKind: 'SimpleController',
+          locked: false,
+          thinkTimeEnabled: false,
+        },
+      ],
+    }
+    await planStore.save(plan)
+
+    const service = new RecorderService({
+      state: mockState,
+      trafficCapture: createMockTrafficCapture(),
+      jmxOptionsStore: createMockJmxOptionsStore({
+        ...DEFAULT_JMX_OPTIONS,
+        extractorsJson: '[]',
+      }),
+      advancedOptionsStore: createMockAdvancedOptionsStore(),
+      planStore,
+    })
+
+    const response = await service.handleMessage({
+      type: 'EXPORT_JMX',
+      includedDomains: ['example.com'],
+    })
+
+    expect(response.success).toBe(false)
+    if (response.success) {
+      throw new Error('Expected failure response')
+    }
+    expect(response.requiresConfirmation).toBe(true)
+    expect(response.error).toContain('unconfirmed')
+  })
+
+  it('export succeeds when at least one group is locked:true', async () => {
+    const mockState = createMockState()
+    const requests: CapturedRequest[] = [
+      groupedRequest('a', 'https://example.com/a'),
+      groupedRequest('b', 'https://example.com/b'),
+    ]
+    mockState.getRequests = vi.fn(() => [...requests])
+    mockState.getSnapshot = vi.fn(() => ({
+      status: 'idle' as const,
+      recording: false,
+      planName: 'Locked Plan',
+      requestCount: requests.length,
+    }))
+
+    const planStore = new PlanStore(new MemoryPlanStore())
+    const plan: ScriptTransformationPlan = {
+      version: 1,
+      correlations: [],
+      parameterizations: [],
+      replacements: [],
+      warnings: [],
+      groups: [
+        {
+          id: 'g1',
+          name: 'Group 1',
+          memberExchangeIds: ['a'],
+          controllerKind: 'SimpleController',
+          locked: false,
+          thinkTimeEnabled: false,
+        },
+        {
+          id: 'g2',
+          name: 'Group 2',
+          memberExchangeIds: ['b'],
+          controllerKind: 'SimpleController',
+          locked: true,
+          thinkTimeEnabled: false,
+        },
+      ],
+    }
+    await planStore.save(plan)
+
+    const service = new RecorderService({
+      state: mockState,
+      trafficCapture: createMockTrafficCapture(),
+      jmxOptionsStore: createMockJmxOptionsStore({
+        ...DEFAULT_JMX_OPTIONS,
+        extractorsJson: '[]',
+      }),
+      advancedOptionsStore: createMockAdvancedOptionsStore(),
+      planStore,
+    })
+
+    const response = await service.handleMessage({
+      type: 'EXPORT_JMX',
+      includedDomains: ['example.com'],
+    })
+
+    expect(response.success).toBe(true)
+    if (!response.success || !('jmx' in response)) {
+      throw new Error('Expected successful JMX export response')
+    }
+    expect(response.jmx).toContain('GenericController')
+  })
 })

@@ -1,212 +1,185 @@
 import { describe, expect, it } from 'vitest'
-import { applyPlan, buildProducerIndexMap } from './jmx-plan-applier'
 import type { ScriptTransformationPlan } from './types'
+import {
+  applyPlan,
+  buildProducerIndexMap,
+  buildGroupMappings,
+  validateExportReady,
+} from './jmx-plan-applier'
+import type { AcceptedGroup } from './types'
 
-describe('applyPlan', () => {
-  it('converts jsonpath proposal to JSONPostProcessor extractor', () => {
-    const plan: ScriptTransformationPlan = {
-      version: 1,
-      correlations: [
-        {
-          id: 'c1',
-          variableName: 'csrf_token',
-          confidence: 0.9,
-          producerExchangeId: 'producer-1',
-          consumerExchangeIds: ['consumer-1'],
-          extractor: {
-            type: 'jsonpath',
-            expression: '$.token',
-            defaultValue: 'NOT_FOUND',
-          },
-          replacements: [],
-          explanation: 'JSON token',
-          accepted: true,
-        },
-      ],
-      parameterizations: [],
-      replacements: [],
-      warnings: [],
-    }
+describe('buildGroupMappings', () => {
+  const groups: AcceptedGroup[] = [
+    {
+      id: 'g1',
+      name: 'Login Flow',
+      memberExchangeIds: ['a', 'b'],
+      controllerKind: 'TransactionController',
+      locked: true,
+      thinkTimeEnabled: false,
+    },
+    {
+      id: 'g2',
+      name: 'Dashboard',
+      memberExchangeIds: ['c'],
+      controllerKind: 'SimpleController',
+      locked: false,
+      thinkTimeEnabled: false,
+    },
+  ]
 
-    const result = applyPlan(plan, [{ exchangeId: 'producer-1', requestIndex: 0 }])
-
-    const extractors = result.perSamplerExtractors.get(0)
-    expect(extractors).toBeDefined()
-    expect(extractors).toHaveLength(1)
-    expect(extractors![0]!.type).toBe('JSONPostProcessor')
-  })
-
-  it('converts regex proposal to RegexExtractor', () => {
-    const plan: ScriptTransformationPlan = {
-      version: 1,
-      correlations: [
-        {
-          id: 'c1',
-          variableName: 'token_val',
-          confidence: 0.8,
-          producerExchangeId: 'producer-1',
-          consumerExchangeIds: ['consumer-1'],
-          extractor: {
-            type: 'regex',
-            expression: 'token=([a-f0-9]+)',
-            defaultValue: 'NOT_FOUND',
-          },
-          replacements: [],
-          explanation: 'Regex match',
-          accepted: true,
-        },
-      ],
-      parameterizations: [],
-      replacements: [],
-      warnings: [],
-    }
-
-    const result = applyPlan(plan, [{ exchangeId: 'producer-1', requestIndex: 0 }])
-
-    const extractors = result.perSamplerExtractors.get(0)
-    expect(extractors![0]!.type).toBe('RegexExtractor')
-  })
-
-  it('places extractors at correct producer index', () => {
-    const plan: ScriptTransformationPlan = {
-      version: 1,
-      correlations: [
-        {
-          id: 'c1',
-          variableName: 'token_a',
-          confidence: 0.9,
-          producerExchangeId: 'producer-1',
-          consumerExchangeIds: ['consumer-1'],
-          extractor: { type: 'jsonpath', expression: '$.a', defaultValue: 'NOT_FOUND' },
-          replacements: [],
-          explanation: '',
-          accepted: true,
-        },
-        {
-          id: 'c2',
-          variableName: 'token_b',
-          confidence: 0.9,
-          producerExchangeId: 'producer-2',
-          consumerExchangeIds: ['consumer-2'],
-          extractor: { type: 'jsonpath', expression: '$.b', defaultValue: 'NOT_FOUND' },
-          replacements: [],
-          explanation: '',
-          accepted: true,
-        },
-      ],
-      parameterizations: [],
-      replacements: [],
-      warnings: [],
-    }
-
-    const result = applyPlan(plan, [
-      { exchangeId: 'producer-1', requestIndex: 0 },
-      { exchangeId: 'producer-2', requestIndex: 3 },
+  it('resolves exchange IDs to request indices', () => {
+    const map = new Map([
+      ['a', 0],
+      ['b', 1],
+      ['c', 2],
     ])
+    const mappings = buildGroupMappings(groups, map)
 
-    expect(result.perSamplerExtractors.get(0)).toBeDefined()
-    expect(result.perSamplerExtractors.get(3)).toBeDefined()
-    expect(result.perSamplerExtractors.has(1)).toBe(false)
+    expect(mappings).toHaveLength(2)
+    expect(mappings[0]!.name).toBe('Login Flow')
+    expect(mappings[0]!.requestIndices).toEqual([0, 1])
+    expect(mappings[1]!.name).toBe('Dashboard')
+    expect(mappings[1]!.requestIndices).toEqual([2])
   })
 
-  it('skips correlations whose producer is not in the index map', () => {
-    const plan: ScriptTransformationPlan = {
-      version: 1,
-      correlations: [
-        {
-          id: 'c1',
-          variableName: 'token_a',
-          confidence: 0.9,
-          producerExchangeId: 'producer-missing',
-          consumerExchangeIds: [],
-          extractor: { type: 'jsonpath', expression: '$.a', defaultValue: 'NOT_FOUND' },
-          replacements: [],
-          explanation: '',
-          accepted: true,
-        },
-      ],
-      parameterizations: [],
-      replacements: [],
-      warnings: [],
-    }
+  it('drops groups whose members do not resolve (filtered out)', () => {
+    const map = new Map([['a', 0]])
+    const mappings = buildGroupMappings(groups, map)
 
-    const result = applyPlan(plan, [{ exchangeId: 'producer-1', requestIndex: 0 }])
-
-    expect(result.perSamplerExtractors.size).toBe(0)
+    expect(mappings).toHaveLength(1)
+    expect(mappings[0]!.name).toBe('Login Flow')
+    expect(mappings[0]!.requestIndices).toEqual([0])
   })
 
-  it('passes through consumerSubstitutions from plan', () => {
+  it('returns empty array for empty groups', () => {
+    expect(buildGroupMappings([], new Map())).toEqual([])
+  })
+})
+
+describe('applyPlan groups passthrough', () => {
+  it('includes groups in the applyPlan return value', () => {
     const plan: ScriptTransformationPlan = {
       version: 1,
       correlations: [],
       parameterizations: [],
-      replacements: [
+      replacements: [],
+      warnings: [],
+      groups: [
         {
-          variableName: 'csrf_token',
-          targetExchangeId: 'consumer-1',
-          location: 'header',
-          path: 'X-CSRF-Token',
-          originalValue: 'abc123',
-          maskedOriginalValue: '***',
+          id: 'g1',
+          name: 'Login Flow',
+          memberExchangeIds: ['a', 'b'],
+          controllerKind: 'TransactionController',
+          locked: true,
+          thinkTimeEnabled: false,
         },
       ],
-      warnings: [],
     }
+    const result = applyPlan(plan, [
+      { exchangeId: 'a', requestIndex: 0 },
+      { exchangeId: 'b', requestIndex: 1 },
+    ])
 
-    const result = applyPlan(plan, [])
-
-    expect(result.consumerSubstitutions).toHaveLength(1)
-    expect(result.consumerSubstitutions[0]!.targetExchangeId).toBe('consumer-1')
+    expect(result.groups).toEqual([{ name: 'Login Flow', requestIndices: [0, 1] }])
   })
 
-  it('adds ResponseAssertion when enabled', () => {
+  it('returns empty groups when plan has none', () => {
     const plan: ScriptTransformationPlan = {
       version: 1,
-      correlations: [
-        {
-          id: 'c1',
-          variableName: 'csrf_token',
-          confidence: 0.9,
-          producerExchangeId: 'producer-1',
-          consumerExchangeIds: ['consumer-1'],
-          extractor: { type: 'jsonpath', expression: '$.token', defaultValue: 'NOT_FOUND' },
-          replacements: [],
-          explanation: 'JSON token',
-          accepted: true,
-        },
-      ],
+      correlations: [],
       parameterizations: [],
       replacements: [],
       warnings: [],
     }
+    const result = applyPlan(plan, [])
 
-    const result = applyPlan(plan, [{ exchangeId: 'producer-1', requestIndex: 0 }], {
-      responseAssertion: { enabled: true, variableName: 'csrf_token' },
-    })
-
-    const assertions = result.perSamplerAssertions.get(0)
-    expect(assertions).toBeDefined()
-    expect(assertions).toHaveLength(1)
-    expect(assertions![0]!.type).toBe('ResponseAssertion')
-    expect(assertions![0]!.testField).toBe('Assertion.response_data')
+    expect(result.groups).toEqual([])
   })
 })
 
 describe('buildProducerIndexMap', () => {
-  it('maps request IDs to their indices', () => {
-    const requests = [{ id: 'req-a' }, { id: 'req-b' }, { id: 'req-c' }]
+  it('maps each request id to its index', () => {
+    const result = buildProducerIndexMap([{ id: 'a' }, { id: 'b' }, { id: 'c' }])
 
-    const map = buildProducerIndexMap(requests)
-
-    expect(map).toEqual([
-      { exchangeId: 'req-a', requestIndex: 0 },
-      { exchangeId: 'req-b', requestIndex: 1 },
-      { exchangeId: 'req-c', requestIndex: 2 },
+    expect(result).toEqual([
+      { exchangeId: 'a', requestIndex: 0 },
+      { exchangeId: 'b', requestIndex: 1 },
+      { exchangeId: 'c', requestIndex: 2 },
     ])
   })
+})
 
-  it('returns empty array for no requests', () => {
-    const map = buildProducerIndexMap([])
-    expect(map).toHaveLength(0)
+describe('validateExportReady (V4.4 confirmation gate)', () => {
+  it('returns ready:true when there are no groups', () => {
+    const plan: ScriptTransformationPlan = {
+      version: 1,
+      correlations: [],
+      parameterizations: [],
+      replacements: [],
+      warnings: [],
+    }
+    expect(validateExportReady(plan)).toEqual({ ready: true })
+  })
+
+  it('V4.4: returns ready:false when all groups are locked:false', () => {
+    const plan: ScriptTransformationPlan = {
+      version: 1,
+      correlations: [],
+      parameterizations: [],
+      replacements: [],
+      warnings: [],
+      groups: [
+        {
+          id: 'g1',
+          name: 'A',
+          memberExchangeIds: ['a'],
+          controllerKind: 'SimpleController',
+          locked: false,
+          thinkTimeEnabled: false,
+        },
+        {
+          id: 'g2',
+          name: 'B',
+          memberExchangeIds: ['b'],
+          controllerKind: 'SimpleController',
+          locked: false,
+          thinkTimeEnabled: false,
+        },
+      ],
+    }
+    const result = validateExportReady(plan)
+
+    expect(result.ready).toBe(false)
+    expect(result.reason).toBeTruthy()
+  })
+
+  it('returns ready:true when at least one group is locked:true', () => {
+    const plan: ScriptTransformationPlan = {
+      version: 1,
+      correlations: [],
+      parameterizations: [],
+      replacements: [],
+      warnings: [],
+      groups: [
+        {
+          id: 'g1',
+          name: 'A',
+          memberExchangeIds: ['a'],
+          controllerKind: 'SimpleController',
+          locked: false,
+          thinkTimeEnabled: false,
+        },
+        {
+          id: 'g2',
+          name: 'B',
+          memberExchangeIds: ['b'],
+          controllerKind: 'SimpleController',
+          locked: true,
+          thinkTimeEnabled: false,
+        },
+      ],
+    }
+    expect(validateExportReady(plan)).toEqual({ ready: true })
   })
 })

@@ -77,6 +77,25 @@ export interface AnalysisResult {
   diagnostics: string[]
 }
 
+/**
+ * A proposed grouping of exchange IDs derived by pure heuristics
+ * (timestamp gap, URL path prefix, main-frame navigation).
+ *
+ * The proposal is advisory: the user may rename, merge, split, or
+ * reorder members before accepting. Lives in `src/analysis/types.ts`
+ * so the pure grouping module in `src/analysis/` has no dependency
+ * on `src/transform/`.
+ */
+export interface ProposedGroup {
+  id: string
+  name: string
+  memberExchangeIds: string[]
+  source: 'auto'
+  confidence: number
+  locked: false
+  explanation: string
+}
+
 export interface AnalysisOptions {
   correlationWindowMs?: number
   sameTabOnly?: boolean
