@@ -540,7 +540,7 @@ describe('buildJmx', () => {
     const requests: CapturedRequest[] = [
       {
         id: '1',
-        timestamp: '2024-01-01T00:00:00.000Z',
+        timestamp: '2024-01-01T00:00:00Z',
         method: 'GET',
         url: 'https://example.com/api',
         headers: {},
@@ -552,6 +552,44 @@ describe('buildJmx', () => {
 
     expect(jmx).toContain('ResponseAssertion')
     expect(jmx).toContain('<stringProp name="200">201</stringProp>')
+  })
+
+  it('adds per-sampler ResponseAssertion when perSamplerAssertions is provided', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests, {
+      perSamplerAssertions: new Map([
+        [
+          0,
+          [
+            {
+              type: 'ResponseAssertion',
+              testClass: 'ResponseAssertion',
+              guiClass: 'AssertionGui',
+              name: 'Response Data Assertion',
+              enabled: true,
+              testField: 'Assertion.response_data',
+              testType: 2,
+              testStrings: ['${csrf_token}'],
+              ignoreResponseCode: false,
+            },
+          ],
+        ],
+      ]),
+    })
+
+    expect(jmx).toContain('ResponseAssertion')
+    expect(jmx).toContain('Assertion.response_data')
+    expect(jmx).toContain('${csrf_token}')
   })
 
   it('emits a UniformRandomTimer when randomization is enabled', () => {
@@ -1156,5 +1194,63 @@ describe('buildJmx', () => {
     // eslint-disable-next-line no-control-regex
     expect(jmx).not.toMatch(/[\x00-\x08\x0B\x0C\x0E-\x1F]/)
     expect(jmx).toContain('<![CDATA[')
+  })
+
+  it('emits CSVDataSet when csvDataSets option provided', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests, {
+      csvDataSets: [
+        {
+          type: 'CSVDataSet',
+          testClass: 'CSVDataSet',
+          guiClass: 'TestBeanGUI',
+          name: 'CSV Data Set - users',
+          enabled: true,
+          filename: 'users.csv',
+          fileEncoding: 'UTF-8',
+          variableNames: 'username,password',
+          delimiter: ',',
+          recycle: true,
+          stopThread: false,
+          shareMode: 'shareMode.all',
+        },
+      ],
+    })
+
+    expect(jmx).toContain('CSVDataSet')
+    expect(jmx).toContain('testname="CSV Data Set - users"')
+    expect(jmx).toContain('<stringProp name="filename">users.csv</stringProp>')
+    expect(jmx).toContain('<stringProp name="variableNames">username,password</stringProp>')
+    expect(jmx).toContain('<stringProp name="delimiter">,</stringProp>')
+    expect(jmx).toContain('<boolProp name="recycle">true</boolProp>')
+    expect(jmx).toContain('<boolProp name="stopThread">false</boolProp>')
+    expect(jmx).toContain('<stringProp name="shareMode">shareMode.all</stringProp>')
+  })
+
+  it('omits CSVDataSet when csvDataSets is empty', () => {
+    const requests: CapturedRequest[] = [
+      {
+        id: '1',
+        timestamp: '2024-01-01T00:00:00Z',
+        method: 'GET',
+        url: 'https://example.com/api',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const jmx = buildJmx(meta, requests, { csvDataSets: [] })
+
+    expect(jmx).not.toContain('CSVDataSet')
   })
 })

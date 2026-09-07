@@ -1,6 +1,7 @@
-import type { JmxExtractor } from './element-model'
+import type { JmxExtractor, JmxResponseAssertion, JmxCsvDataSet } from './element-model'
 import type { CapturedRequest, PlanMeta } from '../models/captured-request'
 import type { UserAgentId } from '../options/advanced-options'
+import type { ReplacementOperation } from '../transform/types'
 import { getUserAgentString } from '../options/user-agents'
 import { sanitizeForXml } from '../utils/xml-sanitizer'
 import {
@@ -24,6 +25,7 @@ import {
   serializeResponseAssertion,
   serializeDurationAssertion,
   serializeCacheManager,
+  serializeCsvDataSet,
   serializeJSONPostProcessor,
   serializeRegexExtractor,
   // Utility helpers (used within serialization functions in element-model.ts)
@@ -39,6 +41,28 @@ export interface JmxSerializerOptions {
   userAgent?: UserAgentId
   cacheEnabled?: boolean
   extractors?: JmxExtractor[]
+  /**
+   * Per-sampler extractors keyed by request index (producer index within the
+   * exported request sequence). Placed as children of that specific sampler's
+   * hashTree instead of at the ThreadGroup level.
+   */
+  perSamplerExtractors?: Map<number, JmxExtractor[]>
+  /**
+   * Consumer substitutions applied during sampler creation — variable names
+   * referencing `${varName}` patterns replacing original values in URL, query,
+   * headers, and body.
+   */
+  consumerSubstitutions?: ReplacementOperation[]
+  /**
+   * Per-sampler response assertions keyed by request index. Placed as children
+   * of that specific sampler's hashTree instead of at the ThreadGroup level.
+   */
+  perSamplerAssertions?: Map<number, JmxResponseAssertion[]>
+  /**
+   * CSV Data Set Config elements to emit in the ThreadGroup before samplers.
+   * Derived from ParameterizationProposal entries with source === 'csv'.
+   */
+  csvDataSets?: JmxCsvDataSet[]
 }
 
 /**
@@ -97,6 +121,18 @@ function buildAssertionXml(options?: JmxSerializerOptions): string {
     : ''
 }
 
+function buildSamplerAssertions(
+  perSamplerAssertions?: Map<number, JmxResponseAssertion[]>,
+  requestIndex?: number
+): string {
+  if (requestIndex === undefined || !perSamplerAssertions) {
+    return ''
+  }
+
+  const assertions = perSamplerAssertions.get(requestIndex) ?? []
+  return assertions.map((assertion) => serializeResponseAssertion(assertion)).join('\n')
+}
+
 function buildDurationAssertionXml(options?: JmxSerializerOptions): string {
   return options?.durationAssertion?.enabled === true
     ? serializeDurationAssertion(createDurationAssertion(options.durationAssertion.thresholdMs))
@@ -118,20 +154,31 @@ function buildSamplerSequence(
       const timerXml = gap > 0 ? buildThinkTimeTimer(gap, options?.thinkTime) : ''
       const assertionXml = buildAssertionXml(options)
       const durationAssertionXml = buildDurationAssertionXml(options)
-      const extractorsXml = (options?.extractors ?? [])
+
+      // Per-sampler extractors (from plan) — placed as children of this sampler's
+      // hashTree. Falls back to ThreadGroup-level extractors when no plan applies.
+      const samplerExtractors = options?.perSamplerExtractors?.get(idx)
+      const extractorsXml = (samplerExtractors ?? options?.extractors ?? [])
         .map((ext) => EXTRACTOR_BUILDERS.get(ext.type)?.(ext) ?? '')
         .join('\n')
 
+      // Per-sampler assertions (from plan) — placed as children of this sampler's
+      // hashTree after the sampler element.
+      const samplerAssertionsXml = buildSamplerAssertions(options?.perSamplerAssertions, idx)
+
+      // Apply consumer variable substitutions during sampler creation
+      const substitutedReq = applyConsumerSubstitutions(req, options?.consumerSubstitutions)
       const samplerModel = createHTTPSampler(
-        req,
+        substitutedReq,
         idx,
-        processHeaders(req.headers, options),
+        processHeaders(substitutedReq.headers, options),
         effectiveDefaults
       )
       const samplerXml = serializeHTTPSampler(samplerModel)
+      const assertionSection = samplerAssertionsXml.length > 0 ? `\n${samplerAssertionsXml}` : ''
       const extractorSection = extractorsXml.length > 0 ? `\n${extractorsXml}` : ''
 
-      return `${timerXml}${assertionXml}${durationAssertionXml}${samplerXml}<hashTree/>${extractorSection}`
+      return `${timerXml}${assertionXml}${durationAssertionXml}${samplerXml}<hashTree/>${assertionSection}${extractorSection}`
     })
     .join('\n')
 }
@@ -169,6 +216,10 @@ export function buildJmx(
   const cacheMgrXml =
     options?.cacheEnabled === true ? serializeCacheManager(createCacheManager()) : ''
 
+  // ④b CSV Data Set Configs — emit parameterised CSV datasets under ThreadGroup.
+  const csvDataSetsXml = options?.csvDataSets?.map(serializeCsvDataSet).join('\n') ?? ''
+  const csvSection = csvDataSetsXml.length > 0 ? `${csvDataSetsXml}<hashTree/>\n` : ''
+
   // ⑤ Build each sampler via model factory + serializer.
   //    Think-time timers are computed between adjacent request pairs.
   const sequenceXml = buildSamplerSequence(requests, options, effectiveDefaults)
@@ -187,7 +238,7 @@ export function buildJmx(
  <hashTree>
  ${defaultsXml}
  <hashTree/>
- ${cacheSection}${cookieSection}${sequenceXml}
+ ${cacheSection}${csvSection}${cookieSection}${sequenceXml}
  </hashTree>
  </hashTree>
  </hashTree>
@@ -347,4 +398,78 @@ function collectAllCookies(
   }
 
   return cookies
+}
+
+/**
+ * Apply consumer variable substitutions to a captured request.
+ * Replaces original values with `${variableName}` patterns in URL, query params,
+ * headers, and body based on the plan's ReplacementOperation set.
+ *
+ * Each ReplacementOperation specifies a targetExchangeId that matches the
+ * request's exchange ID (req.id).
+ */
+function applyConsumerSubstitutions(
+  req: CapturedRequest,
+  substitutions?: ReplacementOperation[]
+): CapturedRequest {
+  if (!substitutions || substitutions.length === 0) {
+    return req
+  }
+
+  const matchingSubs = substitutions.filter((sub) => sub.targetExchangeId === req.id)
+  if (matchingSubs.length === 0) {
+    return req
+  }
+
+  // Apply substitutions immutably
+  let newUrl = req.url
+  const newHeaders: Record<string, string> = { ...req.headers }
+  const newQueryParams: Record<string, string> = { ...req.queryParams }
+  let newBody = req.body
+
+  for (const sub of matchingSubs) {
+    const varPattern = `\${${sub.variableName}}`
+
+    switch (sub.location) {
+      case 'url':
+        newUrl = newUrl.replace(sub.originalValue, varPattern)
+        break
+      case 'header':
+        if (sub.path && sub.originalValue) {
+          const headerKey = Object.keys(newHeaders).find(
+            (k) => k.toLowerCase() === sub.path!.toLowerCase()
+          )
+          if (headerKey !== undefined) {
+            const currentVal = newHeaders[headerKey] ?? ''
+            newHeaders[headerKey] = currentVal.replace(sub.originalValue, varPattern)
+          }
+        }
+        break
+      case 'query':
+        if (sub.path && sub.originalValue) {
+          const queryKey = Object.keys(newQueryParams).find(
+            (k) => k.toLowerCase() === sub.path!.toLowerCase()
+          )
+          if (queryKey !== undefined) {
+            const currentVal = newQueryParams[queryKey] ?? ''
+            newQueryParams[queryKey] = currentVal.replace(sub.originalValue, varPattern)
+          }
+        }
+        break
+      case 'body':
+        if (sub.originalValue) {
+          const currentBody = newBody ?? ''
+          newBody = currentBody.replace(sub.originalValue, varPattern)
+        }
+        break
+    }
+  }
+
+  return {
+    ...req,
+    url: newUrl,
+    headers: newHeaders,
+    queryParams: newQueryParams,
+    body: newBody,
+  }
 }

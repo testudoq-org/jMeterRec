@@ -56,8 +56,8 @@ Features 21 and 22 may proceed in parallel after 20 if staffing allows; both req
 | ----- | ---------- | ------ | ----------- | ------- | ---- | ------ |
 | 17 | Baseline lock | `feature/17-baseline-lock` | Safe to change | Tests red | [spec-17](./specs/17-baseline-lock.md) | Merged |
 | 18 | Capture honesty | `feature/18-capture-honesty` | Trustworthy recordings | Bodies still silent or export breaks | [spec-18](./specs/18-capture-honesty.md) | Merged |
-| 19 | Analysis library | `feature/19-analysis-library` | Reviewable candidates | Recording mutated or analysis needs browser | [spec-19](./specs/19-analysis-library.md) | Not started |
-| 20 | Transformation plan | `feature/20-transformation-plan` | Real autocorrelation + parameterisation in JMX | Auto-apply without accept | [spec-20](./specs/20-transformation-plan.md) | Not started |
+| 19 | Analysis library | `feature/19-analysis-library` | Reviewable candidates | Recording mutated or analysis needs browser | [spec-19](./specs/19-analysis-library.md) | Merged |
+| 20 | Transformation plan | `feature/20-transformation-plan` | Real autocorrelation + parameterisation in JMX | Auto-apply without accept | [spec-20](./specs/20-transformation-plan.md) | Ready to merge |
 | 21 | User paths | `feature/21-user-paths` | Business-shaped scripts | Groups not editable | [spec-21](./specs/21-user-paths.md) | Not started |
 | 22 | JMX hardening | `feature/22-jmx-hardening` | CI-ready scripts | Goldens unstable | [spec-22](./specs/22-jmx-hardening.md) | Not started |
 | 23 | Debugger provider | `feature/23-debugger-provider` | Broader bodies | Permission rejected | [spec-23](./specs/23-debugger-provider.md) | Optional / gated |
@@ -79,7 +79,7 @@ Derived from repository review of Capultura (package `capyultura`, manifest Capu
 | Storage | `RecorderState` + pending web-request store; `unlimitedStorage` |
 | Export | JMX serializer + Playwright generator; HAR import path |
 | Playback | Export-only (no in-extension replay engine) |
-| Correlation | Not implemented (manual extractors via options only) |
+| Correlation | Plan-based autocorrelation + parameterisation accepted in UI and applied on export as stock JMeter extractors and `${variableName}` substitutions |
 | Debugger / CDP | Not used |
 | Tests | Vitest unit + Playwright E2E; quality scripts `crap` / `dry` |
 
@@ -143,7 +143,7 @@ Before merge:
 | 17 | Suite green and baseline notes committed | Any test red |
 | 18 | Diagnostics on exchanges; export still valid | Silent empty bodies or broken JMX |
 | 19 | Candidates reviewable; recording immutable | Analysis requires browser runtime or mutates storage |
-| 20 | Accepted plan produces stock JMeter extractors | Anything auto-applied without accept |
+| 20 | Suite green; accepted plan produces stock JMeter extractors; V3.1–V3.10 audit passing | Anything auto-applied without accept |
 | 21 | Groups editable before export | Groups inferred only from URL names with no edit UI |
 | 22 | Goldens stable; multi-iteration smoke passes | Flaky goldens or encoding regressions |
 | 23 | Optional; product accepts debugger permission | Forced as required path for ordinary JMX |

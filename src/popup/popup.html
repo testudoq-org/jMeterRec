@@ -241,6 +241,39 @@
         </div>
         <p id="analysisSummary" class="muted"></p>
         <div id="analysisList" class="analysis-list"></div>
+
+        <div
+          class="parameterisation-form"
+          style="margin-top: 12px; padding-top: 8px; border-top: 1px solid #ddd"
+        >
+          <h3 style="margin: 0 0 8px; font-size: 14px">Parameterisations</h3>
+          <div class="field">
+            <label for="paramVarName">Variable name</label>
+            <input id="paramVarName" type="text" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="paramSource">Source</label>
+            <select id="paramSource">
+              <option value="csv">CSV</option>
+              <option value="generated">Generated</option>
+              <option value="environment">Environment</option>
+              <option value="jmeter-function">JMeter function</option>
+              <option value="manual">Manual</option>
+            </select>
+          </div>
+          <div class="field" id="paramCsvColumnField">
+            <label for="paramCsvColumn">CSV column</label>
+            <input id="paramCsvColumn" type="text" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="paramLocations">Request locations</label>
+            <input id="paramLocations" type="text" placeholder="e.g. body, header:Authorization" />
+          </div>
+          <button id="paramAddBtn" class="secondary" type="button" style="margin-top: 4px">
+            Add parameterisation
+          </button>
+          <div id="paramList" class="analysis-list" style="margin-top: 8px"></div>
+        </div>
       </section>
     </section>
 

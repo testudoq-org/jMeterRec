@@ -64,7 +64,7 @@ const chromeStub = {
       }
 
       if (record.type === 'STOP_RECORDING') {
-        return Promise.resolve({ success: true, requestCount: 0 })
+        return Promise.resolve({ success: true, requestCount: 1 })
       }
 
       if (record.type === 'RESET') {
@@ -176,6 +176,33 @@ function buildPopupHtml(): string {
         <button id="runAnalysis" type="button"></button>
         <p id="analysisSummary"></p>
         <div id="analysisList"></div>
+        <div class="parameterisation-form" style="margin-top: 12px; padding-top: 8px; border-top: 1px solid #ddd">
+          <h3 style="margin: 0 0 8px; font-size: 14px">Parameterisations</h3>
+          <div class="field">
+            <label for="paramVarName">Variable name</label>
+            <input id="paramVarName" type="text" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="paramSource">Source</label>
+            <select id="paramSource">
+              <option value="csv">CSV</option>
+              <option value="generated">Generated</option>
+              <option value="environment">Environment</option>
+              <option value="jmeter-function">JMeter function</option>
+              <option value="manual">Manual</option>
+            </select>
+          </div>
+          <div class="field" id="paramCsvColumnField" hidden>
+            <label for="paramCsvColumn">CSV column</label>
+            <input id="paramCsvColumn" type="text" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="paramLocations">Request locations</label>
+            <input id="paramLocations" type="text" placeholder="e.g. body, header:Authorization" />
+          </div>
+          <button id="paramAddBtn" class="secondary" type="button" style="margin-top: 4px">Add parameterisation</button>
+          <div id="paramList" class="analysis-list" style="margin-top: 8px"></div>
+        </div>
       </section>
       <section class="advanced-options">
         <div class="advanced-options__header">
@@ -1296,6 +1323,8 @@ vi.mock('../analysis/run-analysis', () => ({
       {
         id: 'candidate-1',
         value: 'masked-token',
+        normalizedValue: 'masked-token',
+        maskedValue: 'masked-token',
         sourceExchangeId: 'req-1',
         sourceLocation: 'response.body.json:$.token',
         consumerExchangeIds: ['req-2'],
@@ -1467,22 +1496,136 @@ describe('popup analysis panel', () => {
     expect(nameEl.textContent).toBe('my_custom_token')
   })
 
-  it('clear button resets acceptedIds and edits', async () => {
+  it('saves plan to PlanStore before JMX export when analysis exists', async () => {
     await loadPopupModule()
 
     const startBtn = document.getElementById('start') as HTMLButtonElement
     const stopBtn = document.getElementById('stop') as HTMLButtonElement
     const runAnalysisBtn = document.getElementById('runAnalysis') as HTMLButtonElement
-    const clearBtn = document.getElementById('clear') as HTMLButtonElement
+    const exportBtn = document.getElementById('export') as HTMLButtonElement
     const analysisList = document.getElementById('analysisList') as HTMLDivElement
 
+    // Start and stop recording to satisfy hasStoppedRecording guard
     startBtn.click()
     await flushRuntimeResponse()
     stopBtn.click()
     await flushRuntimeResponse()
     await flushRuntimeResponse()
+
+    // Run analysis to populate analysisDraft.candidates
+    runAnalysisBtn.click()
     await flushRuntimeResponse()
 
+    // Accept a candidate so the plan has at least one correlation
+    const acceptBtn = Array.from(analysisList.querySelectorAll('button')).find(
+      (btn) => btn.textContent === 'Accept'
+    ) as HTMLButtonElement | undefined
+    acceptBtn!.click()
+    await flushRuntimeResponse()
+
+    // Override sendMessage to handle GET_DOMAINS and EXPORT_JMX
+    const originalSendMessage = chromeStub.runtime.sendMessage
+    chromeStub.runtime.sendMessage = vi.fn((message: unknown) => {
+      const record = isRuntimeMessage(message) ? message : {}
+
+      if (record.type === 'GET_DOMAINS') {
+        return Promise.resolve({ success: true, domains: ['example.com'] })
+      }
+
+      if (record.type === 'EXPORT_JMX') {
+        return Promise.resolve({
+          success: true,
+          jmx: '<?xml version="1.0"?><jmeterTestPlan></jmeterTestPlan>',
+          filename: 'Test.jmx',
+        })
+      }
+
+      return originalSendMessage(message)
+    })
+
+    // Click main export button
+    exportBtn.click()
+    await flushRuntimeResponse()
+    await flushRuntimeResponse()
+
+    // Verify saveCurrentPlan was reached: PlanStore.save was called via chrome.storage.local.set
+    expect(chromeStub.storage.local.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        'capyultura:transformation-plan': expect.any(String),
+      })
+    )
+  })
+
+  it('skips plan save when no analysis candidates', async () => {
+    await loadPopupModule()
+
+    const startBtn = document.getElementById('start') as HTMLButtonElement
+    const stopBtn = document.getElementById('stop') as HTMLButtonElement
+    const exportBtn = document.getElementById('export') as HTMLButtonElement
+
+    // Start and stop recording without running analysis
+    startBtn.click()
+    await flushRuntimeResponse()
+    stopBtn.click()
+    await flushRuntimeResponse()
+    await flushRuntimeResponse()
+
+    // Override sendMessage to handle GET_DOMAINS and EXPORT_JMX
+    const originalSendMessage = chromeStub.runtime.sendMessage
+    chromeStub.runtime.sendMessage = vi.fn((message: unknown) => {
+      const record = isRuntimeMessage(message) ? message : {}
+
+      if (record.type === 'GET_DOMAINS') {
+        return Promise.resolve({ success: true, domains: ['example.com'] })
+      }
+
+      if (record.type === 'EXPORT_JMX') {
+        return Promise.resolve({
+          success: true,
+          jmx: '<?xml version="1.0"?><jmeterTestPlan></jmeterTestPlan>',
+          filename: 'Test.jmx',
+        })
+      }
+
+      return originalSendMessage(message)
+    })
+
+    // Check a domain checkbox so exportJmx proceeds past domain selection guard
+    const domainCheckbox = document.querySelector<HTMLInputElement>(
+      '#jmxDomains input[type="checkbox"]'
+    )
+    if (domainCheckbox) {
+      domainCheckbox.checked = true
+      domainCheckbox.dispatchEvent(new Event('change'))
+    }
+
+    // Click export
+    exportBtn.click()
+    await flushRuntimeResponse()
+    await flushRuntimeResponse()
+
+    // Verify PlanStore.save was NOT called when no analysis candidates
+    expect(chromeStub.storage.local.set).not.toHaveBeenCalled()
+  })
+
+  it('shows error and aborts export when PlanStore.save fails', async () => {
+    await loadPopupModule()
+
+    const startBtn = document.getElementById('start') as HTMLButtonElement
+    const stopBtn = document.getElementById('stop') as HTMLButtonElement
+    const runAnalysisBtn = document.getElementById('runAnalysis') as HTMLButtonElement
+    const exportBtn = document.getElementById('export') as HTMLButtonElement
+    const analysisList = document.getElementById('analysisList') as HTMLDivElement
+    const errorEl = document.getElementById('error') as HTMLDivElement
+
+    // Start and stop recording
+    startBtn.click()
+    await flushRuntimeResponse()
+    stopBtn.click()
+    await flushRuntimeResponse()
+    await flushRuntimeResponse()
+
+    // Run analysis
     runAnalysisBtn.click()
     await flushRuntimeResponse()
 
@@ -1493,51 +1636,333 @@ describe('popup analysis panel', () => {
     acceptBtn!.click()
     await flushRuntimeResponse()
 
-    // Verify Accepted section exists
-    let acceptedHeader = Array.from(analysisList.querySelectorAll('.analysis-section-header')).find(
-      (h) => h.textContent === 'Accepted'
+    // Make PlanStore.save fail by making chrome.storage.local.set throw
+    chromeStub.storage.local.set.mockImplementation(async () => {
+      throw new Error('Storage failed')
+    })
+
+    // Override sendMessage to handle GET_DOMAINS (but EXPORT_JMX should not be called)
+    const originalSendMessage = chromeStub.runtime.sendMessage
+    chromeStub.runtime.sendMessage = vi.fn((message: unknown) => {
+      const record = isRuntimeMessage(message) ? message : {}
+
+      if (record.type === 'GET_DOMAINS') {
+        return Promise.resolve({ success: true, domains: ['example.com'] })
+      }
+
+      if (record.type === 'EXPORT_JMX') {
+        return Promise.resolve({
+          success: true,
+          jmx: '<?xml version="1.0"?><jmeterTestPlan></jmeterTestPlan>',
+          filename: 'Test.jmx',
+        })
+      }
+
+      return originalSendMessage(message)
+    })
+
+    // Check a domain checkbox so exportJmx proceeds past domain selection guard
+    const domainCheckbox = document.querySelector<HTMLInputElement>(
+      '#jmxDomains input[type="checkbox"]'
     )
-    expect(acceptedHeader).toBeDefined()
-
-    // Verify clear button is enabled (hasStoppedRecording should be true after Stop)
-    if (clearBtn.disabled) {
-      throw new Error(`clearBtn is disabled before click`)
+    if (domainCheckbox) {
+      domainCheckbox.checked = true
+      domainCheckbox.dispatchEvent(new Event('change'))
     }
-    clearBtn.click()
 
-    // Give async send + then callback time to complete
-    await flushRuntimeResponse()
-    await flushRuntimeResponse()
+    // Click export
+    exportBtn.click()
     await flushRuntimeResponse()
     await flushRuntimeResponse()
 
-    // Debug: check if sendMessage was called
-    const resetCalls = chromeStub.runtime.sendMessage.mock.calls.filter(
+    // Verify error is shown
+    expect(errorEl.textContent).toContain('Storage failed')
+
+    // Verify EXPORT_JMX was NOT sent
+    const exportCalls = chromeStub.runtime.sendMessage.mock.calls.filter(
       (call) =>
         typeof call[0] === 'object' &&
         call[0] !== null &&
-        (call[0] as Record<string, unknown>).type === 'RESET'
+        (call[0] as Record<string, unknown>).type === 'EXPORT_JMX'
     )
-    if (resetCalls.length === 0) {
-      throw new Error('sendMessage was NOT called with RESET type after clear click')
-    }
+    expect(exportCalls.length).toBe(0)
+  })
 
-    // Debug: check if an error was shown
-    const errorEl = document.getElementById('error') as HTMLDivElement
-    if (errorEl.textContent) {
-      throw new Error(`Unexpected error after Clear: ${errorEl.textContent}`)
-    }
+  it('adds parameterisation proposal via form and renders it in the DOM', async () => {
+    await loadPopupModule()
 
-    // Accepted section should be gone (no accepted IDs)
-    acceptedHeader = Array.from(analysisList.querySelectorAll('.analysis-section-header')).find(
-      (h) => h.textContent === 'Accepted'
+    const stopBtn = document.getElementById('stop') as HTMLButtonElement
+    const runAnalysisBtn = document.getElementById('runAnalysis') as HTMLButtonElement
+    const paramVarNameInput = document.getElementById('paramVarName') as HTMLInputElement
+    const paramSourceSelect = document.getElementById('paramSource') as HTMLSelectElement
+    const paramLocationsInput = document.getElementById('paramLocations') as HTMLInputElement
+    const paramAddBtn = document.getElementById('paramAddBtn') as HTMLButtonElement
+    const paramList = document.getElementById('paramList') as HTMLDivElement
+
+    stopBtn.click()
+    await flushRuntimeResponse()
+
+    runAnalysisBtn.click()
+    await flushRuntimeResponse()
+
+    paramVarNameInput.value = 'test_email'
+    paramSourceSelect.value = 'csv'
+    paramLocationsInput.value = 'body'
+
+    paramAddBtn.click()
+    await flushRuntimeResponse()
+
+    const proposalRows = paramList.querySelectorAll('.analysis-row')
+    expect(proposalRows.length).toBe(1)
+    expect(proposalRows[0]!.querySelector('.analysis-name')!.textContent).toBe('test_email')
+  })
+
+  it('passes parameterisation proposals to buildTransformationPlan on export', async () => {
+    await loadPopupModule()
+
+    const startBtn = document.getElementById('start') as HTMLButtonElement
+    const stopBtn = document.getElementById('stop') as HTMLButtonElement
+    const runAnalysisBtn = document.getElementById('runAnalysis') as HTMLButtonElement
+    const exportBtn = document.getElementById('export') as HTMLButtonElement
+    const paramVarNameInput = document.getElementById('paramVarName') as HTMLInputElement
+    const paramSourceSelect = document.getElementById('paramSource') as HTMLSelectElement
+    const paramLocationsInput = document.getElementById('paramLocations') as HTMLInputElement
+    const paramAddBtn = document.getElementById('paramAddBtn') as HTMLButtonElement
+
+    startBtn.click()
+    await flushRuntimeResponse()
+    stopBtn.click()
+    await flushRuntimeResponse()
+    await flushRuntimeResponse()
+
+    runAnalysisBtn.click()
+    await flushRuntimeResponse()
+
+    paramVarNameInput.value = 'test_email'
+    paramSourceSelect.value = 'csv'
+    paramLocationsInput.value = 'body'
+    paramAddBtn.click()
+    await flushRuntimeResponse()
+
+    const originalSendMessage = chromeStub.runtime.sendMessage
+    chromeStub.runtime.sendMessage = vi.fn((message: unknown) => {
+      const record = isRuntimeMessage(message) ? message : {}
+
+      if (record.type === 'GET_DOMAINS') {
+        return Promise.resolve({ success: true, domains: ['example.com'] })
+      }
+
+      if (record.type === 'EXPORT_JMX') {
+        return Promise.resolve({
+          success: true,
+          jmx: '<?xml version="1.0"?><jmeterTestPlan></jmeterTestPlan>',
+          filename: 'Test.jmx',
+        })
+      }
+
+      return originalSendMessage(message)
+    })
+
+    exportBtn.click()
+    await flushRuntimeResponse()
+    await flushRuntimeResponse()
+
+    // Verify PlanStore.save was called with parameterizations
+    const storageSetCalls = chromeStub.storage.local.set.mock.calls
+    const planSaveCall = storageSetCalls.find(
+      (call) =>
+        typeof call[0] === 'object' &&
+        call[0] !== null &&
+        'capyultura:transformation-plan' in (call[0] as Record<string, unknown>)
     )
-    expect(acceptedHeader).toBeUndefined()
+    expect(planSaveCall).toBeDefined()
+    const planJson = (planSaveCall![0] as Record<string, unknown>)[
+      'capyultura:transformation-plan'
+    ] as string
+    const plan = JSON.parse(planJson)
+    expect(plan.parameterizations).toHaveLength(1)
+    expect(plan.parameterizations[0].variableName).toBe('test_email')
+  })
 
-    // Candidates should be back in the main list
-    const candidatesHeader = Array.from(
-      analysisList.querySelectorAll('.analysis-section-header')
-    ).find((h) => h.textContent === 'Candidates')
-    expect(candidatesHeader).toBeDefined()
+  it('shows preview section after accepting a candidate', async () => {
+    await loadPopupModule()
+
+    const stopBtn = document.getElementById('stop') as HTMLButtonElement
+    const runAnalysisBtn = document.getElementById('runAnalysis') as HTMLButtonElement
+    const analysisList = document.getElementById('analysisList') as HTMLDivElement
+
+    stopBtn.click()
+    await flushRuntimeResponse()
+
+    runAnalysisBtn.click()
+    await flushRuntimeResponse()
+
+    // Seed a consumer transaction so preview has data to display
+    for (const listener of runtimeMessageListeners) {
+      listener({
+        type: 'REQUEST_CAPTURED',
+        request: {
+          id: 'req-2',
+          timestamp: '2024-01-01T00:00:01.000Z',
+          method: 'POST',
+          url: 'https://example.com/api',
+          headers: { authorization: 'Bearer masked-token' },
+          queryParams: {},
+          body: '',
+          statusCode: 200,
+          responseHeaders: {},
+          responseBody: '',
+          responseBodySize: 0,
+          responseBodyTruncated: false,
+          responseBodyContentType: undefined,
+          captureSources: ['content-fetch'],
+          diagnostics: [],
+        },
+      })
+    }
+    await flushRuntimeResponse()
+
+    const acceptBtn = Array.from(analysisList.querySelectorAll('button')).find(
+      (btn) => btn.textContent === 'Accept'
+    ) as HTMLButtonElement | undefined
+    expect(acceptBtn).toBeDefined()
+    acceptBtn!.click()
+    await flushRuntimeResponse()
+
+    const previewDetails = analysisList.querySelector('details')
+    expect(previewDetails).not.toBeNull()
+    const summary = previewDetails!.querySelector('summary')
+    expect(summary!.textContent).toBe('Substitution preview')
+  })
+
+  it('preview updates when a candidate is rejected', async () => {
+    await loadPopupModule()
+
+    const stopBtn = document.getElementById('stop') as HTMLButtonElement
+    const runAnalysisBtn = document.getElementById('runAnalysis') as HTMLButtonElement
+    const analysisList = document.getElementById('analysisList') as HTMLDivElement
+
+    stopBtn.click()
+    await flushRuntimeResponse()
+
+    runAnalysisBtn.click()
+    await flushRuntimeResponse()
+
+    // Seed a consumer transaction so preview has data to display
+    for (const listener of runtimeMessageListeners) {
+      listener({
+        type: 'REQUEST_CAPTURED',
+        request: {
+          id: 'req-2',
+          timestamp: '2024-01-01T00:00:01.000Z',
+          method: 'POST',
+          url: 'https://example.com/api',
+          headers: { authorization: 'Bearer masked-token' },
+          queryParams: {},
+          body: '',
+          statusCode: 200,
+          responseHeaders: {},
+          responseBody: '',
+          responseBodySize: 0,
+          responseBodyTruncated: false,
+          responseBodyContentType: undefined,
+          captureSources: ['content-fetch'],
+          diagnostics: [],
+        },
+      })
+    }
+    await flushRuntimeResponse()
+
+    const acceptBtn = Array.from(analysisList.querySelectorAll('button')).find(
+      (btn) => btn.textContent === 'Accept'
+    ) as HTMLButtonElement | undefined
+    acceptBtn!.click()
+    await flushRuntimeResponse()
+
+    let previewDetails = analysisList.querySelector('details')
+    expect(previewDetails).not.toBeNull()
+    const previewRows = previewDetails!.querySelectorAll('tbody tr')
+    expect(previewRows.length).toBeGreaterThan(0)
+
+    const rejectBtn = Array.from(analysisList.querySelectorAll('button')).find(
+      (btn) => btn.textContent === 'Reject'
+    ) as HTMLButtonElement | undefined
+    rejectBtn!.click()
+    await flushRuntimeResponse()
+
+    // After rejection, the preview is removed because there are no accepted candidates
+    previewDetails = analysisList.querySelector('details')
+    expect(previewDetails).toBeNull()
+  })
+
+  it('clear button resets parameterizationProposals', async () => {
+    await loadPopupModule()
+
+    const stopBtn = document.getElementById('stop') as HTMLButtonElement
+    const runAnalysisBtn = document.getElementById('runAnalysis') as HTMLButtonElement
+    const clearBtn = document.getElementById('clear') as HTMLButtonElement
+    const paramVarNameInput = document.getElementById('paramVarName') as HTMLInputElement
+    const paramSourceSelect = document.getElementById('paramSource') as HTMLSelectElement
+    const paramLocationsInput = document.getElementById('paramLocations') as HTMLInputElement
+    const paramAddBtn = document.getElementById('paramAddBtn') as HTMLButtonElement
+    const paramList = document.getElementById('paramList') as HTMLDivElement
+
+    stopBtn.click()
+    await flushRuntimeResponse()
+
+    runAnalysisBtn.click()
+    await flushRuntimeResponse()
+
+    // Add a parameterisation proposal
+    paramVarNameInput.value = 'test_email'
+    paramSourceSelect.value = 'csv'
+    paramLocationsInput.value = 'body'
+    paramAddBtn.click()
+    await flushRuntimeResponse()
+
+    expect(paramList.querySelectorAll('.analysis-row').length).toBe(1)
+
+    // Click clear
+    clearBtn.click()
+    await flushRuntimeResponse()
+
+    // Re-run analysis to re-render the analysis panel with the reset draft
+    runAnalysisBtn.click()
+    await flushRuntimeResponse()
+
+    expect(paramList.querySelectorAll('.analysis-row').length).toBe(0)
+  })
+
+  it('runAnalysis button resets parameterizationProposals', async () => {
+    await loadPopupModule()
+
+    const stopBtn = document.getElementById('stop') as HTMLButtonElement
+    const runAnalysisBtn = document.getElementById('runAnalysis') as HTMLButtonElement
+    const paramVarNameInput = document.getElementById('paramVarName') as HTMLInputElement
+    const paramSourceSelect = document.getElementById('paramSource') as HTMLSelectElement
+    const paramLocationsInput = document.getElementById('paramLocations') as HTMLInputElement
+    const paramAddBtn = document.getElementById('paramAddBtn') as HTMLButtonElement
+    const paramList = document.getElementById('paramList') as HTMLDivElement
+
+    stopBtn.click()
+    await flushRuntimeResponse()
+
+    runAnalysisBtn.click()
+    await flushRuntimeResponse()
+
+    // Add a parameterisation proposal
+    paramVarNameInput.value = 'test_email'
+    paramSourceSelect.value = 'csv'
+    paramLocationsInput.value = 'body'
+    paramAddBtn.click()
+    await flushRuntimeResponse()
+
+    expect(paramList.querySelectorAll('.analysis-row').length).toBe(1)
+
+    // Click runAnalysis again and verify proposals are reset
+    runAnalysisBtn.click()
+    await flushRuntimeResponse()
+
+    expect(paramList.querySelectorAll('.analysis-row').length).toBe(0)
   })
 })

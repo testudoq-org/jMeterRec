@@ -19,6 +19,8 @@ import type { PendingRequest } from './traffic-normalizer'
 import type { CapturedRequest, PlanMeta, PlaywrightStep } from '../models/captured-request'
 import { RecorderState } from './recorder-state'
 import { TrafficCaptureService } from './traffic-capture'
+import { PlanStore, MemoryPlanStore } from '../transform/plan-store'
+import { applyPlan, buildProducerIndexMap } from '../transform/jmx-plan-applier'
 
 type MessageHandler = (
   message: BackgroundRequest,
@@ -37,6 +39,7 @@ export interface RecorderServiceOptions {
   pendingStore?: PendingWebRequestStore
   jmxOptionsStore?: JmxOptionsStore
   advancedOptionsStore?: AdvancedOptionsStore
+  planStore?: PlanStore
 }
 
 export class RecorderService {
@@ -46,6 +49,7 @@ export class RecorderService {
   private pendingStore: PendingWebRequestStore | undefined
   private jmxOptionsStore: JmxOptionsStore | undefined
   private advancedOptionsStore: AdvancedOptionsStore | undefined
+  private planStore: PlanStore | undefined
   private responseBodyMatchingService = new ResponseBodyMatchingService()
   private initialized = false
 
@@ -55,6 +59,7 @@ export class RecorderService {
     this.pendingStore = options.pendingStore
     this.jmxOptionsStore = options.jmxOptionsStore
     this.advancedOptionsStore = options.advancedOptionsStore
+    this.planStore = options.planStore
     this.handlers = {
       START_RECORDING: (message) =>
         this.handleStartRecordingMessage(
@@ -208,6 +213,14 @@ export class RecorderService {
     }
 
     return this.advancedOptionsStore
+  }
+
+  private getPlanStore(): PlanStore {
+    if (this.planStore === undefined) {
+      this.planStore = new PlanStore(new MemoryPlanStore())
+    }
+
+    return this.planStore
   }
 
   private planNameForExport(options: JmxOptions): string {
@@ -410,11 +423,28 @@ export class RecorderService {
 
     const exportRequests = requests.map(toExportView)
     const har = buildHar(exportRequests)
-    const jmx = convertHarToJmx(
-      har,
-      meta,
-      this.buildJmxSerializerOptions(jmxOptions, advancedOptions)
-    )
+
+    const baseOptions = this.buildJmxSerializerOptions(jmxOptions, advancedOptions)
+
+    // Load transformation plan and apply per-sampler extractors / substitutions
+    const plan = await this.getPlanStore().load()
+    let serializerOptions: JmxSerializerOptions = baseOptions
+
+    if (plan !== undefined) {
+      const producerIndexMap = buildProducerIndexMap(exportRequests)
+      const { perSamplerExtractors, consumerSubstitutions, perSamplerAssertions, csvDataSets } =
+        applyPlan(plan, producerIndexMap)
+
+      serializerOptions = {
+        ...baseOptions,
+        perSamplerExtractors,
+        consumerSubstitutions,
+        perSamplerAssertions,
+        csvDataSets,
+      }
+    }
+
+    const jmx = convertHarToJmx(har, meta, serializerOptions)
 
     return {
       success: true,

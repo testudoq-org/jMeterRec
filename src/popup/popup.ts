@@ -29,6 +29,11 @@ import {
 import { runAnalysis } from '../analysis/run-analysis'
 import type { AnalysisInput } from '../analysis/types'
 import type { ValueCandidate } from '../analysis/types'
+import { PlanStore } from '../transform/plan-store'
+import { buildTransformationPlan } from '../transform/plan-builder'
+import { buildPlanPreview } from '../transform/preview'
+import { buildProducerIndexMap } from '../transform/jmx-plan-applier'
+import type { ParameterizationProposal } from '../transform/types'
 
 type ResponseWithSnapshot = Extract<BackgroundResponse, { snapshot?: RecorderSnapshot }>
 type TransactionRequest = CapturedRequest & { responseBody?: string }
@@ -90,6 +95,13 @@ const analysisPanel = requireElement<HTMLElement>('analysis-panel')
 const runAnalysisBtn = requireElement<HTMLButtonElement>('runAnalysis')
 const analysisSummary = requireElement<HTMLParagraphElement>('analysisSummary')
 const analysisList = requireElement<HTMLDivElement>('analysisList')
+const paramVarName = requireElement<HTMLInputElement>('paramVarName')
+const paramSource = requireElement<HTMLSelectElement>('paramSource')
+const paramCsvColumn = requireElement<HTMLInputElement>('paramCsvColumn')
+const paramCsvColumnField = requireElement<HTMLDivElement>('paramCsvColumnField')
+const paramLocations = requireElement<HTMLInputElement>('paramLocations')
+const paramAddBtn = requireElement<HTMLButtonElement>('paramAddBtn')
+const paramList = requireElement<HTMLDivElement>('paramList')
 
 // Advanced options elements
 const toggleAdvancedOptions = requireElement<HTMLButtonElement>('toggleAdvancedOptions')
@@ -107,7 +119,7 @@ const resourceTypeError = requireElement<HTMLDivElement>('resourceTypeError')
 const userAgentError = requireElement<HTMLDivElement>('userAgentError')
 
 let advancedOptionsExpanded = false
-let advancedOptionsSaveTimer: number | null = null
+let advancedOptionsSaveTimer: ReturnType<typeof globalThis.setTimeout> | null = null
 
 let availableDomains: string[] = []
 let selectedDomains = new Set<string>()
@@ -137,14 +149,16 @@ let analysisDraft: {
   rejectedIds: Set<string>
   acceptedIds: Set<string>
   edits: Map<string, { variableName?: string }>
+  parameterizationProposals: ParameterizationProposal[]
 } = {
   candidates: [],
   rejectedIds: new Set(),
   acceptedIds: new Set(),
   edits: new Map(),
+  parameterizationProposals: [],
 }
 
-let elapsedTimer: number | null = null
+let elapsedTimer: ReturnType<typeof globalThis.setInterval> | null = null
 let detachedWindowId: number | null = null
 let pausedElapsedSeconds = 0
 
@@ -221,6 +235,7 @@ clear.addEventListener('click', () => {
         rejectedIds: new Set(),
         acceptedIds: new Set(),
         edits: new Map(),
+        parameterizationProposals: [],
       }
       applySuccessSnapshot(response)
       transactions.splice(0, transactions.length)
@@ -291,6 +306,7 @@ runAnalysisBtn.addEventListener('click', () => {
     rejectedIds: new Set(),
     acceptedIds: new Set(),
     edits: new Map(),
+    parameterizationProposals: [],
   }
   renderAnalysisList()
 })
@@ -333,6 +349,43 @@ advancedOptionsBody.addEventListener('change', () => {
 
 userAgent.addEventListener('change', () => {
   updateCustomUserAgentVisibility()
+})
+
+paramSource.addEventListener('change', () => {
+  paramCsvColumnField.hidden = paramSource.value !== 'csv'
+})
+
+paramAddBtn.addEventListener('click', () => {
+  const variableName = paramVarName.value.trim()
+  const source = paramSource.value as ParameterizationProposal['source']
+  const locationsRaw = paramLocations.value.trim()
+  const requestLocations = locationsRaw
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+
+  if (variableName.length === 0 || requestLocations.length === 0) {
+    return
+  }
+
+  const proposal: ParameterizationProposal = {
+    variableName,
+    source,
+    requestLocations,
+    confidence: 1,
+    explanation: 'User-added parameterisation',
+    accepted: true,
+  }
+
+  if (source === 'csv') {
+    proposal.csvColumn = paramCsvColumn.value.trim() || undefined
+  }
+
+  analysisDraft.parameterizationProposals.push(proposal)
+  paramVarName.value = ''
+  paramCsvColumn.value = ''
+  paramLocations.value = ''
+  renderAnalysisList()
 })
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
@@ -513,6 +566,25 @@ async function exportRecording(): Promise<void> {
   await exportPlaywrightRecording()
 }
 
+async function saveCurrentPlan(): Promise<void> {
+  if (analysisDraft.candidates.length === 0) {
+    return
+  }
+
+  try {
+    const plan = buildTransformationPlan(
+      analysisDraft.candidates,
+      transactions,
+      analysisDraft,
+      analysisDraft.parameterizationProposals
+    )
+    await new PlanStore().save(plan)
+  } catch (err) {
+    showError(toErrorMessage(err))
+    throw err
+  }
+}
+
 async function exportPlaywrightRecording(): Promise<void> {
   const input = baseUrlInput
   const baseUrl = input === null || input.value.trim().length === 0 ? undefined : input.value.trim()
@@ -582,6 +654,17 @@ async function exportSelectedJmxDomains(): Promise<void> {
 async function exportJmx(includedDomains: string[]): Promise<void> {
   exportJmxSelected.disabled = true
   exportJmxSelected.textContent = 'Converting…'
+
+  if (analysisDraft.candidates.length > 0) {
+    try {
+      await saveCurrentPlan()
+    } catch (err) {
+      showError(toErrorMessage(err))
+      exportJmxSelected.disabled = selectedDomains.size === 0
+      exportJmxSelected.textContent = 'Export JMX'
+      return
+    }
+  }
 
   const response = await send({
     type: 'EXPORT_JMX',
@@ -1400,6 +1483,142 @@ function renderAnalysisList(): void {
       analysisList.appendChild(createAnalysisRow(candidate))
     }
   }
+
+  renderParameterisations()
+  renderPreview()
+}
+
+function renderParameterisations(): void {
+  paramList.replaceChildren()
+
+  const proposals = analysisDraft.parameterizationProposals
+  if (proposals.length === 0) {
+    return
+  }
+
+  const header = document.createElement('div')
+  header.className = 'analysis-section-header'
+  header.textContent = 'Parameterisations'
+
+  paramList.appendChild(header)
+
+  for (let i = 0; i < proposals.length; i++) {
+    const proposal = proposals[i]!
+    const row = document.createElement('div')
+    row.className = 'analysis-row'
+
+    const meta = document.createElement('div')
+    meta.className = 'analysis-meta'
+
+    const name = document.createElement('div')
+    name.className = 'analysis-name'
+    name.textContent = proposal.variableName
+
+    const detail = document.createElement('div')
+    detail.className = 'analysis-location'
+    detail.textContent = `${proposal.source}${proposal.csvColumn ? `: ${proposal.csvColumn}` : ''}`
+
+    meta.append(name, detail)
+
+    const actions = document.createElement('div')
+    actions.className = 'analysis-actions'
+
+    const removeBtn = document.createElement('button')
+    removeBtn.className = 'secondary'
+    removeBtn.textContent = 'Remove'
+    removeBtn.type = 'button'
+    removeBtn.addEventListener('click', () => {
+      analysisDraft.parameterizationProposals.splice(i, 1)
+      renderAnalysisList()
+    })
+
+    actions.appendChild(removeBtn)
+    row.append(meta, actions)
+    paramList.appendChild(row)
+  }
+}
+
+function renderPreview(): void {
+  if (analysisDraft.candidates.length === 0) {
+    return
+  }
+
+  const plan = buildTransformationPlan(
+    analysisDraft.candidates,
+    transactions,
+    analysisDraft,
+    analysisDraft.parameterizationProposals
+  )
+  const producerIndexMap = buildProducerIndexMap(transactions)
+  const previews = buildPlanPreview(plan, transactions, producerIndexMap)
+
+  if (previews.length === 0) {
+    return
+  }
+
+  const details = document.createElement('details')
+  details.open = true
+
+  const summary = document.createElement('summary')
+  summary.textContent = 'Substitution preview'
+  summary.style.cursor = 'pointer'
+  details.appendChild(summary)
+
+  const table = document.createElement('table')
+  table.style.width = '100%'
+  table.style.fontSize = '12px'
+  table.style.borderCollapse = 'collapse'
+
+  const thead = document.createElement('thead')
+  const headerRow = document.createElement('tr')
+  const headers: string[] = ['Request', 'Method', 'URL', 'Modifications']
+  for (const text of headers) {
+    const th = document.createElement('th')
+    th.textContent = text
+    th.style.textAlign = 'left'
+    th.style.padding = '4px'
+    th.style.borderBottom = '1px solid #ccc'
+    headerRow.appendChild(th)
+  }
+  thead.appendChild(headerRow)
+  table.appendChild(thead)
+
+  const tbody = document.createElement('tbody')
+  for (const preview of previews) {
+    const tr = document.createElement('tr')
+
+    const tdIndex = document.createElement('td')
+    tdIndex.textContent = String(preview.requestIndex)
+    tdIndex.style.padding = '4px'
+
+    const tdMethod = document.createElement('td')
+    tdMethod.textContent = preview.method
+    tdMethod.style.padding = '4px'
+
+    const tdUrl = document.createElement('td')
+    tdUrl.textContent = preview.url
+    tdUrl.style.padding = '4px'
+    tdUrl.style.whiteSpace = 'nowrap'
+    tdUrl.style.overflow = 'hidden'
+    tdUrl.style.textOverflow = 'ellipsis'
+    tdUrl.style.maxWidth = '200px'
+
+    const tdMods = document.createElement('td')
+    tdMods.style.padding = '4px'
+    for (const mod of preview.modifications) {
+      const modDiv = document.createElement('div')
+      modDiv.textContent = `${mod.location}${mod.path ? `: ${mod.path}` : ''}: ${mod.maskedOriginalValue} → ${mod.substitutedValue}`
+      tdMods.appendChild(modDiv)
+    }
+
+    tr.append(tdIndex, tdMethod, tdUrl, tdMods)
+    tbody.appendChild(tr)
+  }
+  table.appendChild(tbody)
+
+  details.appendChild(table)
+
+  analysisList.appendChild(details)
 }
 
 function createAnalysisRow(candidate: ValueCandidate): HTMLDivElement {

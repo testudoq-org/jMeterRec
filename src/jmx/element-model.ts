@@ -303,6 +303,19 @@ export interface JmxCacheManager extends JmxElement {
   readonly maxNumberOfResults: number
 }
 
+export interface JmxCsvDataSet extends JmxElement {
+  readonly type: 'CSVDataSet'
+  readonly testClass: 'CSVDataSet'
+  readonly guiClass: 'TestBeanGUI'
+  readonly filename: string
+  readonly fileEncoding: string
+  readonly variableNames: string
+  readonly delimiter: string
+  readonly recycle: boolean
+  readonly stopThread: boolean
+  readonly shareMode: string
+}
+
 export interface JmxJSONPostProcessor extends JmxElement {
   readonly type: 'JSONPostProcessor'
   readonly testClass: 'JSONPostProcessor'
@@ -427,6 +440,23 @@ export function createResponseAssertion(
   }
 }
 
+export function createResponseDataAssertion(
+  variableName: string,
+  name = 'Response Data Assertion'
+): JmxResponseAssertion {
+  return {
+    type: 'ResponseAssertion',
+    testClass: 'ResponseAssertion',
+    guiClass: 'AssertionGui',
+    name,
+    enabled: true,
+    testField: 'Assertion.response_data',
+    testType: 2, // Contains
+    testStrings: [`\${${variableName}}`],
+    ignoreResponseCode: false,
+  }
+}
+
 export function createDurationAssertion(
   durationMs: number,
   name = 'Duration Assertion'
@@ -454,6 +484,34 @@ export function createCacheManager(
     enabled: true,
     clearEachIteration,
     maxNumberOfResults,
+  }
+}
+
+export function createCsvDataSet(
+  variableNames: string,
+  options: {
+    filename?: string
+    fileEncoding?: string
+    delimiter?: string
+    recycle?: boolean
+    stopThread?: boolean
+    shareMode?: string
+    name?: string
+  } = {}
+): JmxCsvDataSet {
+  return {
+    type: 'CSVDataSet',
+    testClass: 'CSVDataSet',
+    guiClass: 'TestBeanGUI',
+    name: options.name ?? 'CSV Data Set',
+    enabled: true,
+    filename: options.filename ?? '',
+    fileEncoding: options.fileEncoding ?? 'UTF-8',
+    variableNames,
+    delimiter: options.delimiter ?? ',',
+    recycle: options.recycle ?? true,
+    stopThread: options.stopThread ?? false,
+    shareMode: options.shareMode ?? 'shareMode.all',
   }
 }
 
@@ -926,6 +984,19 @@ export function serializeCacheManager(element: JmxCacheManager): string {
   return `<${element.type} guiclass="${element.guiClass}" testclass="${element.testClass}" testname="${xmlEsc(element.name)}" enabled="${element.enabled}">
 <boolProp name="clearEachIteration">${element.clearEachIteration ? 'true' : 'false'}</boolProp>
 <intProp name="maxNumberOfResults">${element.maxNumberOfResults}</intProp>
+</${element.type}>`
+}
+
+export function serializeCsvDataSet(element: JmxCsvDataSet): string {
+  return `<${element.type} guiclass="${element.guiClass}" testclass="${element.testClass}" testname="${xmlEsc(element.name)}" enabled="${element.enabled}">
+<stringProp name="filename">${xmlEsc(element.filename)}</stringProp>
+<stringProp name="fileEncoding">${xmlEsc(element.fileEncoding)}</stringProp>
+<stringProp name="variableNames">${xmlEsc(element.variableNames)}</stringProp>
+<stringProp name="delimiter">${xmlEsc(element.delimiter)}</stringProp>
+<boolProp name="quotedData">false</boolProp>
+<boolProp name="recycle">${element.recycle ? 'true' : 'false'}</boolProp>
+<boolProp name="stopThread">${element.stopThread ? 'true' : 'false'}</boolProp>
+<stringProp name="shareMode">${xmlEsc(element.shareMode)}</stringProp>
 </${element.type}>`
 }
 
