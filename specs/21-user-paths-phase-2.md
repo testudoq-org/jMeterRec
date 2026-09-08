@@ -24,25 +24,33 @@ HAR round-trip data loss that currently blocks those rules from running.
 
 ### In scope
 
-1. **`main_frame` navigation heuristic** — `request.type === 'main_frame'`
-   starts a new group (Phase 1 spec §5.1, currently deferred).
-2. **`tab-boundary` heuristic** — `request.tabId !== prev.tabId` starts a
-   new group.
-3. **`frame-boundary` heuristic** — `request.frameId !== prev.frameId`
-   starts a new group.
-4. **`form-submit` heuristic** — matched `ActionStep.command === 'submit'`
-   links to its HTTP request via `transactionKey`.
-5. **Static-resource URL-extension filter** (Phase 1 spec §2 item 7) —
-   drop `.css`, `.js`, `.png`, `.woff`, etc. from the grouping input.
-   **Opt-in, default off** — see §4 risks.
+**Prerequisite (must land before any heuristic runs):**
 6. **HAR round-trip data loss fix** (Phase 1 spec §6.3) — `buildHar`
    discards `type`, `tabId`, `frameId`, `transactionKey`;
    `convertHarToJmx` reconstructs `CapturedRequest` without them.
-   Phase 2 heuristics 1–4 need these fields, so the fix is a
-   **prerequisite**, not an optional extra.
+   Heuristics 1–4 below need these fields, so the fix is a
+   **prerequisite**, not an optional extra. The drop point is
+   `toExportView` (`src/utils/diagnostics.ts`); see §4 risks.
+
+**Heuristics:**
+1. **`GroupingRule` extensions to `DEFAULT_GROUPING_RULES`** — add the
+   remaining §5.1 rules without touching the grouping engine:
+   - `main_frame` navigation — `request.type === 'main_frame'` starts a
+     new group.
+   - `tab-boundary` — `request.tabId !== prev.tabId` starts a new group.
+   - `frame-boundary` — `request.frameId !== prev.frameId` starts a
+     new group.
+   - `form-submit` — matched `ActionStep.command === 'submit'` links to
+     its HTTP request via `transactionKey`. See V4.8 for the
+     missing-link clause.
+5. **Static-resource URL-extension filter** (Phase 1 spec §2 item 7) —
+   drop `.css`, `.js`, `.png`, `.woff`, etc. from the grouping input.
+   **Opt-in, default off** — see §4 risks.
 7. **Interleaved flow model** — merge `CapturedRequest[]` and
    `ActionStep[]` into a single `FlowStep[]` timeline sorted by
    timestamp, then apply rules. Requires `ActionStep.timestamp`.
+   High-risk, least-provable item — see §7 for the Phase 2b split
+   recommendation.
 
 ### Out of scope
 
@@ -74,6 +82,7 @@ src/jmx/serializer.ts               # unchanged; consumes GroupMapping[]
 | `RecorderState.getRequests` | `src/background/recorder-state.ts:117-119` | CapturedRequest source |
 | `buildThinkTimeTimer` | `src/jmx/serializer.ts:300-325` | Reuse for timers between groups |
 | `buildProducerIndexMap` | `src/transform/jmx-plan-applier.ts:104-109` | Maps exchange IDs to request indices |
+| `toExportView` | `src/utils/diagnostics.ts:47-50` | **Drop point for `type`/`tabId`/`frameId`/`transactionKey`** — the HAR fix must preserve these fields through this transform, not bypass it |
 
 ---
 
@@ -97,17 +106,27 @@ src/jmx/serializer.ts               # unchanged; consumes GroupMapping[]
 
 ### Risks
 
+- **HAR round-trip fix is on the shared, backward-sensitive path.**
+  `buildHar`/`convertHarToJmx` are also consumed by the plain export
+  path and by Feature 22's hardening. The fix must be **additive**:
+  existing HAR exports that carry no `type`/`tabId`/`frameId`/
+  `transactionKey` must remain byte-identical. Gate this with V4.9 and
+  V4.12 before touching either file.
 - **Static-resource filter is lossy.** A JS bundle can embed a CSRF token
   or dynamic config object that a later API call consumes. Filtering it
   drops a legitimate *producer*. Mitigation: opt-in, default off.
 - **Extension-based filtering is a blunt proxy.** `/api/users.json`
   looks static but is a JSON endpoint; `/app/dashboard` (no extension)
   is a real page load but wouldn't be caught by either side. The accurate
-  version uses Chrome's `resourceType`, which is lost in HAR until §2
-  item 6 is fixed.
+  version uses Chrome's `resourceType`, which is lost in HAR until the
+  §2 prerequisite is fixed.
 - **`ActionStep.timestamp` is a model change** affecting
   `recorder-state.ts` (persistence), `action-recorder.ts` (creation), and
   all tests. Phase 1 explicitly deferred this; Phase 2 must carry it.
+- **Action-to-request association is weak** (master baseline). The
+  `form-submit` heuristic links via `transactionKey`; when that key is
+  absent on either side the rule must no-op cleanly rather than throw —
+  see V4.8's missing-link clause.
 
 ---
 
@@ -118,11 +137,12 @@ src/jmx/serializer.ts               # unchanged; consumes GroupMapping[]
 | V4.5 | `main_frame` rule | New group starts on `type === 'main_frame'` |
 | V4.6 | `tab-boundary` rule | New group starts on `tabId` change |
 | V4.7 | `frame-boundary` rule | New group starts on `frameId` change |
-| V4.8 | `form-submit` rule | Submit action links to HTTP request via `transactionKey` |
-| V4.9 | HAR round-trip survives | `type`/`tabId`/`frameId`/`transactionKey` survive `buildHar` → `convertHarToJmx` |
+| V4.8 | `form-submit` rule | Submit action links to HTTP request via `transactionKey`. **Missing-link clause:** when `transactionKey` is absent on the action, on the request, or on both, the rule no-ops cleanly and the exchange falls back to timestamp/path grouping; the skip is recorded in export diagnostics. The rule must never throw. |
+| V4.9 | HAR round-trip survives | **Concrete test contract:** given a `CapturedRequest` with `type`, `tabId`, `frameId`, and `transactionKey` all populated → `buildHar` → `convertHarToJmx` → assert the reconstructed request carries the same four values. Also assert that a HAR entry with none of the four fields round-trips byte-identically (backward-compat). |
 | V4.10 | Static-resource filter opt-in | Default off → identical output; enabled → assets dropped |
 | V4.11 | Interleaved flow | `FlowStep[]` merges requests + actions, sorted by timestamp |
 | V4.12 | Backward compat | Phase 1 output byte-identical when new rules disabled |
+| V4.13 | Absent-field safety | Grouping produces identical output when `type`/`tabId`/`frameId` are absent (e.g. HAR-reconstructed requests before the §2 prerequisite lands, or recordings that never captured them). Rules skip silently; no throw. |
 
 ---
 
@@ -133,4 +153,28 @@ src/jmx/serializer.ts               # unchanged; consumes GroupMapping[]
 - Static-resource filter is opt-in (default off), preserving the
   backward-compat invariant.
 - Phase 1 output byte-identical when new heuristics are disabled.
-- 659 existing tests remain green (no regressions).
+- All tests green; no regressions in the 659 pre-Phase-1 tests or the
+  67 Phase 1 tests.
+
+---
+
+## 7. Recommended split (Phase 2a / Phase 2b)
+
+Item 7 of §2 (interleaved flow model) is the heaviest and least-provable
+item in this spec. It requires the `ActionStep.timestamp` model change —
+which touches `recorder-state.ts` persistence, `action-recorder.ts`
+creation, and every test that constructs an `ActionStep` — *and* a new
+`FlowStep` merge. The master baseline also records that
+"Action-to-request association is weak", so the `form-submit` link via
+`transactionKey` is on shaky ground.
+
+**Recommendation:** ship §2 items 1–6 as **Phase 2a** (the heuristic
+surface + HAR fix, all HTTP-driven and independently testable against
+V4.5–V4.13), and defer the interleaved action model to **Phase 2b** once
+the HAR fix proves `type`/`tabId`/`frameId` actually flow through to the
+serializer. Phase 2b would then own `ActionStep.timestamp` and the
+`FlowStep` merge as its own audit items.
+
+This de-risks the branch: Phase 2a's exit criteria are met without the
+model change, and Phase 2b can be planned against real HAR data rather
+than assumptions about action-to-request association.
