@@ -1,8 +1,12 @@
 # Feature 21 — User Paths and Transactions
 
-**Branch:** `feature/21-user-paths`
-**Depends on:** Feature 20 (plan model stable); Feature 18 data  
+**Branch:** `feature/21-user-paths` (Phase 1, merged) · `feature/21-user-paths-phase-2` (Phase 2, in progress)
+**Depends on:** Feature 20 (plan model stable); Feature 18 data
 **Type:** Grouping + JMX controllers
+
+---
+
+**Status:** Phase 1 complete (V4.1–V4.4). Phase 2 in progress — see §9.
 
 ---
 
@@ -283,7 +287,75 @@ wrapped in a `TransactionController` named "Login Flow", verified by `golden-21.
 6. **Serializer** — Extend `JmxSerializerOptions` with `groups` field. Modify `buildSamplerSequence` to wrap group members in `TransactionController`/`hashTree` when groups are present. Keep flat path as default (backward compatible). Add think-time timer between groups when `thinkTime` enabled.
 7. **Export wiring** — Modify `buildJmxExportResponse` in `recorder-service.ts` to: run `proposeGroups` on pre-HAR requests, apply `GroupEditDraft` from plan store, pass groups to serializer. Implement V4.4 confirmation gate.
 8. **Tests** — V4.1: `path-grouping.test.ts`. V4.2: `path-plan.test.ts`. V4.3: `serializer.test.ts` + golden. V4.4: `jmx-plan-applier.test.ts` + `recorder-service.test.ts`.
-9. **Phase 2 (follow-up)** — Add `main_frame`, tab/frame, and action-step heuristics. Requires fixing HAR round-trip data loss (Section 6.3).
+9. **Phase 2 (in progress on `feature/21-user-paths-phase-2`)** — Add `main_frame`, tab/frame, and action-step heuristics. Requires fixing HAR round-trip data loss (Section 6.3).
+
+### 9.1 Phase 2 scope
+
+1. **`main_frame` navigation heuristic** — `request.type === 'main_frame'`
+   starts a new group (§5.1, currently deferred in Phase 1).
+2. **`tab-boundary` heuristic** — `request.tabId !== prev.tabId` starts a
+   new group.
+3. **`frame-boundary` heuristic** — `request.frameId !== prev.frameId`
+   starts a new group.
+4. **`form-submit` heuristic** — matched `ActionStep.command === 'submit'`
+   links to its HTTP request via `transactionKey`.
+5. **Static-resource URL-extension filter** (§2 item 7) — drop `.css`,
+   `.js`, `.png`, `.woff`, etc. from the grouping input. **Opt-in,
+   default off** — see §9.3 risks.
+6. **HAR round-trip data loss fix** (§6.3) — `buildHar` discards
+   `type`, `tabId`, `frameId`, `transactionKey`; `convertHarToJmx`
+   reconstructs `CapturedRequest` without them. Phase 2 heuristics 1–4
+   need these fields, so the fix is a **prerequisite**, not optional.
+7. **Interleaved flow model** — merge `CapturedRequest[]` and
+   `ActionStep[]` into a single `FlowStep[]` timeline sorted by
+   timestamp, then apply rules. Requires `ActionStep.timestamp`.
+
+### 9.2 Phase 2 code map
+
+```text
+src/analysis/path-grouping.ts       # extend DEFAULT_GROUPING_RULES
+src/models/captured-request.ts      # ActionStep.timestamp (model change)
+src/har/har-builder.ts              # encode type/tabId/frameId/transactionKey
+src/jmx/har-to-jmx.ts               # reconstruct those fields
+src/transform/path-plan.ts          # unchanged; operates on AcceptedGroup[]
+src/jmx/serializer.ts               # unchanged; consumes GroupMapping[]
+```
+
+### 9.3 Phase 2 risks
+
+- **Static-resource filter is lossy.** A JS bundle can embed a CSRF token
+  or dynamic config object that a later API call consumes. Filtering it
+  drops a legitimate *producer*. Mitigation: opt-in, default off.
+- **Extension-based filtering is a blunt proxy.** `/api/users.json`
+  looks static but is a JSON endpoint; `/app/dashboard` (no extension)
+  is a real page load but wouldn't be caught by either side. The accurate
+  version uses Chrome's `resourceType`, which is lost in HAR until §6
+  item 6 is fixed.
+- **`ActionStep.timestamp` is a model change** affecting
+  `recorder-state.ts` (persistence), `action-recorder.ts` (creation), and
+  all tests. Phase 1 explicitly deferred this; Phase 2 must carry it.
+
+### 9.4 Phase 2 verification audit
+
+| ID | Check | Pass criteria |
+| -- | ----- | ------------- |
+| V4.5 | `main_frame` rule | New group starts on `type === 'main_frame'` |
+| V4.6 | `tab-boundary` rule | New group starts on `tabId` change |
+| V4.7 | `frame-boundary` rule | New group starts on `frameId` change |
+| V4.8 | `form-submit` rule | Submit action links to HTTP request via `transactionKey` |
+| V4.9 | HAR round-trip survives | `type`/`tabId`/`frameId`/`transactionKey` survive buildHar → convertHarToJmx |
+| V4.10 | Static-resource filter opt-in | Default off → identical output; enabled → assets dropped |
+| V4.11 | Interleaved flow | `FlowStep[]` merges requests + actions, sorted by timestamp |
+| V4.12 | Backward compat | Phase 1 output byte-identical when new rules disabled |
+
+### 9.5 Phase 2 exit criteria
+
+- Full `GroupingRule` table from §5.1 implemented and tested.
+- HAR round-trip preserves `type`/`tabId`/`frameId`/`transactionKey`.
+- Static-resource filter is opt-in (default off), preserving the
+  backward-compat invariant.
+- Phase 1 output byte-identical when new heuristics are disabled.
+- 659 existing tests remain green (no regressions).
 
 ---
 

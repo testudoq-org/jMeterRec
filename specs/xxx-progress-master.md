@@ -28,6 +28,7 @@ feature/18-capture-honesty
 feature/19-analysis-library
 feature/20-transformation-plan
 feature/21-user-paths
+feature/21-user-paths-phase-2   # Phase 2: full heuristic surface + HAR fix
 feature/22-jmx-hardening
 feature/23-debugger-provider   # optional
 feature/24-plugin-design       # design-only
@@ -41,6 +42,7 @@ feature/24-plugin-design       # design-only
        └── 19 Analysis library
             └── 20 Transformation plan
                  ├── 21 User paths
+                 │    └── 21-p2 User paths Phase 2
                  └── 22 JMX hardening
                       └── 23 Debugger provider (optional)
                            └── 24 Plugin design (doc only)
@@ -58,7 +60,8 @@ Features 21 and 22 may proceed in parallel after 20 if staffing allows; both req
 | 18 | Capture honesty | `feature/18-capture-honesty` | Trustworthy recordings | Bodies still silent or export breaks | [spec-18](./specs/18-capture-honesty.md) | Merged |
 | 19 | Analysis library | `feature/19-analysis-library` | Reviewable candidates | Recording mutated or analysis needs browser | [spec-19](./specs/19-analysis-library.md) | Merged |
 | 20 | Transformation plan | `feature/20-transformation-plan` | Real autocorrelation + parameterisation in JMX | Auto-apply without accept | [spec-20](./specs/20-transformation-plan.md) | Merged |
-| 21 | User paths | `feature/21-user-paths` | Business-shaped scripts | Groups not editable | [spec-21](./specs/21-user-paths.md) | Merged |
+| 21 | User paths | `feature/21-user-paths` | Business-shaped scripts | Groups not editable | [spec-21](./specs/21-user-paths.md) | Merged (Phase 1) |
+| 21-p2 | User paths Phase 2 | `feature/21-user-paths-phase-2` | Full heuristic surface + HAR round-trip fix | HAR data loss unfixed; action timestamps missing | [spec-21](./specs/21-user-paths.md) | Branch open |
 | 22 | JMX hardening | `feature/22-jmx-hardening` | CI-ready scripts | Goldens unstable | [spec-22](./specs/22-jmx-hardening.md) | Not started |
 | 23 | Debugger provider | `feature/23-debugger-provider` | Broader bodies | Permission rejected | [spec-23](./specs/23-debugger-provider.md) | Optional / gated |
 | 24 | Plugin design | `feature/24-plugin-design` | Clear boundary | Features inventable with stock JMX | [spec-24](./specs/24-plugin-design.md) | Design only |
