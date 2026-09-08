@@ -41,6 +41,25 @@ export const DEFAULT_GROUPING_RULES: GroupingRule[] = [
       return currPath !== prevPath
     },
   },
+  {
+    name: 'tab-boundary',
+    // Skips cleanly when tabId is absent on either side (HAR-reconstructed
+    // requests, or recordings that never captured it) — see V4.13.
+    startsNewGroup: (curr, prev) => {
+      if (!prev) return false
+      if (curr.tabId === undefined || prev.tabId === undefined) return false
+      return curr.tabId !== prev.tabId
+    },
+  },
+  {
+    name: 'frame-boundary',
+    // Skips cleanly when frameId is absent on either side — see V4.13.
+    startsNewGroup: (curr, prev) => {
+      if (!prev) return false
+      if (curr.frameId === undefined || prev.frameId === undefined) return false
+      return curr.frameId !== prev.frameId
+    },
+  },
 ]
 
 /**
