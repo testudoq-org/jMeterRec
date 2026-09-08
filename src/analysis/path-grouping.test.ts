@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { CapturedRequest } from '../models/captured-request'
 import type { GroupingRule } from './path-grouping'
-import { proposeGroups, getPathPrefix, DEFAULT_GROUPING_RULES } from './path-grouping'
+import {
+  proposeGroups,
+  getPathPrefix,
+  isStaticResourceUrl,
+  STATIC_RESOURCE_EXTENSIONS,
+  DEFAULT_GROUPING_RULES,
+} from './path-grouping'
 
 function req(
   id: string,
@@ -273,5 +279,83 @@ describe('proposeGroups', () => {
       'tab-boundary',
       'frame-boundary',
     ])
+  })
+})
+
+describe('isStaticResourceUrl', () => {
+  it('returns true for common static asset extensions', () => {
+    expect(isStaticResourceUrl('https://example.com/app/main.css')).toBe(true)
+    expect(isStaticResourceUrl('https://example.com/app/bundle.js')).toBe(true)
+    expect(isStaticResourceUrl('https://example.com/img/logo.png')).toBe(true)
+    expect(isStaticResourceUrl('https://example.com/fonts/icon.woff2')).toBe(true)
+  })
+
+  it('is case-insensitive on the extension', () => {
+    expect(isStaticResourceUrl('https://example.com/app/main.CSS')).toBe(true)
+    expect(isStaticResourceUrl('https://example.com/app/Bundle.JS')).toBe(true)
+  })
+
+  it('returns false for API and page URLs', () => {
+    expect(isStaticResourceUrl('https://example.com/api/users')).toBe(false)
+    expect(isStaticResourceUrl('https://example.com/app/dashboard')).toBe(false)
+    expect(isStaticResourceUrl('https://example.com/api/users.json')).toBe(false)
+  })
+
+  it('returns false for malformed URLs', () => {
+    expect(isStaticResourceUrl('not-a-valid-url')).toBe(false)
+  })
+
+  it('STATIC_RESOURCE_EXTENSIONS is exported and non-empty', () => {
+    expect(STATIC_RESOURCE_EXTENSIONS.size).toBeGreaterThan(0)
+    expect(STATIC_RESOURCE_EXTENSIONS.has('.css')).toBe(true)
+    expect(STATIC_RESOURCE_EXTENSIONS.has('.js')).toBe(true)
+    expect(STATIC_RESOURCE_EXTENSIONS.has('.woff2')).toBe(true)
+  })
+})
+
+describe('proposeGroups static-resource filter (V4.10)', () => {
+  it('V4.10a: default off — identical output to not having the filter', () => {
+    const requests = [
+      req('page', 'https://example.com/page', '2024-01-01T00:00:00.000Z'),
+      req('css', 'https://example.com/app/main.css', '2024-01-01T00:00:01.000Z'),
+      req('js', 'https://example.com/app/bundle.js', '2024-01-01T00:00:02.000Z'),
+      req('api', 'https://example.com/api/users', '2024-01-01T00:00:03.000Z'),
+    ]
+
+    const withoutFilter = proposeGroups(requests)
+    const withFilterOff = proposeGroups(requests, undefined, { filterStaticResources: false })
+
+    expect(withFilterOff).toEqual(withoutFilter)
+    // All four requests are members — the filter did not drop anything.
+    const allIds = withoutFilter.flatMap((g) => g.memberExchangeIds)
+    expect(allIds.sort()).toEqual(['api', 'css', 'js', 'page'])
+  })
+
+  it('V4.10b: enabled — static assets are dropped from the grouping input', () => {
+    const requests = [
+      req('page', 'https://example.com/page', '2024-01-01T00:00:00.000Z'),
+      req('css', 'https://example.com/app/main.css', '2024-01-01T00:00:01.000Z'),
+      req('js', 'https://example.com/app/bundle.js', '2024-01-01T00:00:02.000Z'),
+      req('api', 'https://example.com/api/users', '2024-01-01T00:00:03.000Z'),
+    ]
+
+    const groups = proposeGroups(requests, undefined, { filterStaticResources: true })
+
+    const allIds = groups.flatMap((g) => g.memberExchangeIds).sort()
+    // Static assets dropped; only the page and the API request remain.
+    expect(allIds).toEqual(['api', 'page'])
+    expect(groups.flatMap((g) => g.memberExchangeIds)).not.toContain('css')
+    expect(groups.flatMap((g) => g.memberExchangeIds)).not.toContain('js')
+  })
+
+  it('filtering all-static input produces empty groups', () => {
+    const requests = [
+      req('css', 'https://example.com/app/main.css', '2024-01-01T00:00:00.000Z'),
+      req('js', 'https://example.com/app/bundle.js', '2024-01-01T00:00:01.000Z'),
+    ]
+
+    const groups = proposeGroups(requests, undefined, { filterStaticResources: true })
+
+    expect(groups).toEqual([])
   })
 })

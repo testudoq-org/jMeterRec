@@ -77,6 +77,65 @@ export function getPathPrefix(url: string): string | undefined {
 }
 
 /**
+ * File extensions treated as static resources for grouping purposes.
+ *
+ * Used by the opt-in static-resource filter (`filterStaticResources` on
+ * `proposeGroups`). A request whose URL pathname ends in one of these
+ * extensions is dropped from the grouping input before scanning.
+ *
+ * This is a blunt proxy — see the Phase 2 spec §4 risks. It exists so a
+ * user can opt into trimming asset noise from generated groups; it is
+ * **off by default** because filtering is lossy (a JS bundle can embed a
+ * CSRF token or dynamic config object that a later API call consumes).
+ */
+export const STATIC_RESOURCE_EXTENSIONS: ReadonlySet<string> = new Set([
+  '.css',
+  '.js',
+  '.mjs',
+  '.cjs',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.svg',
+  '.ico',
+  '.webp',
+  '.woff',
+  '.woff2',
+  '.ttf',
+  '.eot',
+  '.otf',
+  '.map',
+  '.mp4',
+  '.webm',
+  '.mp3',
+  '.wav',
+  '.pdf',
+  '.zip',
+  '.gz',
+])
+
+/**
+ * Returns true when the URL pathname ends in a known static-resource
+ * extension. Case-insensitive on the extension; the rest of the path is
+ * matched literally.
+ */
+export function isStaticResourceUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url)
+    const lowerPath = parsed.pathname.toLowerCase()
+    for (const ext of STATIC_RESOURCE_EXTENSIONS) {
+      if (lowerPath.endsWith(ext)) {
+        return true
+      }
+    }
+    return false
+  } catch {
+    return false
+  }
+}
+
+/**
  * Propose groups of exchanges using a sequential scan with table-driven rules.
  *
  * A new group starts whenever any rule fires between the current request
@@ -87,13 +146,24 @@ export function getPathPrefix(url: string): string | undefined {
  *
  * @param requests - Captured requests in recording order.
  * @param rules - Grouping rules; defaults to `DEFAULT_GROUPING_RULES`.
+ * @param options - Optional behaviour. `filterStaticResources` opts into
+ *   dropping static assets from the grouping input before scanning.
  * @returns Proposed groups, possibly empty when `requests` is empty.
  */
 export function proposeGroups(
   requests: readonly CapturedRequest[],
-  rules: GroupingRule[] = DEFAULT_GROUPING_RULES
+  rules: GroupingRule[] = DEFAULT_GROUPING_RULES,
+  options: { filterStaticResources?: boolean } = {}
 ): ProposedGroup[] {
   if (requests.length === 0) {
+    return []
+  }
+
+  const filtered: CapturedRequest[] = options.filterStaticResources
+    ? requests.filter((req) => !isStaticResourceUrl(req.url))
+    : Array.from(requests)
+
+  if (filtered.length === 0) {
     return []
   }
 
@@ -101,13 +171,13 @@ export function proposeGroups(
   let current: ProposedGroup | undefined
   let navigationCounter = 0
 
-  for (let i = 0; i < requests.length; i++) {
-    const req = requests[i]
+  for (let i = 0; i < filtered.length; i++) {
+    const req = filtered[i]
     if (req === undefined) {
       continue
     }
 
-    const prev = i > 0 ? requests[i - 1] : undefined
+    const prev = i > 0 ? filtered[i - 1] : undefined
     const boundary = current === undefined || rules.some((rule) => rule.startsNewGroup(req, prev))
 
     if (boundary) {
