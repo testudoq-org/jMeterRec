@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { convertHarToJmx, validateHar, extractHarDomains } from './har-to-jmx'
+import {
+  convertHarToJmx,
+  validateHar,
+  extractHarDomains,
+  buildCapturedRequests,
+} from './har-to-jmx'
+import { buildHar } from '../har/har-builder'
 import type { HAR } from './har-to-jmx'
-import type { PlanMeta } from '../models/captured-request'
+import type { PlanMeta, CapturedRequest } from '../models/captured-request'
 
 const meta: PlanMeta = {
   name: 'Test Plan',
@@ -32,6 +38,12 @@ function harEntry(opts: {
   resMime?: string
   startedDateTime?: string
   time?: number
+  capultura?: {
+    type?: string
+    tabId?: number
+    frameId?: number
+    transactionKey?: string
+  }
 }): HAR['log']['entries'][number] {
   return {
     startedDateTime: opts.startedDateTime ?? '2026-06-19T12:00:00.000Z',
@@ -68,6 +80,7 @@ function harEntry(opts: {
       wait: 0,
       receive: 0,
     },
+    ...(opts.capultura !== undefined ? { capultura: opts.capultura } : {}),
   }
 }
 
@@ -472,5 +485,156 @@ describe('extractHarDomains', () => {
 
     const domains = extractHarDomains(har)
     expect(domains).toEqual(['valid.com'])
+  })
+})
+
+describe('Capultura extension round-trip (V4.9)', () => {
+  function trafficEntry(opts: {
+    url: string
+    capultura?: {
+      type?: string
+      tabId?: number
+      frameId?: number
+      transactionKey?: string
+    }
+  }) {
+    return {
+      id: 'har-0',
+      sequence: 0,
+      request: {
+        method: 'GET',
+        url: opts.url,
+        domain: 'example.com',
+        path: '/',
+        port: 443,
+        protocol: 'https',
+        headers: {},
+        queryString: {},
+      },
+      response: {
+        status: 200,
+        statusText: 'OK',
+        headers: {},
+        size: 0,
+      },
+      timing: {
+        startTime: '2026-06-19T12:00:00.000Z',
+        duration: 0,
+        thinkTime: 0,
+      },
+      metadata: {
+        isJsonRequest: false,
+        isFormRequest: false,
+        hasAuth: false,
+      },
+      ...(opts.capultura !== undefined ? { capultura: opts.capultura } : {}),
+    }
+  }
+
+  it('V4.9a: preserves type, tabId, frameId, transactionKey through the parsed traffic model', () => {
+    const requests = buildCapturedRequests([
+      trafficEntry({
+        url: 'https://example.com/login',
+        capultura: {
+          type: 'main_frame',
+          tabId: 3,
+          frameId: 7,
+          transactionKey: 'tx-abc',
+        },
+      }),
+    ])
+
+    expect(requests).toHaveLength(1)
+    expect(requests[0]!.type).toBe('main_frame')
+    expect(requests[0]!.tabId).toBe(3)
+    expect(requests[0]!.frameId).toBe(7)
+    expect(requests[0]!.transactionKey).toBe('tx-abc')
+  })
+
+  it('V4.9b: entries without the capultura block leave all four fields undefined (backward-compat)', () => {
+    const requests = buildCapturedRequests([trafficEntry({ url: 'https://example.com/plain' })])
+
+    expect(requests).toHaveLength(1)
+    expect(requests[0]!.type).toBeUndefined()
+    expect(requests[0]!.tabId).toBeUndefined()
+    expect(requests[0]!.frameId).toBeUndefined()
+    expect(requests[0]!.transactionKey).toBeUndefined()
+  })
+
+  it('V4.9c: partial capultura block preserves only the fields it carries', () => {
+    const requests = buildCapturedRequests([
+      trafficEntry({
+        url: 'https://example.com/partial',
+        capultura: { type: 'sub_frame' },
+      }),
+    ])
+
+    expect(requests[0]!.type).toBe('sub_frame')
+    expect(requests[0]!.tabId).toBeUndefined()
+    expect(requests[0]!.frameId).toBeUndefined()
+    expect(requests[0]!.transactionKey).toBeUndefined()
+  })
+
+  it('V4.9d: full round-trip through convertHarToJmx still produces valid JMX', () => {
+    const har = buildMinimalHar([
+      harEntry({
+        url: 'https://example.com/login',
+        capultura: {
+          type: 'main_frame',
+          tabId: 3,
+          frameId: 7,
+          transactionKey: 'tx-abc',
+        },
+      }),
+    ])
+
+    const jmx = convertHarToJmx(har, meta)
+
+    expect(jmx).toContain('<?xml version="1.0"')
+    expect(jmx).toContain('HTTPSamplerProxy')
+    expect(jmx).toContain('example.com')
+  })
+
+  it('V4.9e: buildHar emits the capultura block carrying all four fields', () => {
+    const source: CapturedRequest[] = [
+      {
+        id: 'req-1',
+        timestamp: '2026-06-19T12:00:00.000Z',
+        method: 'GET',
+        url: 'https://example.com/login',
+        headers: {},
+        queryParams: {},
+        type: 'main_frame',
+        tabId: 3,
+        frameId: 7,
+        transactionKey: 'tx-abc',
+      },
+    ]
+
+    const har = buildHar(source)
+
+    expect(har.log.entries[0]!.capultura).toEqual({
+      type: 'main_frame',
+      tabId: 3,
+      frameId: 7,
+      transactionKey: 'tx-abc',
+    })
+  })
+
+  it('V4.9f: buildHar omits the capultura block when no Capultura fields are present (backward-compat)', () => {
+    const source: CapturedRequest[] = [
+      {
+        id: 'req-1',
+        timestamp: '2026-06-19T12:00:00.000Z',
+        method: 'GET',
+        url: 'https://example.com/plain',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const har = buildHar(source)
+
+    expect(har.log.entries[0]!.capultura).toBeUndefined()
   })
 })

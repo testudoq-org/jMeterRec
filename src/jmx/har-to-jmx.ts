@@ -40,6 +40,17 @@ export interface TrafficEntry {
     hasAuth: boolean
     authType?: 'basic' | 'bearer' | 'cookie'
   }
+  /**
+   * Capultura extension block carried through the parsed traffic model
+   * so it survives to the reconstructed CapturedRequest. Optional and
+   * additive: absent when the source HAR entry had no block.
+   */
+  capultura?: {
+    type?: string
+    tabId?: number
+    frameId?: number
+    transactionKey?: string
+  }
 }
 
 export interface TrafficMetadata {
@@ -106,28 +117,56 @@ export function convertHarToJmx(
         hasAuth: hasAuthHeader(headers) || hasAuthHeader(responseHeaders),
         authType: detectAuthType(headers),
       },
+      // Carry the Capultura extension block through to the reconstructed
+      // request. Absent when the source HAR entry had no block.
+      capultura: entry.capultura,
     }
   })
 
-  const requests: CapturedRequest[] = entries.map((entry) => ({
-    id: entry.id,
-    timestamp: entry.timing.startTime,
-    method: entry.request.method,
-    url: entry.request.url,
-    path: entry.request.path,
-    headers: entry.request.headers,
-    queryParams: entry.request.queryString,
-    body: entry.request.body,
-    contentType: entry.request.bodyType === 'json' ? 'application/json' : undefined,
-    statusCode: entry.response.status,
-    responseHeaders: entry.response.headers,
-    responseBody: entry.response.body,
-    responseBodyContentType:
-      entry.response.headers['content-type'] ?? entry.response.headers['Content-Type'],
-    responseBodySize: entry.response.size,
-  }))
+  const requests = buildCapturedRequests(entries)
 
   return buildJmx(meta, requests, serializerOptions)
+}
+
+/**
+ * Reconstruct CapturedRequest objects from parsed traffic entries.
+ *
+ * Extracted from `convertHarToJmx` so the Capultura extension round-trip
+ * (type/tabId/frameId/transactionKey) can be tested directly without
+ * going through JMX emission — those fields are grouping metadata and
+ * are never written into the JMX sampler.
+ */
+export function buildCapturedRequests(entries: readonly TrafficEntry[]): CapturedRequest[] {
+  return entries.map((entry) => {
+    const capultura = entry.capultura
+
+    return {
+      id: entry.id,
+      timestamp: entry.timing.startTime,
+      method: entry.request.method,
+      url: entry.request.url,
+      path: entry.request.path,
+      headers: entry.request.headers,
+      queryParams: entry.request.queryString,
+      body: entry.request.body,
+      contentType: entry.request.bodyType === 'json' ? 'application/json' : undefined,
+      statusCode: entry.response.status,
+      responseHeaders: entry.response.headers,
+      responseBody: entry.response.body,
+      responseBodyContentType:
+        entry.response.headers['content-type'] ?? entry.response.headers['Content-Type'],
+      responseBodySize: entry.response.size,
+      // Capultura extension: restore type/tabId/frameId/transactionKey
+      // when the HAR entry carries the block. Absent when it does not,
+      // which is identical to current behaviour for external imports.
+      ...(capultura?.type !== undefined ? { type: capultura.type } : {}),
+      ...(capultura?.tabId !== undefined ? { tabId: capultura.tabId } : {}),
+      ...(capultura?.frameId !== undefined ? { frameId: capultura.frameId } : {}),
+      ...(capultura?.transactionKey !== undefined
+        ? { transactionKey: capultura.transactionKey }
+        : {}),
+    }
+  })
 }
 
 export interface HAR {
@@ -171,6 +210,19 @@ interface HAREntryRaw {
     wait: number
     receive: number
     ssl?: number
+  }
+  /**
+   * Capultura extension block (additive, optional). Carries `type`,
+   * `tabId`, `frameId`, `transactionKey` through the HAR round-trip.
+   * Entries produced without it (external imports, pre-existing
+   * fixtures) leave all four fields undefined on reconstruction —
+   * identical to current behaviour.
+   */
+  capultura?: {
+    type?: string
+    tabId?: number
+    frameId?: number
+    transactionKey?: string
   }
 }
 
