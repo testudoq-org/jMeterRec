@@ -1,6 +1,22 @@
 :root {
-  color-scheme: light;
+  /* `only` opts the light popup out of Chrome's automatic dark theme /
+     forced-color-scheme override. Without it, a browser/OS in dark mode
+     repaints the popup while its action-popup auto-fit-to-content height is
+     still settling, producing the light-mode-only open jitter. See
+     docs.css-color-adjust / Chrome's "Auto Dark Theme" opt-out. */
+  color-scheme: only light;
   font-family: Arial, sans-serif;
+
+  /* Detached-inspector content column. The Detach button opens the popup in a
+     separate, user-resizable window that is NOT capped at 800x600, so its
+     column can be wider than the action popup's. 1200px keeps long URLs and
+     the transaction-detail pre readable on a 14" monitor without forcing a
+     horizontal scroll; `min(100%, …)` lets it shrink in a narrow window. This
+     variable is detached-only — the action popup keeps its own
+     `--action-popup-width` below so widening the detached window never feeds
+     back into the action-popup auto-fit. */
+  --detached-max-width: 1200px;
+  --action-popup-width: 760px;
 
   --color-background: #f8fafc;
   --color-surface: #ffffff;
@@ -53,7 +69,11 @@
 }
 
 [data-theme='dark'] {
-  color-scheme: dark;
+  /* Mirror the `only` opt-out on the dark theme so Chrome never applies its
+     own color-scheme override here either. Dark-declared pages are already
+     left alone by auto-dark, but declaring `only` keeps the behaviour
+     symmetric and future-proof. */
+  color-scheme: only dark;
 
   --color-background: #0f172a;
   --color-surface: #111827;
@@ -110,27 +130,98 @@
 body {
   position: relative;
   isolation: isolate;
-  width: 420px;
+  /* Chrome action-popups auto-fit to the intrinsic width of the body and
+     are capped at 800x600 (see chrome.action docs). 420px used only ~52% of
+     that cap, leaving the transaction list ~4 columns wide on a 14" monitor.
+     760px uses 95% of the cap while staying clear of the 800px boundary that
+     a recent Chromium autosize regression (issue 541684116) can overshoot
+     when content height exceeds 600px. `min(var(--action-popup-width), 100%)`
+     still lets the body shrink to the viewport in an unusually narrow window
+     instead of overflowing it, and `margin: 0 auto` centres the column in any
+     wider window so the extra space becomes balanced side margins rather than
+     left-aligned whitespace. The detached window uses its own
+     `--detached-max-width` via the `html[data-detached='1']` rule below. */
+  width: min(var(--action-popup-width), 100%);
   max-width: 100vw;
-  margin: 0;
-  padding: 16px;
+  margin: 0 auto;
+  /* 12px instead of 16px: the action popup is only 760px wide, so 16px per
+     side costs 32px (4%) of the content column for no visual benefit. 12px
+     still frames the content and keeps the glass gradient clear of the
+     window edge. */
+  padding: 12px;
   overflow-x: hidden;
-  background: transparent;
-  color: var(--color-text);
-}
-
-body::before {
-  content: '';
-  position: fixed;
-  inset: -18%;
-  z-index: -1;
+  /* Ambient gradient lives on body itself (not a fixed pseudo with
+     inset:-18% + blur). A fixed, negative-inset, blurred element extends
+     the document painted extent beyond the viewport, and Chrome action-popup
+     auto-fit-to-content re-measures that extent, resizes the popup, shifts
+     the -18% (percentage of viewport), and re-measures again -> the window
+     jitters expand/shrink until it gains focus. Putting the gradient on body
+     keeps it clipped to the viewport, so the popup size converges on first
+     paint. Glass panels use a gradient background + border (no
+     backdrop-filter) for the same reason. */
   background:
     radial-gradient(circle at 18% 12%, var(--color-ambient-a), transparent 34%),
     radial-gradient(circle at 82% 18%, var(--color-ambient-b), transparent 32%),
     linear-gradient(135deg, var(--color-background), var(--color-background));
-  filter: blur(28px) saturate(115%);
-  animation: ambientFloat 16s ease-in-out infinite alternate;
-  pointer-events: none;
+}
+
+/* The Detach button opens the popup in a separate, user-resizable window
+   (900x700 by default, persisted across close/reopen). That window has room to
+   breathe on a 14" monitor, so its content column widens to the detached cap
+   (`--detached-max-width`, 1200px) instead of leaving the extra width as blank
+   side margin. The action popup (no `?detached=1` query string) uses
+   `--action-popup-width` (760px) via the `body` rule below. The two widths are
+   independent variables so resizing or widening the detached window is not
+   tied to the action-popup experiment. */
+html[data-detached='1'] body {
+  width: min(100%, var(--detached-max-width));
+  /* Detached-only flex column: the detached window is the only surface that
+     can exceed the 800x600 action-popup cap, so its remaining height is given
+     to the transaction list instead of leaving it as dead space below the
+     footer. The action popup keeps its normal-flow layout (no JS-set height,
+     no resize observer) so its auto-fit-to-content behaviour is untouched. */
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+html[data-detached='1'] .card,
+html[data-detached='1'] .advanced-options,
+html[data-detached='1'] footer {
+  flex: 0 0 auto;
+}
+
+html[data-detached='1'] .transaction-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+html[data-detached='1'] .transaction-panel__header,
+html[data-detached='1'] .transaction-filters,
+html[data-detached='1'] .analysis-panel {
+  flex: 0 0 auto;
+}
+
+html[data-detached='1'] .transaction-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  /* Replace the fixed 320px ceiling: in the detached window the list should
+     consume the remaining height instead of stopping short and leaving dead
+     space below the footer. */
+  max-height: none;
+}
+
+html[data-detached='1'] .transaction-list:empty::before {
+  /* Centre the empty-state message in the now-tall list region. Without this
+     the base `::before` is an inline line that sits at the top of the flex
+     column, leaving the empty-state message floating above the dead space. */
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
 }
 
 h1,
@@ -144,7 +235,7 @@ h1 {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  margin: 0 0 12px;
+  margin: 0 0 8px;
   font-family:
     'Inter',
     'Segoe UI',
@@ -196,8 +287,8 @@ label {
 }
 
 input,
-select {
-  box-sizing: border-box;
+select,
+textarea {
   width: 100%;
   margin: 0 0 12px;
   padding: 8px;
@@ -234,7 +325,6 @@ button {
     transform 0.16s cubic-bezier(0.2, 0.9, 0.3, 1),
     box-shadow 0.16s ease,
     background 0.16s ease;
-  will-change: transform, box-shadow;
 }
 
 button:hover:not(:disabled) {
@@ -287,9 +377,27 @@ select:focus-visible,
   gap: 8px;
 }
 
+.card-header {
+  justify-content: space-between;
+}
+
 .row,
 .button-row {
   margin-bottom: 8px;
+}
+
+/* The control rows in the main card each hold three flex children inside a
+   736px content column (760px body minus 12px padding per side). With the
+   default button padding (8px 10px) and a 16px inherited font, labels such as
+   "Pause", "Resume", and "Export" push past the ~245px per-child budget and
+   the flex container squeezes them via flex-shrink:1, which is what makes the
+   buttons look cramped. Tighten padding and font size on control rows only so
+   the row fits without changing card layout, the transaction panel, or popup
+   height. */
+.row button,
+.row select {
+  padding: 6px 8px;
+  font-size: 13px;
 }
 
 .settings-row {
@@ -303,27 +411,31 @@ select:focus-visible,
 }
 
 .card,
-.transaction-panel {
+.transaction-panel,
+.advanced-options,
+.analysis-panel {
   border: 1px solid var(--color-glass-border);
   border-radius: var(--radius-md);
   background: linear-gradient(180deg, var(--glass-highlight), var(--glass-surface));
   box-shadow: var(--glass-shadow);
-  backdrop-filter: blur(10px) saturate(140%);
-  -webkit-backdrop-filter: blur(10px) saturate(140%);
+  /* Glass surfaces deliberately avoid backdrop-filter: in Chrome
+     action-popups, backdrop-filtering interacts badly with content-based
+     popup sizing and can cause the window to jiggle on initial load. The
+     glass look is preserved via the gradient background + border. */
 }
 
 .card {
-  margin: 0 0 12px;
+  margin: 0 0 8px;
   padding: 12px;
 }
 
 .transaction-panel {
-  margin-top: 12px;
+  margin-top: 8px;
   padding: 12px;
 }
 
 .status {
-  margin: 8px 0 12px;
+  margin: 6px 0 8px;
   padding: 8px;
   border-radius: var(--radius-sm);
   background: var(--status-background);
@@ -354,7 +466,7 @@ select:focus-visible,
 
 .elapsed {
   margin-top: -6px;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .domain-list {
@@ -413,7 +525,7 @@ select:focus-visible,
 .transaction-list {
   display: grid;
   gap: 8px;
-  max-height: 260px;
+  max-height: 320px;
   overflow-y: auto;
   padding-right: 4px;
 }
@@ -528,7 +640,7 @@ select:focus-visible,
 
 .transaction-details {
   grid-column: 1 / -1;
-  max-height: 220px;
+  max-height: 260px;
   margin: 0;
   padding: 8px;
   overflow: auto;
@@ -558,13 +670,7 @@ select:focus-visible,
 }
 
 .advanced-options {
-  margin-top: 12px;
-  border: 1px solid var(--color-glass-border);
-  border-radius: var(--radius-md);
-  background: linear-gradient(180deg, var(--glass-highlight), var(--glass-surface));
-  box-shadow: var(--glass-shadow);
-  backdrop-filter: blur(10px) saturate(140%);
-  -webkit-backdrop-filter: blur(10px) saturate(140%);
+  margin-top: 8px;
 }
 
 .advanced-options__header {
@@ -586,19 +692,14 @@ select:focus-visible,
 
 .advanced-options__body {
   padding: 0 12px 12px;
-  transition:
-    max-height 0.2s ease,
-    opacity 0.2s ease;
-  max-height: 800px;
-  opacity: 1;
-  overflow: hidden;
+  /* No height/max-height transition: Chrome action-popups re-measure
+     intrinsic size when animated geometry changes during initialisation,
+     which can destabilise the window. Toggling the hidden attribute is
+     instant and predictable. */
 }
 
 .advanced-options__body[hidden] {
-  max-height: 0;
-  padding-top: 0;
-  padding-bottom: 0;
-  opacity: 0;
+  display: none;
 }
 
 .advanced-options__body label {
@@ -632,24 +733,11 @@ select:focus-visible,
   margin: 0;
 }
 
-@keyframes ambientFloat {
-  from {
-    transform: translate3d(-2%, -1%, 0) scale(1);
-  }
-
-  to {
-    transform: translate3d(2%, 1%, 0) scale(1.04);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  body::before {
-    animation: none;
-  }
-
   h1::before,
   button,
-  .transaction-row {
+  .transaction-row,
+  .advanced-options__body {
     transition: none;
     transform: none !important;
   }
@@ -700,12 +788,6 @@ select:focus-visible,
 .analysis-panel {
   margin-top: 12px;
   padding: 12px;
-  border: 1px solid var(--color-glass-border);
-  border-radius: var(--radius-md);
-  background: linear-gradient(180deg, var(--glass-highlight), var(--glass-surface));
-  box-shadow: var(--glass-shadow);
-  backdrop-filter: blur(10px) saturate(140%);
-  -webkit-backdrop-filter: blur(10px) saturate(140%);
 }
 
 .analysis-panel__header {
@@ -728,7 +810,7 @@ select:focus-visible,
 .analysis-list {
   display: grid;
   gap: 6px;
-  max-height: 260px;
+  max-height: 320px;
   overflow-y: auto;
   padding-right: 4px;
 }
@@ -837,4 +919,74 @@ select:focus-visible,
   border-radius: var(--radius-sm);
   background: var(--color-surface);
   color: var(--color-text);
+}
+
+/* Utility classes replacing inline styles in popup.html */
+
+.is-hidden {
+  display: none;
+}
+
+.help-text {
+  margin: 0 0 8px;
+  font-size: 12px;
+}
+
+.warning-box {
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+}
+
+.footer {
+  margin-top: 8px;
+  padding: 8px;
+  color: var(--color-muted);
+  font-size: 11px;
+  text-align: center;
+}
+
+.footer-link {
+  color: var(--color-muted);
+}
+
+.section-gap {
+  margin-bottom: 12px;
+}
+
+.field-gap {
+  margin-top: 8px;
+}
+
+.checkbox-row-gap {
+  margin-top: 8px;
+}
+
+.custom-ua-input {
+  margin-top: 4px;
+}
+
+.param-add-btn {
+  margin-top: 4px;
+}
+
+.param-list {
+  margin-top: 8px;
+}
+
+.parameterisation-form {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid #ddd;
+}
+
+.parameterisation-form h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.resource-legend {
+  font-size: 12px;
+  font-weight: 700;
 }

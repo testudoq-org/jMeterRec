@@ -16,6 +16,14 @@ import {
   toErrorMessage,
   type AppTheme,
 } from '../shared/dom-utils'
+import {
+  DETACHED_BOUNDS_STORAGE_KEY,
+  DETACHED_BOUNDS_DEFAULT_WIDTH,
+  DETACHED_BOUNDS_DEFAULT_HEIGHT,
+  extractUsableBounds,
+  loadDetachedBounds,
+  type DetachedBounds,
+} from '../shared/detached-bounds'
 import type { BackgroundRequest, BackgroundResponse, RecorderSnapshot } from '../messages'
 import type { CapturedRequest } from '../models/captured-request'
 import type { HAR } from '../jmx/har-to-jmx'
@@ -162,11 +170,154 @@ let elapsedTimer: ReturnType<typeof globalThis.setInterval> | null = null
 let detachedWindowId: number | null = null
 let pausedElapsedSeconds = 0
 
+// `?detached=1` is the query string `openDetachedInspectorWindow()` appends
+// when it opens the popup in a separate, user-resizable window. Chrome action
+// popups auto-fit to the intrinsic body width and are capped at 800x600, so
+// the action popup now uses a 760px content column. The detached window is
+// created at 900x720 and its content column widens to the 1200px detached cap
+// (`--detached-max-width`) to use the extra real estate instead of leaving it
+// as blank side margin. The Detach button that used to trigger this is hidden
+// (area 5); the toolbar icon now opens the window directly via
+// `action.onClicked` in the service worker. This code is kept behind the
+// scenes so the old approach can be restored.
+// `isDetached` is read once at startup and does not change afterwards.
+const isDetached = new URLSearchParams(window.location.search).get('detached') === '1'
+document.documentElement.dataset.detached = isDetached ? '1' : '0'
+
 chrome.windows.onRemoved.addListener((windowId) => {
   if (windowId === detachedWindowId) {
     detachedWindowId = null
   }
 })
+
+// Bounds persistence for the detached inspector window. The detached window is
+// the only surface that can exceed the 800x600 action-popup cap, so its size is
+// worth remembering across close/reopen. Bounds are read from
+// `chrome.storage.local` on open, validated, clamped to the available work area,
+// and persisted back on every `chrome.windows.onBoundsChanged` event (debounced
+// so a drag does not write to storage once per intermediate pixel). Invalid,
+// minimized, or otherwise unusable bounds are ignored rather than persisted.
+const DETACHED_BOUNDS_DEBOUNCE_MS = 500
+
+let detachedBoundsSaveTimer: ReturnType<typeof globalThis.setTimeout> | null = null
+let detachedBoundsListenerRegistered = false
+
+function openDetachedInspectorWindow(): void {
+  if (detachedWindowId !== null) {
+    chrome.windows.update(detachedWindowId, { focused: true }).catch(() => {
+      detachedWindowId = null
+      openDetachedInspectorWindow()
+    })
+    return
+  }
+
+  void recoverDetachedWindowId()
+    .then((existingId) => {
+      if (existingId !== null) {
+        detachedWindowId = existingId
+        return chrome.windows.update(existingId, { focused: true })
+      }
+
+      return loadDetachedBounds().then((bounds) =>
+        chrome.windows.create({
+          url: chrome.runtime.getURL('popup/popup.html?detached=1'),
+          type: 'popup',
+          width: bounds.width,
+          height: bounds.height,
+          left: bounds.left,
+          top: bounds.top,
+          focused: true,
+        })
+      )
+    })
+    .then((win) => {
+      if (win?.id === undefined) {
+        return
+      }
+
+      detachedWindowId = win.id
+      registerDetachedBoundsListener()
+    })
+    .catch(() => {
+      // Fall back to the previous behaviour: a plain create with no bounds
+      // persistence. The detached-window path must never break, whether it
+      // is triggered by the toolbar icon (area 5) or the hidden Detach
+      // button kept behind the scenes.
+      void chrome.windows
+        .create({
+          url: chrome.runtime.getURL('popup/popup.html?detached=1'),
+          type: 'popup',
+          width: DETACHED_BOUNDS_DEFAULT_WIDTH,
+          height: DETACHED_BOUNDS_DEFAULT_HEIGHT,
+          focused: true,
+        })
+        .then((win) => {
+          if (win?.id !== undefined) {
+            detachedWindowId = win.id
+            registerDetachedBoundsListener()
+          }
+        })
+    })
+}
+
+async function recoverDetachedWindowId(): Promise<number | null> {
+  if (detachedWindowId !== null) {
+    return detachedWindowId
+  }
+
+  try {
+    const detachedUrl = chrome.runtime.getURL('popup/popup.html?detached=1')
+    const windows = await chrome.windows.getAll({ populate: true })
+
+    for (const win of windows) {
+      if (win.type !== 'popup' || win.id === undefined) {
+        continue
+      }
+
+      const matches = (win.tabs ?? []).some((tab) => tab.url?.startsWith(detachedUrl))
+      if (matches) {
+        return win.id
+      }
+    }
+  } catch {
+    // windows API unavailable; stay null and let the caller create a window.
+  }
+
+  return null
+}
+
+function registerDetachedBoundsListener(): void {
+  if (detachedBoundsListenerRegistered) {
+    return
+  }
+
+  detachedBoundsListenerRegistered = true
+  chrome.windows.onBoundsChanged.addListener((win: chrome.windows.Window) => {
+    if (win.id === undefined || detachedWindowId !== win.id) {
+      return
+    }
+
+    const bounds = extractUsableBounds(win)
+    if (bounds === null) {
+      return
+    }
+
+    scheduleDetachedBoundsSave(bounds)
+  })
+}
+
+function scheduleDetachedBoundsSave(bounds: DetachedBounds): void {
+  if (detachedBoundsSaveTimer !== null) {
+    globalThis.clearTimeout(detachedBoundsSaveTimer)
+  }
+
+  detachedBoundsSaveTimer = globalThis.setTimeout(() => {
+    detachedBoundsSaveTimer = null
+    void chrome.storage.local.set({ [DETACHED_BOUNDS_STORAGE_KEY]: bounds }).catch(() => {
+      // Persistence is best-effort; never break the Detach path on storage failure.
+    })
+  }, DETACHED_BOUNDS_DEBOUNCE_MS)
+}
 
 planNameInput.addEventListener('input', () => {
   planNameEdited = true
@@ -274,6 +425,12 @@ convertHarToJmx.addEventListener('click', () => {
   void convertImportedHarToJmx()
 })
 
+// BEHIND THE SCENES (area 5): the Detach button is hidden because clicking the
+// toolbar icon now opens the popup as a separate, user-resizable window via
+// `action.onClicked` in the service worker. This handler is kept so the old
+// approach can be restored by re-enabling the button in popup.html. The
+// `openDetachedInspector` option and `openDetachedInspectorWindowIfEnabled()`
+// are likewise inert (default false, no UI to enable it) and kept for revert.
 openDetachedInspector.addEventListener('click', () => {
   openDetachedInspectorWindow()
 })
@@ -1285,30 +1442,6 @@ function openDetachedInspectorWindowIfEnabled(): void {
   if (transactionPanelOptions.openDetachedInspector) {
     openDetachedInspectorWindow()
   }
-}
-
-function openDetachedInspectorWindow(): void {
-  if (detachedWindowId !== null) {
-    chrome.windows.update(detachedWindowId, { focused: true }).catch(() => {
-      detachedWindowId = null
-      openDetachedInspectorWindow()
-    })
-    return
-  }
-
-  void chrome.windows
-    .create({
-      url: chrome.runtime.getURL('popup/popup.html?detached=1'),
-      type: 'popup',
-      width: 420,
-      height: 720,
-      focused: true,
-    })
-    .then((win) => {
-      if (win?.id !== undefined) {
-        detachedWindowId = win.id
-      }
-    })
 }
 
 function statusTextFor(statusValue: RecorderSnapshot['status']): string {

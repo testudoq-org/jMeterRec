@@ -30,4 +30,13 @@ export function normalizeTheme(theme: unknown): AppTheme {
 
 export function applyTheme(theme: AppTheme): void {
   document.documentElement.dataset.theme = theme
+
+  // Keep the <meta name="color-scheme"> in sync. This meta is read by the
+  // browser during HTML parsing (before the stylesheet loads), so it is the
+  // only way to tell Chrome our colour-scheme preference up front and avoid a
+  // forced-dark repaint during the action-popup auto-fit window.
+  const meta = document.querySelector('meta[name="color-scheme"]')
+  if (meta !== null) {
+    meta.setAttribute('content', `only ${theme}`)
+  }
 }
