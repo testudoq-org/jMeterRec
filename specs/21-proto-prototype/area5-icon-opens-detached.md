@@ -65,10 +65,11 @@ be resized.
   `openDetachedInspectorWindowIfEnabled()` after a successful recording start.
   The stale comment describing that option as inert must not be treated as
   behavioural documentation.
-- The toolbar-click service-worker path creates the initial window directly.
-  The popup-side persisted-bounds path is entered by the hidden Detach button
-  and the recording-start option, so persisted bounds are not yet applied to a
-  first window opened by the toolbar icon. This is an open prototype gap.
+- The toolbar-click service-worker path creates the initial window directly
+  and restores the user's last persisted bounds on first open via the shared
+  `detached-bounds` helpers (Issue 2 is fixed: stored bounds are read from
+  `chrome.storage.local` and applied with a top-right fallback when absent or
+  invalid).
 
 ---
 
@@ -78,12 +79,14 @@ be resized.
 | ---- | ---- | ------------ |
 | Source manifest input | `src/manifest.json` | Declares the popup for CRXJS asset emission; retains `action.default_popup` in source. |
 | Shipped manifest transform | `vite.config.ts` | Strips `action.default_popup` from the output manifest, rewrites output paths, and declares the separate service-worker entry. |
-| Toolbar action routing | `src/background/service-worker.ts` | Registers `chrome.action.onClicked`, reuses/focuses an existing detached window, creates the new window, and calculates top-right placement. |
+| Toolbar action routing | `src/background/service-worker.ts` | Registers `chrome.action.onClicked`, reuses/focuses an existing detached window, creates the new window at the top-right, and loads persisted bounds via `detached-bounds`. |
 | Detached page state | `src/popup/popup.ts` | Reads `?detached=1`, applies the detached layout hook, and provides bounds validation, clamping, persistence, and the legacy opening path. |
 | Popup markup | `src/popup/popup.html` | Supplies the shared popup UI and keeps the legacy Detach button hidden. |
 | Detached layout | `src/popup/popup.css` | Separates the 1200px detached content column from the 760px action-popup column and gives the transaction list flexible height. |
 | Existing option path | `src/options/options.html`, `src/options/options.ts` | Persists “Open detached inspector window when recording starts” and keeps the option available. |
 | Unit coverage | `src/popup/popup.test.ts` | Covers bounds validation, fallback, reuse/focus, and debounced persistence for the popup-side detached path. |
+| Background unit coverage | `src/background/detached-window-opener.test.ts` | 24 tests cover the service-worker path: reuse/focus, top-right placement, bounds restore-with-fallback, provider error handling, and default-size fallback. |
+| Shared bounds helpers | `src/shared/detached-bounds.ts`, `src/shared/detached-bounds.test.ts` | Validate/clamp bounds to the available work area (700 × 600 minimum), read/write `chrome.storage.local` with a 500 ms debounce, and expose `loadDetachedBounds` for injection. |
 | Browser coverage | `tests/e2e/spec-020-popup-stability.spec.ts` | Covers detached query-state and 760px/1200px detached layout widths. |
 
 ---
@@ -111,14 +114,15 @@ be resized.
 | -- | ----- | ------ | ------------- |
 | V21-A5.1 | Shipped manifest contract | Run `npm run build`; inspect `dist/manifest.json` | `action.default_popup` is absent; `action.default_title` and `default_icon` remain; the service worker is present. |
 | V21-A5.2 | Toolbar route | Load the built extension in Chrome and click the toolbar icon | A separate `popup/popup.html?detached=1` window opens instead of the constrained action popup. |
-| V21-A5.3 | Resizable initial window | Inspect the created `chrome.windows.create` call and resize the native window | Initial create data is 900 × 720 with `type: 'popup'`; native resizing is not blocked. |
+| V21-A5.3 | Resizable initial window | Inspect the created `chrome.windows.create` call and resize the native window | Initial create data is 900 × 720 (or the persisted bounds from `chrome.storage.local` on first open) with `type: 'popup'`; native resizing is not blocked. |
 | V21-A5.4 | Reuse and focus | Click the toolbar icon twice while a detached window is open | The second click focuses the existing window and does not create a duplicate. |
 | V21-A5.5 | Placement fallback | Exercise a normal source window, unavailable source geometry, and a minimized source window | The new window is placed at the source top-right when possible and falls back without throwing. |
 | V21-A5.6 | Detached layout | Open the built page with `?detached=1` at narrow, 760px, and wide viewports | `data-detached="1"` is set; body width is viewport-limited up to 1200px; the transaction panel uses remaining height. |
 | V21-A5.7 | Existing option compatibility | Enable the options toggle, start recording, and use the hidden legacy Detach path where available | The existing recording-start and legacy paths still open/focus a detached window. |
-| V21-A5.8 | Bounds behaviour | Run `npm test -- src/popup/popup.test.ts` | Valid stored bounds are used; invalid bounds fall back; another/minimized window is ignored; persistence is debounced. |
-| V21-A5.9 | Regression gates | Run `npm run typecheck`, `npm run build`, and the relevant Playwright scenario | Typecheck and build pass; detached browser scenarios pass without capture/export regressions. |
-| V21-A5.10 | Permission boundary | Review the shipped manifest and diff | No permission beyond the existing `windows` permission is added for this route. |
+| V21-A5.8 | Bounds behaviour | Run `npm test -- src/background/detached-window-opener.test.ts src/shared/detached-bounds.test.ts src/popup/popup.test.ts` | Valid stored bounds are used; invalid bounds fall back; another/minimized window is ignored; persistence is debounced. |
+| V21-A5.9 | Toolbar-click bounds restore (Issue 2) | Reload the built extension with stored bounds in `chrome.storage.local`; click the toolbar icon | The first window opened by the toolbar icon uses the stored width/height/left/top instead of the default 900 × 720. |
+| V21-A5.10 | Regression gates | Run `npm run typecheck`, `npm run build`, and the relevant Playwright scenario | Typecheck and build pass; detached browser scenarios pass without capture/export regressions. |
+| V21-A5.11 | Permission boundary | Review the shipped manifest and diff | No permission beyond the existing `windows` permission is added for this route. |
 
 ---
 
@@ -133,5 +137,6 @@ be resized.
 - Placement, reuse, fallback, and permission checks pass.
 - Relevant unit, typecheck, build, and Playwright checks pass.
 - The recording-start option and hidden legacy Detach path remain compatible.
-- The toolbar-click bounds-persistence gap is either fixed or explicitly
-  accepted as a follow-up before merge.
+- The toolbar-click bounds-persistence gap is fixed: the first window opened by
+  the toolbar icon restores persisted bounds from `chrome.storage.local` with a
+  top-right fallback.
