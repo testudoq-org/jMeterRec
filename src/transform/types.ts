@@ -93,6 +93,14 @@ export interface ScriptTransformationPlan {
    * to `[]` via `plan.groups ?? []`.
    */
   groups?: AcceptedGroup[]
+  /**
+   * User edits applied to proposed groups before acceptance.
+   *
+   * Additive field mirroring `groups`: pre-Feature-21 plans load with
+   * `groupDrafts === undefined`; callers normalise to `[]` via
+   * `plan.groupDrafts ?? []`.
+   */
+  groupDrafts?: GroupEditDrafts
 }
 
 /**
@@ -112,6 +120,13 @@ export interface GroupEditDraft {
   memberExchangeIds?: string[]
   locked?: boolean
 }
+
+/**
+ * User edits applied to proposed groups before acceptance. Stored on the
+ * plan as an additive field; pre-Feature-21 plans load with
+ * `groupDrafts === []` via the `PlanStore.load()` fallback.
+ */
+export type GroupEditDrafts = GroupEditDraft[]
 
 /**
  * An accepted group ready for JMX emission.

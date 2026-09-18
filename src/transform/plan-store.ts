@@ -60,6 +60,11 @@ export class PlanStore {
       if (parsed.groups === undefined) {
         parsed.groups = []
       }
+      // Additive-field fallback mirroring `groups`: plans serialized without
+      // `groupDrafts` (pre-Feature-21) load transparently with `groupDrafts === []`.
+      if (parsed.groupDrafts === undefined) {
+        parsed.groupDrafts = []
+      }
       return parsed
     } catch {
       return undefined

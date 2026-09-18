@@ -173,6 +173,7 @@ describe('normalizeAdvancedOptions', () => {
       recordRedirects: true,
       recordCookies: false,
       userAgent: 'firefox-win' as const,
+      filterStaticResources: false as const,
     }
     expect(normalizeAdvancedOptions(input)).toEqual(input)
   })
