@@ -63,8 +63,8 @@ Features 21 and 22 may proceed in parallel after 20 if staffing allows; both req
 | 19 | Analysis library | `feature/19-analysis-library` | Reviewable candidates | Recording mutated or analysis needs browser | [spec-19](./specs/19-analysis-library.md) | Merged |
 | 20 | Transformation plan | `feature/20-transformation-plan` | Real autocorrelation + parameterisation in JMX | Auto-apply without accept | [spec-20](./specs/20-transformation-plan.md) | Merged |
 | 21 | User paths | `feature/21-user-paths` | Business-shaped scripts | Groups not editable | [spec-21](./specs/21-user-paths.md) | Merged (Phase 1) |
-| 21-p2 | User paths Phase 2 | `feature/21-user-paths-phase-2` | Full heuristic surface + HAR round-trip fix | HAR data loss unfixed; action timestamps missing | [spec-21-p2](./specs/21-user-paths-phase-2.md) | Branch open |
-| 21-proto | Area 5 detached-window prototype | `prototype/area5-icon-opens-detached` | Resizable inspector from the toolbar icon | Shipped manifest still has `default_popup`; icon opens the constrained popup | [spec-21-proto](./specs/21-proto-prototype/area5-icon-opens-detached.md) | Branch open |
+| 21-p2 | User paths Phase 2 | `feature/21-user-paths-phase-2` | Full heuristic surface + HAR round-trip fix | HAR data loss unfixed; action timestamps missing | [spec-21-p2](./specs/21-user-paths-phase-2.md) | Merged |
+| 21-proto | Area 5 detached-window prototype | `prototype/area5-icon-opens-detached` | Resizable inspector from the toolbar icon | Shipped manifest still has `default_popup`; icon opens the constrained popup | [spec-21-proto](./specs/21-proto-prototype/area5-icon-opens-detached.md) | Merged |
 | 22 | JMX hardening | `feature/22-jmx-hardening` | CI-ready scripts | Goldens unstable | [spec-22](./specs/22-jmx-hardening.md) | Not started |
 | 23 | Debugger provider | `feature/23-debugger-provider` | Broader bodies | Permission rejected | [spec-23](./specs/23-debugger-provider.md) | Optional / gated |
 | 24 | Plugin design | `feature/24-plugin-design` | Clear boundary | Features inventable with stock JMX | [spec-24](./specs/24-plugin-design.md) | Design only |
