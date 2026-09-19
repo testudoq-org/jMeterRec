@@ -510,6 +510,7 @@ describe('TrafficCaptureService advanced filtering', () => {
     recordRedirects: false,
     recordCookies: true,
     userAgent: 'current',
+    filterStaticResources: false,
   }
 
   beforeEach(() => {

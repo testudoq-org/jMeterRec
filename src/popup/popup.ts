@@ -693,6 +693,7 @@ async function saveAdvancedOptions(): Promise<void> {
     recordRedirects: recordRedirects.checked,
     recordCookies: recordCookies.checked,
     userAgent: storedUserAgent,
+    filterStaticResources: false,
   }
 
   await new AdvancedOptionsStore().save(next)

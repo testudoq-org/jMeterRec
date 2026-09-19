@@ -42,6 +42,7 @@ export class TrafficCaptureService {
       recordRedirects: false,
       recordCookies: true,
       userAgent: 'current',
+      filterStaticResources: false,
     }
   ) {}
 

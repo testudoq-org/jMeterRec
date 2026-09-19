@@ -1023,4 +1023,182 @@ describe('RecorderService', () => {
     }
     expect(response.jmx).toContain('GenericController')
   })
+
+  it('V4.6 end-to-end: tabId change in the recording produces a TransactionController boundary', async () => {
+    const mockState = createMockState()
+    // Two requests per tab, same path prefix within a tab, so the only
+    // boundary between them is the tab change → 2 groups of 2 members each.
+    const requests: CapturedRequest[] = [
+      {
+        id: 'a',
+        timestamp: '2024-01-01T00:00:00.000Z',
+        method: 'GET',
+        url: 'https://example.com/tab/1',
+        headers: {},
+        queryParams: {},
+        tabId: 1,
+      },
+      {
+        id: 'b',
+        timestamp: '2024-01-01T00:00:01.000Z',
+        method: 'GET',
+        url: 'https://example.com/tab/1b',
+        headers: {},
+        queryParams: {},
+        tabId: 1,
+      },
+      {
+        id: 'c',
+        timestamp: '2024-01-01T00:00:02.000Z',
+        method: 'GET',
+        url: 'https://example.com/tab/2',
+        headers: {},
+        queryParams: {},
+        tabId: 2,
+      },
+      {
+        id: 'd',
+        timestamp: '2024-01-01T00:00:03.000Z',
+        method: 'GET',
+        url: 'https://example.com/tab/2b',
+        headers: {},
+        queryParams: {},
+        tabId: 2,
+      },
+    ]
+    mockState.getRequests = vi.fn(() => [...requests])
+    mockState.getSnapshot = vi.fn(() => ({
+      status: 'idle' as const,
+      recording: false,
+      planName: 'Tab Plan',
+      requestCount: requests.length,
+    }))
+
+    const planStore = new PlanStore(new MemoryPlanStore())
+    // Lock the first proposed group by name only — the proposal's
+    // tab-boundary grouping survives because memberExchangeIds is unset.
+    const plan: ScriptTransformationPlan = {
+      version: 1,
+      correlations: [],
+      parameterizations: [],
+      replacements: [],
+      warnings: [],
+      groupDrafts: [{ groupId: 'group-1', name: 'Tab 1', locked: true }],
+    }
+    await planStore.save(plan)
+
+    const service = new RecorderService({
+      state: mockState,
+      trafficCapture: createMockTrafficCapture(),
+      jmxOptionsStore: createMockJmxOptionsStore({
+        ...DEFAULT_JMX_OPTIONS,
+        extractorsJson: '[]',
+      }),
+      advancedOptionsStore: createMockAdvancedOptionsStore(),
+      planStore,
+    })
+
+    const response = await service.handleMessage({
+      type: 'EXPORT_JMX',
+      includedDomains: ['example.com'],
+    })
+
+    expect(response.success).toBe(true)
+    if (!response.success || !('jmx' in response)) {
+      throw new Error('Expected successful JMX export response')
+    }
+    // Two requests in different tabs → two groups → two controllers.
+    expect(response.jmx).toContain('TransactionController')
+    expect((response.jmx.match(/<TransactionController\b/g) ?? []).length).toBe(2)
+  })
+
+  it('V4.10 end-to-end: filterStaticResources drops static assets from exported groups', async () => {
+    const mockState = createMockState()
+    const requests: CapturedRequest[] = [
+      {
+        id: 'page',
+        timestamp: '2024-01-01T00:00:00.000Z',
+        method: 'GET',
+        url: 'https://example.com/page',
+        headers: {},
+        queryParams: {},
+      },
+      {
+        id: 'css',
+        timestamp: '2024-01-01T00:00:01.000Z',
+        method: 'GET',
+        url: 'https://example.com/app/main.css',
+        headers: {},
+        queryParams: {},
+      },
+      {
+        id: 'js',
+        timestamp: '2024-01-01T00:00:02.000Z',
+        method: 'GET',
+        url: 'https://example.com/app/bundle.js',
+        headers: {},
+        queryParams: {},
+      },
+      {
+        id: 'api',
+        timestamp: '2024-01-01T00:00:03.000Z',
+        method: 'GET',
+        url: 'https://example.com/api/users',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+    mockState.getRequests = vi.fn(() => [...requests])
+    mockState.getSnapshot = vi.fn(() => ({
+      status: 'idle' as const,
+      recording: false,
+      planName: 'Filter Plan',
+      requestCount: requests.length,
+    }))
+
+    const planStore = new PlanStore(new MemoryPlanStore())
+    const plan: ScriptTransformationPlan = {
+      version: 1,
+      correlations: [],
+      parameterizations: [],
+      replacements: [],
+      warnings: [],
+      groupDrafts: [
+        { groupId: 'group-1', name: 'Main', locked: true },
+        { groupId: 'group-2', name: 'API', locked: true },
+      ],
+    }
+    await planStore.save(plan)
+
+    // The static-resource filter drops css/js from the grouping input, so
+    // the path-prefix rule sees only page + api → 2 groups. Without the
+    // filter the same recording yields 3 groups (page, css+js, api).
+    const service = new RecorderService({
+      state: mockState,
+      trafficCapture: createMockTrafficCapture(),
+      jmxOptionsStore: createMockJmxOptionsStore({
+        ...DEFAULT_JMX_OPTIONS,
+        extractorsJson: '[]',
+      }),
+      advancedOptionsStore: createMockAdvancedOptionsStore({
+        ...DEFAULT_ADVANCED_OPTIONS,
+        filterStaticResources: true,
+      }),
+      planStore,
+    })
+
+    const response = await service.handleMessage({
+      type: 'EXPORT_JMX',
+      includedDomains: ['example.com'],
+    })
+
+    expect(response.success).toBe(true)
+    if (!response.success || !('jmx' in response)) {
+      throw new Error('Expected successful JMX export response')
+    }
+    // Static assets are dropped from grouping, so only 2 single-member
+    // groups are emitted (page + api), each wrapped in a SimpleController
+    // (JMeter serializes SimpleController as the GenericController alias).
+    expect((response.jmx.match(/<GenericController\b/g) ?? []).length).toBe(2)
+  })
 })

@@ -17,6 +17,7 @@ import { applyCapturedResponseBody } from './traffic-normalizer'
 import { toExportView } from '../utils/diagnostics'
 import type { PendingRequest } from './traffic-normalizer'
 import type { CapturedRequest, PlanMeta, PlaywrightStep } from '../models/captured-request'
+import type { ScriptTransformationPlan } from '../transform/types'
 import { RecorderState } from './recorder-state'
 import { TrafficCaptureService } from './traffic-capture'
 import { PlanStore, MemoryPlanStore } from '../transform/plan-store'
@@ -25,6 +26,9 @@ import {
   buildProducerIndexMap,
   validateExportReady,
 } from '../transform/jmx-plan-applier'
+import { applyGroupEdits } from '../transform/path-plan'
+import { proposeGroups, DEFAULT_GROUPING_RULES } from '../analysis/path-grouping'
+import type { AcceptedGroup } from '../transform/types'
 
 type MessageHandler = (
   message: BackgroundRequest,
@@ -435,6 +439,35 @@ export class RecorderService {
     let serializerOptions: JmxSerializerOptions = baseOptions
 
     if (plan !== undefined) {
+      // Feature 21 Phase 2a: propose groups from the pre-HAR requests, which
+      // still carry type/tabId/frameId/transactionKey (toExportView strips
+      // only diagnostics and captureSources; buildHar encodes the four
+      // fields via the capultura block). The static-resource filter is
+      // opt-in via advanced options; default off produces byte-identical
+      // output to not having the filter.
+      //
+      // When the plan already carries accepted groups (user-accepted, e.g.
+      // loaded from a prior session), use them as-is and skip the fresh
+      // proposal — this preserves Phase 1 behaviour for plans that carry
+      // `groups` but no `groupDrafts`. The proposal only runs when the user
+      // has drafts but no accepted groups yet.
+      const acceptedGroups: AcceptedGroup[] =
+        (plan.groupDrafts ?? []).length > 0 && (plan.groups ?? []).length === 0
+          ? applyGroupEdits(
+              proposeGroups(requests, DEFAULT_GROUPING_RULES, {
+                filterStaticResources: advancedOptions.filterStaticResources,
+              }),
+              plan.groupDrafts ?? []
+            )
+          : (plan.groups ?? [])
+
+      // Merge proposed+edited groups into the plan so applyPlan emits them
+      // and the V4.4 confirmation gate sees them.
+      const planWithGroups: ScriptTransformationPlan = {
+        ...plan,
+        groups: acceptedGroups.length > 0 ? acceptedGroups : (plan.groups ?? []),
+      }
+
       const producerIndexMap = buildProducerIndexMap(exportRequests)
       const {
         perSamplerExtractors,
@@ -442,13 +475,13 @@ export class RecorderService {
         perSamplerAssertions,
         csvDataSets,
         groups,
-      } = applyPlan(plan, producerIndexMap)
+      } = applyPlan(planWithGroups, producerIndexMap)
 
       // V4.4 confirmation gate: when the plan carries groups but none of them
       // have been locked by a user edit, refuse to export and ask the UI to
       // confirm first. A plan with no groups (pre-Feature-21) is unaffected.
       if (groups.length > 0) {
-        const readiness = validateExportReady({ ...plan, groups: plan.groups ?? [] })
+        const readiness = validateExportReady(planWithGroups)
         if (!readiness.ready) {
           return {
             success: false,

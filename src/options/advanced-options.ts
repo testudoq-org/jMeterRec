@@ -6,6 +6,16 @@ export interface AdvancedOptions {
   recordRedirects: boolean
   recordCookies: boolean
   userAgent: UserAgentId
+  /**
+   * Opt-in static-resource URL-extension filter for grouping proposals.
+   *
+   * When true, `proposeGroups` drops requests whose URL pathname ends in
+   a known static extension (.css, .js, .png, .woff, ...) from the
+   grouping input before scanning. Default false: filtering is lossy (a
+   JS bundle can embed a CSRF token or dynamic config object that a
+   later API call consumes), so it is opt-in only.
+   */
+  filterStaticResources: boolean
 }
 
 export type UserAgentId =
@@ -40,6 +50,7 @@ export const DEFAULT_ADVANCED_OPTIONS: AdvancedOptions = {
   recordRedirects: false,
   recordCookies: true,
   userAgent: 'current',
+  filterStaticResources: false,
 }
 
 const ADVANCED_OPTION_KEYS = [
@@ -50,6 +61,7 @@ const ADVANCED_OPTION_KEYS = [
   'recordRedirects',
   'recordCookies',
   'userAgent',
+  'filterStaticResources',
 ] as const
 
 const FONT_EXTENSIONS = ['.woff', '.woff2', '.ttf', '.eot', '.otf']
@@ -155,6 +167,10 @@ export function normalizeAdvancedOptions(value: unknown): AdvancedOptions {
   )
   const recordCookies = parseBoolean(record.recordCookies, DEFAULT_ADVANCED_OPTIONS.recordCookies)
   const userAgent = normalizeUserAgent(record.userAgent)
+  const filterStaticResources = parseBoolean(
+    record.filterStaticResources,
+    DEFAULT_ADVANCED_OPTIONS.filterStaticResources
+  )
 
   return {
     filterPattern,
@@ -164,6 +180,7 @@ export function normalizeAdvancedOptions(value: unknown): AdvancedOptions {
     recordRedirects,
     recordCookies,
     userAgent,
+    filterStaticResources,
   }
 }
 
