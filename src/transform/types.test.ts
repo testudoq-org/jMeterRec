@@ -6,6 +6,10 @@ import type {
   ReplacementOperation,
   PlanApplyOptions,
   SupportedExtractorType,
+  AcceptedGroup,
+  ControllerKind,
+  GroupEditDraft,
+  GroupMapping,
 } from './types'
 
 describe('transform types', () => {
@@ -18,6 +22,73 @@ describe('transform types', () => {
       warnings: [],
     }
     expect(plan.version).toBe(1)
+  })
+
+  it('ScriptTransformationPlan.groups is optional and defaults to undefined', () => {
+    const plan: ScriptTransformationPlan = {
+      version: 1,
+      correlations: [],
+      parameterizations: [],
+      replacements: [],
+      warnings: [],
+    }
+    expect(plan.groups).toBeUndefined()
+  })
+
+  it('AcceptedGroup has required fields', () => {
+    const group: AcceptedGroup = {
+      id: 'g1',
+      name: 'Login Flow',
+      memberExchangeIds: ['a', 'b'],
+      controllerKind: 'TransactionController',
+      locked: true,
+      thinkTimeEnabled: false,
+    }
+    expect(group.controllerKind).toBe('TransactionController')
+    expect(group.memberExchangeIds).toEqual(['a', 'b'])
+  })
+
+  it('ControllerKind only allows TransactionController and SimpleController', () => {
+    const t: ControllerKind = 'TransactionController'
+    const s: ControllerKind = 'SimpleController'
+    expect(t).toBe('TransactionController')
+    expect(s).toBe('SimpleController')
+  })
+
+  it('GroupEditDraft fields are optional', () => {
+    const draft: GroupEditDraft = { groupId: 'g1' }
+    expect(draft.groupId).toBe('g1')
+    expect(draft.name).toBeUndefined()
+    expect(draft.memberExchangeIds).toBeUndefined()
+    expect(draft.locked).toBeUndefined()
+  })
+
+  it('PlanApplyOptions has groups passthrough', () => {
+    const options: PlanApplyOptions = {
+      perSamplerExtractors: new Map(),
+      consumerSubstitutions: [],
+      groups: [
+        {
+          id: 'g1',
+          name: 'Login Flow',
+          memberExchangeIds: ['a', 'b'],
+          controllerKind: 'TransactionController',
+          locked: true,
+          thinkTimeEnabled: false,
+        },
+      ],
+    }
+    expect(options.groups).toHaveLength(1)
+    expect(options.groups![0]!.name).toBe('Login Flow')
+  })
+
+  it('GroupMapping carries name and requestIndices', () => {
+    const mapping: GroupMapping = {
+      name: 'Login Flow',
+      requestIndices: [0, 1, 2],
+    }
+    expect(mapping.name).toBe('Login Flow')
+    expect(mapping.requestIndices).toEqual([0, 1, 2])
   })
 
   it('CorrelationProposal has required fields', () => {

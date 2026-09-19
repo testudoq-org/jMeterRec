@@ -3,6 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Declared in <head>, above the stylesheet, so the browser sees the
+         colour-scheme preference during HTML parsing — before any external CSS
+         is fetched. If this lived only in popup.css, Chrome could make (or
+         reconsider) its forced-dark decision before the rule applied, and a
+         stray repaint during the action-popup auto-fit window would trigger a
+         re-measure. `only light` matches the default theme on first paint;
+         applyTheme() corrects it to `only dark` once the saved theme loads. -->
+    <meta name="color-scheme" content="only light" />
     <title>Capultura</title>
     <link rel="stylesheet" href="./popup.css" />
   </head>
@@ -49,7 +57,7 @@
         <button id="export" class="secondary" type="button">Export</button>
       </div>
 
-      <div id="jmxOptions" style="display: none">
+      <div id="jmxOptions" hidden>
         <fieldset>
           <legend>Domains to include</legend>
           <div id="jmxDomains" class="domain-list"></div>
@@ -62,7 +70,7 @@
       </div>
 
       <!-- EXTERNAL HAR IMPORT: Parallel import path for HAR files -->
-      <div id="importHarSection" class="card" style="display: none; margin-bottom: 12px">
+      <div id="importHarSection" class="card" hidden>
         <div class="card-header">
           <h2>Import HAR file</h2>
         </div>
@@ -97,7 +105,7 @@
       </div>
 
       <!-- JMX VALIDATION: Client-side validation for uploaded JMX files -->
-      <div id="validateJmxSection" class="card" style="display: none; margin-bottom: 12px">
+      <div id="validateJmxSection" class="card" hidden>
         <div class="card-header">
           <h2>Validate JMX file</h2>
         </div>
@@ -194,7 +202,13 @@
           <h2 id="transactionPanelTitle">Live transactions</h2>
           <p id="transactionSummary" class="muted">No requests captured yet.</p>
         </div>
-        <button id="openDetachedInspector" class="secondary" type="button">Detach</button>
+        <!-- HIDDEN (area 5): the Detach button is no longer the path to a
+             wider window — clicking the toolbar icon now opens the popup as a
+             separate, user-resizable window via `action.onClicked` in the
+             service worker. The button and its click handler in popup.ts are
+             kept behind the scenes so the old approach can be restored by
+             removing this comment and re-enabling the element. -->
+        <button id="openDetachedInspector" class="secondary" type="button" hidden>Detach</button>
       </div>
 
       <div class="transaction-filters" role="search" aria-label="Filter transactions">
@@ -277,7 +291,7 @@
       </section>
     </section>
 
-    <footer style="text-align: center; padding: 8px; font-size: 11px; color: #666; margin-top: 8px">
+    <footer style="text-align: center; padding: 8px; font-size: 11px; color: #666; margin-top: 6px">
       Capultura v0.1.0 BETA —
       <a href="https://github.com/testudoq-org/jMeterRec" style="color: #666">Help &amp; Support</a>
     </footer>

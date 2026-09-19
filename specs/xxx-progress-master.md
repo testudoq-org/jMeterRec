@@ -28,6 +28,8 @@ feature/18-capture-honesty
 feature/19-analysis-library
 feature/20-transformation-plan
 feature/21-user-paths
+feature/21-user-paths-phase-2   # Phase 2: full heuristic surface + HAR fix
+prototype/area5-icon-opens-detached # 21-proto Area 5 detached-window prototype
 feature/22-jmx-hardening
 feature/23-debugger-provider   # optional
 feature/24-plugin-design       # design-only
@@ -40,8 +42,10 @@ feature/24-plugin-design       # design-only
   └── 18 Capture honesty
        └── 19 Analysis library
             └── 20 Transformation plan
-                 ├── 21 User paths
-                 └── 22 JMX hardening
+                  ├── 21 User paths
+                  │    ├── 21-p2 User paths Phase 2
+                  │    └── 21-proto Area 5 detached-window prototype
+                  └── 22 JMX hardening
                       └── 23 Debugger provider (optional)
                            └── 24 Plugin design (doc only)
 ```
@@ -58,7 +62,9 @@ Features 21 and 22 may proceed in parallel after 20 if staffing allows; both req
 | 18 | Capture honesty | `feature/18-capture-honesty` | Trustworthy recordings | Bodies still silent or export breaks | [spec-18](./specs/18-capture-honesty.md) | Merged |
 | 19 | Analysis library | `feature/19-analysis-library` | Reviewable candidates | Recording mutated or analysis needs browser | [spec-19](./specs/19-analysis-library.md) | Merged |
 | 20 | Transformation plan | `feature/20-transformation-plan` | Real autocorrelation + parameterisation in JMX | Auto-apply without accept | [spec-20](./specs/20-transformation-plan.md) | Merged |
-| 21 | User paths | `feature/21-user-paths` | Business-shaped scripts | Groups not editable | [spec-21](./specs/21-user-paths.md) | Not started |
+| 21 | User paths | `feature/21-user-paths` | Business-shaped scripts | Groups not editable | [spec-21](./specs/21-user-paths.md) | Merged (Phase 1) |
+| 21-p2 | User paths Phase 2 | `feature/21-user-paths-phase-2` | Full heuristic surface + HAR round-trip fix | HAR data loss unfixed; action timestamps missing | [spec-21-p2](./specs/21-user-paths-phase-2.md) | Branch open |
+| 21-proto | Area 5 detached-window prototype | `prototype/area5-icon-opens-detached` | Resizable inspector from the toolbar icon | Shipped manifest still has `default_popup`; icon opens the constrained popup | [spec-21-proto](./specs/21-proto-prototype/area5-icon-opens-detached.md) | Branch open |
 | 22 | JMX hardening | `feature/22-jmx-hardening` | CI-ready scripts | Goldens unstable | [spec-22](./specs/22-jmx-hardening.md) | Not started |
 | 23 | Debugger provider | `feature/23-debugger-provider` | Broader bodies | Permission rejected | [spec-23](./specs/23-debugger-provider.md) | Optional / gated |
 | 24 | Plugin design | `feature/24-plugin-design` | Clear boundary | Features inventable with stock JMX | [spec-24](./specs/24-plugin-design.md) | Design only |
@@ -145,6 +151,7 @@ Before merge:
 | 19 | Candidates reviewable; recording immutable | Analysis requires browser runtime or mutates storage |
 | 20 | Suite green; accepted plan produces stock JMeter extractors; V3.1–V3.10 audit passing | Anything auto-applied without accept |
 | 21 | Groups editable before export | Groups inferred only from URL names with no edit UI |
+| 21-proto | Built manifest omits `default_popup`; toolbar icon opens a resizable detached inspector | Source manifest is shipped with `default_popup` or the icon still opens the constrained popup |
 | 22 | Goldens stable; multi-iteration smoke passes | Flaky goldens or encoding regressions |
 | 23 | Optional; product accepts debugger permission | Forced as required path for ordinary JMX |
 | 24 | Design doc only | Implementation of plugin code on this track |
@@ -155,16 +162,17 @@ Before merge:
 
 ```text
 specs/
-  xxx-progress-master.md    ← this file
-  specs/
-    17-baseline-lock.md
-    18-capture-honesty.md
-    19-analysis-library.md
-    20-transformation-plan.md
-    21-user-paths.md
-    22-jmx-hardening.md
-    23-debugger-provider.md
-    24-plugin-design.md
+  xxx-progress-master.md    ← this file (living map)
+  17-baseline-lock.md
+  18-capture-honesty.md
+  19-analysis-library.md
+  20-transformation-plan.md
+  21-user-paths.md
+  21-user-paths-phase-2.md
+  21-proto-prototype/area5-icon-opens-detached.md
+  22-jmx-hardening.md
+  23-debugger-provider.md
+  24-plugin-design.md
 ```
 
 1. Open the next `Not started` feature spec.  

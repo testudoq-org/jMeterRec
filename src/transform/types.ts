@@ -84,6 +84,60 @@ export interface ScriptTransformationPlan {
   parameterizations: ParameterizationProposal[]
   replacements: ReplacementOperation[]
   warnings: string[]
+  /**
+   * User-editable groups of HTTP exchanges that export to JMeter
+   * TransactionController / SimpleController elements.
+   *
+   * Additive field: plans serialized without `groups` (pre-Feature-21)
+   * load transparently with `groups === undefined`; callers normalise
+   * to `[]` via `plan.groups ?? []`.
+   */
+  groups?: AcceptedGroup[]
+}
+
+/**
+ * The JMeter controller kind assigned to an accepted group.
+ */
+export type ControllerKind = 'TransactionController' | 'SimpleController'
+
+/**
+ * A user edit applied to a proposal before acceptance.
+ *
+ * Only the fields the user actually changed are present; absent fields
+ * fall back to the proposal's value.
+ */
+export interface GroupEditDraft {
+  groupId: string
+  name?: string
+  memberExchangeIds?: string[]
+  locked?: boolean
+}
+
+/**
+ * An accepted group ready for JMX emission.
+ *
+ * `controllerKind` is assigned by `applyGroupEdits`:
+ * - `TransactionController` for groups with multiple members (timing tracked)
+ * - `SimpleController` for single-member groups
+ */
+export interface AcceptedGroup {
+  id: string
+  name: string
+  memberExchangeIds: string[]
+  controllerKind: ControllerKind
+  locked: boolean
+  thinkTimeEnabled: boolean
+}
+
+/**
+ * A group's name mapped to the request indices its members occupy in the
+ * exported request sequence. Produced by `buildGroupMappings` in
+ * `jmx-plan-applier.ts` and consumed by the serializer to wrap the correct
+ * samplers in a TransactionController / SimpleController.
+ */
+export interface GroupMapping {
+  name: string
+  requestIndices: number[]
 }
 
 /**
@@ -115,4 +169,11 @@ export interface PlanApplyOptions {
    * Derived from ParameterizationProposal entries with source === 'csv'.
    */
   csvDataSets?: JmxCsvDataSet[]
+  /**
+   * Accepted user groups to wrap in JMeter controllers during sampler
+   * sequence emission. Each group's `memberExchangeIds` are matched to
+   * request indices by the serializer; members are wrapped inside a
+   * TransactionController (multi-member) or SimpleController (single-member).
+   */
+  groups?: AcceptedGroup[]
 }

@@ -36,7 +36,7 @@ test('records a synthetic flow and exports deterministic JMX and Playwright gold
     const extensionId = await extensionIdFromContext(context)
     const popup = await context.newPage()
 
-    await popup.setViewportSize({ width: 420, height: 760 })
+    await popup.setViewportSize({ width: 760, height: 760 })
     await popup.goto(`chrome-extension://${extensionId}/popup/popup.html`)
     await expect(popup.locator('#status')).toContainText('Please start recording')
     await popup.locator('#planName').fill('Golden E2E')

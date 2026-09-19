@@ -18,6 +18,30 @@ export interface HAREntry {
   response: HARResponse
   cache: Record<string, never>
   timings: HARTimings
+  /**
+   * Capultura extension block carrying request metadata that standard HAR
+   * has no field for: `type` (main_frame / sub_frame / ...), `tabId`,
+   * `frameId`, and `transactionKey`. Optional and additive — entries
+   * produced without it (e.g. external HAR imports) round-trip with the
+   * four fields undefined, exactly as before this extension existed.
+   */
+  capultura?: HARCapultura
+}
+
+/**
+ * Capultura extension metadata stored on a HAR entry.
+ *
+ * All fields are optional because the extension is additive: a HAR entry
+ * that predates this block or was produced by another tool carries
+ * `undefined` for every field, and reconstruction yields a
+ * `CapturedRequest` with those fields undefined — identical to current
+ * behaviour.
+ */
+export interface HARCapultura {
+  type?: string
+  tabId?: number
+  frameId?: number
+  transactionKey?: string
 }
 
 export interface HARRequest {
@@ -135,6 +159,10 @@ export function buildHar(requests: CapturedRequest[]): HAR {
         wait: 0,
         receive: 0,
       },
+      // Capultura extension: carry type/tabId/frameId/transactionKey through
+      // the HAR round-trip. Omitted entirely when none are present, so
+      // entries that predate this block round-trip byte-identically.
+      ...(hasCapulturaFields(req) ? { capultura: buildCapultura(req) } : {}),
     }
   })
 
@@ -145,4 +173,36 @@ export function buildHar(requests: CapturedRequest[]): HAR {
       entries,
     },
   }
+}
+
+/**
+ * Whether a request carries any of the four Capultura extension fields.
+ * When none are present the entry is emitted without the `capultura` block,
+ * so external HAR imports and pre-existing fixtures round-trip
+ * byte-identically.
+ */
+function hasCapulturaFields(req: CapturedRequest): boolean {
+  return (
+    req.type !== undefined ||
+    req.tabId !== undefined ||
+    req.frameId !== undefined ||
+    req.transactionKey !== undefined
+  )
+}
+
+function buildCapultura(req: CapturedRequest): HARCapultura {
+  const block: HARCapultura = {}
+  if (req.type !== undefined) {
+    block.type = req.type
+  }
+  if (req.tabId !== undefined) {
+    block.tabId = req.tabId
+  }
+  if (req.frameId !== undefined) {
+    block.frameId = req.frameId
+  }
+  if (req.transactionKey !== undefined) {
+    block.transactionKey = req.transactionKey
+  }
+  return block
 }

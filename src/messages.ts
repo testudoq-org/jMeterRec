@@ -45,7 +45,13 @@ export type BackgroundResponse =
   | { success: true; injected: boolean; tabId?: number }
   // JMX VALIDATION: Reserved response shape; no handler in v1
   | { success: true; validation: ValidationReport }
-  | { success: false; error: string }
+  /**
+   * Failure response. `requiresConfirmation` is set to `true` by the
+   * Feature 21 V4.4 confirmation gate when a plan carries user-path groups
+   * but none of them have been locked by a user edit — the UI can then
+   * prompt the user to confirm before retrying the export.
+   */
+  | { success: false; error: string; requiresConfirmation?: boolean }
 
 export type BackgroundBroadcast =
   | { type: 'STATE_CHANGED'; snapshot: RecorderSnapshot }

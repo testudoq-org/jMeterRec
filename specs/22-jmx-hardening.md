@@ -1,7 +1,7 @@
 # Feature 22 — JMX Hardening
 
 **Branch:** `feature/22-jmx-hardening`  
-**Depends on:** Feature 20 (and ideally 21 if controllers land first)  
+**Depends on:** Feature 20 (required); Feature 21 controllers (now merged — `TransactionController`/`SimpleController`/`GenericController` elements are live in the serializer, so controller edge cases in §3 are testable)
 **Type:** Export quality, goldens, diagnostics  
 
 ---

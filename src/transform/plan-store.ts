@@ -55,6 +55,11 @@ export class PlanStore {
       if (parsed.version === undefined || parsed.correlations === undefined) {
         return undefined
       }
+      // Additive-field fallback: plans serialized without `groups` (pre-Feature-21)
+      // load transparently with `groups === []`. No schema version bump.
+      if (parsed.groups === undefined) {
+        parsed.groups = []
+      }
       return parsed
     } catch {
       return undefined

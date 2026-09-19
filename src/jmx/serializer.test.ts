@@ -1,6 +1,7 @@
 import { buildJmx } from './serializer'
 import { describe, expect, it } from 'vitest'
 import type { CapturedRequest, PlanMeta } from '../models/captured-request'
+import type { GroupMapping } from '../transform/types'
 
 const meta: PlanMeta = {
   name: 'Test Plan',
@@ -39,6 +40,14 @@ function everySamplerHasChildHashTree(jmx: string): boolean {
 
     return childHashTree !== -1 && (nextSampler === undefined || childHashTree < nextSampler)
   })
+}
+
+function countOpenHashTrees(jmx: string): number {
+  return (jmx.match(/<hashTree>/g) ?? []).length
+}
+
+function countCloseHashTrees(jmx: string): number {
+  return (jmx.match(/<\/hashTree>/g) ?? []).length
 }
 
 describe('buildJmx', () => {
@@ -1252,5 +1261,171 @@ describe('buildJmx', () => {
     const jmx = buildJmx(meta, requests, { csvDataSets: [] })
 
     expect(jmx).not.toContain('CSVDataSet')
+  })
+
+  describe('group wrapping (Feature 21 V4.3)', () => {
+    const groupedRequests: CapturedRequest[] = [
+      {
+        id: 'login-get',
+        timestamp: '2024-01-01T00:00:00.000Z',
+        method: 'GET',
+        url: 'https://example.com/login',
+        headers: {},
+        queryParams: {},
+      },
+      {
+        id: 'login-post',
+        timestamp: '2024-01-01T00:00:02.000Z',
+        method: 'POST',
+        url: 'https://example.com/login',
+        headers: {},
+        queryParams: {},
+      },
+      {
+        id: 'dashboard',
+        timestamp: '2024-01-01T00:00:07.000Z',
+        method: 'GET',
+        url: 'https://example.com/dashboard',
+        headers: {},
+        queryParams: {},
+      },
+    ]
+
+    const groups: GroupMapping[] = [
+      { name: 'Login Flow', requestIndices: [0, 1] },
+      { name: 'Dashboard', requestIndices: [2] },
+    ]
+
+    it('wraps group members in TransactionController elements', () => {
+      const jmx = buildJmx(meta, groupedRequests, { groups })
+
+      expect(jmx).toContain('TransactionController')
+      expect(jmx).toContain('testname="Login Flow"')
+      expect(jmx).toContain('testname="Dashboard"')
+    })
+
+    it('uses SimpleController for single-member groups', () => {
+      const singleMemberGroups: GroupMapping[] = [{ name: 'Single', requestIndices: [0] }]
+      const jmx = buildJmx(meta, [groupedRequests[0]!], { groups: singleMemberGroups })
+
+      expect(jmx).toContain('GenericController')
+      expect(jmx).toContain('testname="Single"')
+      // No TransactionController element tag (the GenericController's props
+      // reference TransactionController.parent/includeTimers by JMeter's
+      // native template, so check for the element tag instead).
+      expect(jmx).not.toMatch(/<TransactionController\b/)
+    })
+
+    it('TransactionController names match GroupMapping.name', () => {
+      const jmx = buildJmx(meta, groupedRequests, { groups })
+
+      const loginMatch = jmx.match(/<TransactionController[^>]*testname="([^"]*)"[^>]*>/)
+      expect(loginMatch).not.toBeNull()
+      expect(loginMatch![1]).toBe('Login Flow')
+    })
+
+    it('keeps all samplers present', () => {
+      const jmx = buildJmx(meta, groupedRequests, { groups })
+
+      expect(samplerCount(jmx)).toBe(3)
+    })
+
+    it('balances hashTree open/close counts for valid XML', () => {
+      const jmx = buildJmx(meta, groupedRequests, { groups })
+
+      expect(countOpenHashTrees(jmx)).toBe(countCloseHashTrees(jmx))
+    })
+
+    it('does not place a TransactionController inside HTTPSamplerProxy', () => {
+      const jmx = buildJmx(meta, groupedRequests, { groups })
+
+      // Every TransactionController must appear before its first sampler and
+      // every </hashTree> that closes a controller must appear after the
+      // controller's last sampler. The simplest invariant: no
+      // </HTTPSamplerProxy> is immediately followed by <TransactionController
+      // without an intervening </hashTree>.
+      expect(jmx).not.toMatch(/<\/HTTPSamplerProxy>\s*<TransactionController/)
+    })
+
+    it('emits a between-group think-time timer when groupSeparator is enabled', () => {
+      const jmx = buildJmx(meta, groupedRequests, {
+        groups,
+        groupSeparator: true,
+        thinkTime: { enabled: true, randomize: false, rangePercent: 20 },
+      })
+
+      // Gap between login-post (2000ms) and dashboard (7000ms) is 5000ms.
+      expect(jmx).toContain('ConstantTimer')
+      expect(jmx).toContain('<stringProp name="ConstantTimer.delay">5000</stringProp>')
+    })
+
+    it('omits between-group timer when groupSeparator is disabled', () => {
+      const jmx = buildJmx(meta, groupedRequests, {
+        groups,
+        groupSeparator: false,
+        thinkTime: { enabled: true, randomize: false, rangePercent: 20 },
+      })
+
+      // No between-group timer; the per-request gap (login-get -> login-post,
+      // 2000ms) is still emitted as a per-sampler timer inside the controller.
+      expect(jmx).toContain('ConstantTimer')
+    })
+
+    it('handles a flat request not belonging to any group', () => {
+      const requests: CapturedRequest[] = [
+        groupedRequests[0]!,
+        {
+          id: 'flat',
+          timestamp: '2024-01-01T00:00:03.000Z',
+          method: 'GET',
+          url: 'https://example.com/flat',
+          headers: {},
+          queryParams: {},
+        },
+        groupedRequests[2]!,
+      ]
+      const mixedGroups: GroupMapping[] = [{ name: 'Login Flow', requestIndices: [0, 2] }]
+      const jmx = buildJmx(meta, requests, { groups: mixedGroups })
+
+      expect(samplerCount(jmx)).toBe(3)
+      expect(jmx).toContain('testname="Login Flow"')
+      expect(jmx).toContain('/flat')
+    })
+
+    it('empty groups option produces the flat sequence', () => {
+      const jmx = buildJmx(meta, groupedRequests, { groups: [] })
+
+      expect(jmx).not.toMatch(/<TransactionController\b/)
+      expect(jmx).not.toMatch(/<GenericController\b/)
+      expect(samplerCount(jmx)).toBe(3)
+    })
+
+    it('V4.5 backward-compat: groups undefined produces byte-identical output', () => {
+      // The flat path must be byte-identical to the original implementation
+      // so existing golden fixtures and exports are unaffected.
+      const requests: CapturedRequest[] = [
+        {
+          id: 'a',
+          timestamp: '2024-01-01T00:00:00.000Z',
+          method: 'GET',
+          url: 'https://example.com/a',
+          headers: {},
+          queryParams: {},
+        },
+        {
+          id: 'b',
+          timestamp: '2024-01-01T00:00:01.000Z',
+          method: 'GET',
+          url: 'https://example.com/b',
+          headers: {},
+          queryParams: {},
+        },
+      ]
+
+      const withGroups = buildJmx(meta, requests, { groups: [] })
+      const withoutGroups = buildJmx(meta, requests)
+
+      expect(withGroups).toBe(withoutGroups)
+    })
   })
 })

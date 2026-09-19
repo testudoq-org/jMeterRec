@@ -110,7 +110,10 @@ const chromeStub = {
   windows: {
     create: vi.fn(),
     update: vi.fn(),
+    getAll: vi.fn(),
+    get: vi.fn(),
     onRemoved: { addListener: vi.fn() },
+    onBoundsChanged: { addListener: vi.fn() },
   },
 }
 
@@ -261,6 +264,16 @@ async function loadPopupModule() {
   }
   vi.stubGlobal('document', jsdomWindow.document)
   vi.stubGlobal('DOMParser', jsdomWindow.DOMParser)
+  // popup.ts reads `window.location.search` at module load to set the
+  // `data-detached` attribute, so the global window must exist before the
+  // module is imported.
+  vi.stubGlobal('window', jsdomWindow)
+  // JSDOM leaves window.screen empty, which would make the detached-bounds
+  // clamping helpers collapse to width 1. Provide a realistic work area.
+  Object.defineProperty(jsdomWindow, 'screen', {
+    value: { availWidth: 1366, availHeight: 768, availLeft: 0, availTop: 0 },
+    configurable: true,
+  })
 
   await import('./popup.ts')
   await flushRuntimeResponse()
@@ -1964,5 +1977,172 @@ describe('popup analysis panel', () => {
     await flushRuntimeResponse()
 
     expect(paramList.querySelectorAll('.analysis-row').length).toBe(0)
+  })
+})
+
+// DETACHED WINDOW BOUNDS: The Detach button opens a separate, user-resizable
+// window whose size is persisted across close/reopen. These tests exercise the
+// bounds validation, clamping, and persistence helpers through the public
+// `openDetachedInspectorWindow()` path with the chrome.* mocks.
+const DETACHED_BOUNDS_DEBOUNCE_MS = 500
+
+describe('detached window bounds', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime('2026-01-01T00:00:00.000Z')
+    chromeStub.storage.local.get.mockImplementation(async (keys: unknown) => {
+      storageGetCalls.push({ keys })
+      return {}
+    })
+    chromeStub.windows.getAll.mockResolvedValue([])
+    chromeStub.windows.get.mockResolvedValue(undefined)
+    chromeStub.windows.create.mockResolvedValue({
+      id: 42,
+      state: 'normal',
+      width: 900,
+      height: 720,
+      left: 0,
+      top: 0,
+    })
+    chromeStub.windows.update.mockResolvedValue(undefined)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    chromeStub.windows.getAll.mockReset()
+    chromeStub.windows.get.mockReset()
+    chromeStub.windows.create.mockReset()
+    chromeStub.windows.update.mockReset()
+  })
+
+  it('uses stored bounds when they are valid', async () => {
+    chromeStub.storage.local.get.mockImplementation(async (keys: unknown) => {
+      storageGetCalls.push({ keys })
+      return {
+        'capyultura:detached-inspector-bounds': { width: 900, height: 700, left: 40, top: 40 },
+      }
+    })
+
+    await loadPopupModule()
+    const openDetachedInspector = document.getElementById(
+      'openDetachedInspector'
+    ) as HTMLButtonElement
+    openDetachedInspector.click()
+    await flushRuntimeResponse()
+    await flushRuntimeResponse()
+    vi.advanceTimersByTime(DETACHED_BOUNDS_DEBOUNCE_MS)
+    await flushRuntimeResponse()
+
+    expect(chromeStub.windows.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: 'chrome-extension://test/popup/popup.html?detached=1',
+        type: 'popup',
+        width: 900,
+        height: 700,
+        left: 40,
+        top: 40,
+        focused: true,
+      })
+    )
+  })
+
+  it('falls back to default bounds when stored values are invalid', async () => {
+    chromeStub.storage.local.get.mockImplementation(async (keys: unknown) => {
+      storageGetCalls.push({ keys })
+      return {
+        'capyultura:detached-inspector-bounds': { width: -1, height: 800, left: 0, top: 0 },
+      }
+    })
+
+    await loadPopupModule()
+    const openDetachedInspector = document.getElementById(
+      'openDetachedInspector'
+    ) as HTMLButtonElement
+    openDetachedInspector.click()
+    await flushRuntimeResponse()
+    await flushRuntimeResponse()
+    vi.advanceTimersByTime(DETACHED_BOUNDS_DEBOUNCE_MS)
+    await flushRuntimeResponse()
+
+    const createCall = chromeStub.windows.create.mock.calls[0]![0] as Record<string, unknown>
+    expect(createCall.width).toBeGreaterThanOrEqual(700)
+    expect(createCall.height).toBeGreaterThanOrEqual(600)
+    expect(typeof createCall.left).toBe('number')
+    expect(typeof createCall.top).toBe('number')
+  })
+
+  it('focuses an already-open detached window instead of creating a new one', async () => {
+    chromeStub.windows.getAll.mockResolvedValue([
+      {
+        id: 7,
+        type: 'popup',
+        tabs: [{ url: 'chrome-extension://test/popup/popup.html?detached=1' }],
+      },
+    ])
+
+    await loadPopupModule()
+    const openDetachedInspector = document.getElementById(
+      'openDetachedInspector'
+    ) as HTMLButtonElement
+    openDetachedInspector.click()
+    await flushRuntimeResponse()
+    await flushRuntimeResponse()
+
+    expect(chromeStub.windows.create).not.toHaveBeenCalled()
+    expect(chromeStub.windows.update).toHaveBeenCalledWith(7, { focused: true })
+  })
+
+  it('persists detached bounds on a debounced onBoundsChanged event', async () => {
+    await loadPopupModule()
+
+    const bounds = { width: 900, height: 720, left: 40, top: 60 }
+    const win = { id: 42, state: 'normal', ...bounds } as chrome.windows.Window
+
+    for (const listener of chromeStub.windows.onBoundsChanged.addListener.mock.calls.map(
+      (c) => c[0] as (w: chrome.windows.Window) => void
+    )) {
+      listener(win)
+    }
+
+    // Storage write is debounced, so it must not have happened yet.
+    expect(chromeStub.storage.local.set).not.toHaveBeenCalled()
+
+    vi.advanceTimersByTime(DETACHED_BOUNDS_DEBOUNCE_MS)
+
+    expect(chromeStub.storage.local.set).toHaveBeenCalledWith({
+      'capyultura:detached-inspector-bounds': bounds,
+    })
+  })
+
+  it('does not persist bounds for a different window or minimized state', async () => {
+    await loadPopupModule()
+
+    const listener = chromeStub.windows.onBoundsChanged.addListener.mock.calls[0]![0] as (
+      w: chrome.windows.Window
+    ) => void
+
+    // A different window id is ignored.
+    listener({
+      id: 99,
+      state: 'normal',
+      width: 900,
+      height: 720,
+      left: 0,
+      top: 0,
+    } as chrome.windows.Window)
+    vi.advanceTimersByTime(DETACHED_BOUNDS_DEBOUNCE_MS)
+    expect(chromeStub.storage.local.set).not.toHaveBeenCalled()
+
+    // A minimized window is ignored.
+    listener({
+      id: 42,
+      state: 'minimized',
+      width: 900,
+      height: 720,
+      left: 0,
+      top: 0,
+    } as chrome.windows.Window)
+    vi.advanceTimersByTime(DETACHED_BOUNDS_DEBOUNCE_MS)
+    expect(chromeStub.storage.local.set).not.toHaveBeenCalled()
   })
 })

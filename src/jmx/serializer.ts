@@ -1,7 +1,7 @@
 import type { JmxExtractor, JmxResponseAssertion, JmxCsvDataSet } from './element-model'
 import type { CapturedRequest, PlanMeta } from '../models/captured-request'
 import type { UserAgentId } from '../options/advanced-options'
-import type { ReplacementOperation } from '../transform/types'
+import type { ReplacementOperation, GroupMapping } from '../transform/types'
 import { getUserAgentString } from '../options/user-agents'
 import { sanitizeForXml } from '../utils/xml-sanitizer'
 import {
@@ -16,6 +16,8 @@ import {
   createCacheManager,
   createJSONPostProcessor,
   createRegexExtractor,
+  createTransactionController,
+  createSimpleController,
   // Serialization functions
   serializeTestPlan,
   serializeThreadGroup,
@@ -28,6 +30,8 @@ import {
   serializeCsvDataSet,
   serializeJSONPostProcessor,
   serializeRegexExtractor,
+  serializeTransactionController as serializeTransactionControllerElement,
+  serializeSimpleController as serializeSimpleControllerElement,
   // Utility helpers (used within serialization functions in element-model.ts)
   // Analysis
   analyzeRequestDefaults,
@@ -63,6 +67,20 @@ export interface JmxSerializerOptions {
    * Derived from ParameterizationProposal entries with source === 'csv'.
    */
   csvDataSets?: JmxCsvDataSet[]
+  /**
+   * Accepted user groups to wrap in JMeter controllers during sampler
+   * sequence emission. Each `GroupMapping` carries the group name plus the
+   * request indices its members occupy in the exported sequence; the
+   * serializer walks requests in order and emits controller boundaries as
+   * the group membership changes.
+   */
+  groups?: GroupMapping[]
+  /**
+   * When true and `groups` is present, emit a think-time timer in the
+   * ThreadGroup hashTree between adjacent groups, sized to the gap between
+   * the last member of group N and the first member of group N+1.
+   */
+  groupSeparator?: boolean
 }
 
 /**
@@ -144,43 +162,149 @@ function buildSamplerSequence(
   options?: JmxSerializerOptions,
   effectiveDefaults?: { domain: string; port: string; protocol: string }
 ): string {
-  return requests
-    .map((req, idx) => {
-      const prev = idx > 0 ? requests[idx - 1] : undefined
-      const gap =
-        prev !== undefined
-          ? new Date(req.timestamp).getTime() - new Date(prev.timestamp).getTime()
-          : 0
-      const timerXml = gap > 0 ? buildThinkTimeTimer(gap, options?.thinkTime) : ''
-      const assertionXml = buildAssertionXml(options)
-      const durationAssertionXml = buildDurationAssertionXml(options)
+  const groups = options?.groups
 
-      // Per-sampler extractors (from plan) — placed as children of this sampler's
-      // hashTree. Falls back to ThreadGroup-level extractors when no plan applies.
-      const samplerExtractors = options?.perSamplerExtractors?.get(idx)
-      const extractorsXml = (samplerExtractors ?? options?.extractors ?? [])
-        .map((ext) => EXTRACTOR_BUILDERS.get(ext.type)?.(ext) ?? '')
-        .join('\n')
+  // ---------------------------------------------------------------------------
+  // Backward-compat fast path: no groups → emit the exact flat sequence the
+  // original implementation produced. Byte-identical output is guaranteed
+  // because this branch returns the original expression verbatim.
+  // ---------------------------------------------------------------------------
+  if (!groups || groups.length === 0) {
+    return requests
+      .map((req, idx) => buildSamplerBlock(req, idx, requests, options, effectiveDefaults))
+      .join('\n')
+  }
 
-      // Per-sampler assertions (from plan) — placed as children of this sampler's
-      // hashTree after the sampler element.
-      const samplerAssertionsXml = buildSamplerAssertions(options?.perSamplerAssertions, idx)
+  // ---------------------------------------------------------------------------
+  // Grouped path: wrap each group's members in a TransactionController /
+  // SimpleController. Each GroupMapping carries the group name plus the
+  // request indices its members occupy in the exported sequence; the
+  // serializer walks requests in order and emits controller boundaries as
+  // the group membership changes. Requests not in any group are emitted
+  // as flat samplers at the ThreadGroup level.
+  // ---------------------------------------------------------------------------
+  const groupByRequestIndex = new Map<number, GroupMapping>()
+  for (const group of groups) {
+    for (const index of group.requestIndices) {
+      if (!groupByRequestIndex.has(index)) {
+        groupByRequestIndex.set(index, group)
+      }
+    }
+  }
 
-      // Apply consumer variable substitutions during sampler creation
-      const substitutedReq = applyConsumerSubstitutions(req, options?.consumerSubstitutions)
-      const samplerModel = createHTTPSampler(
-        substitutedReq,
-        idx,
-        processHeaders(substitutedReq.headers, options),
-        effectiveDefaults
-      )
-      const samplerXml = serializeHTTPSampler(samplerModel)
-      const assertionSection = samplerAssertionsXml.length > 0 ? `\n${samplerAssertionsXml}` : ''
-      const extractorSection = extractorsXml.length > 0 ? `\n${extractorsXml}` : ''
+  const parts: string[] = []
+  let currentGroup: GroupMapping | undefined
+  let groupLastMemberIndex = -1
 
-      return `${timerXml}${assertionXml}${durationAssertionXml}${samplerXml}<hashTree/>${assertionSection}${extractorSection}`
-    })
+  for (let i = 0; i < requests.length; i++) {
+    const req = requests[i]
+    if (req === undefined) {
+      continue
+    }
+
+    const group = groupByRequestIndex.get(i)
+
+    if (group !== currentGroup) {
+      // Close the previous group's controller hashTree.
+      if (currentGroup !== undefined) {
+        parts.push('</hashTree>')
+
+        // Optional between-group think-time timer, sized to the gap between
+        // the last member of the previous group and the first member of this
+        // group (or this flat request). Only emitted when groupSeparator is on.
+        if (
+          options?.groupSeparator === true &&
+          groupLastMemberIndex >= 0 &&
+          requests[groupLastMemberIndex] !== undefined
+        ) {
+          const prevReq = requests[groupLastMemberIndex] as CapturedRequest
+          const gap = new Date(req.timestamp).getTime() - new Date(prevReq.timestamp).getTime()
+          const timer = buildThinkTimeTimer(gap, options?.thinkTime)
+          if (timer.length > 0) {
+            parts.push(timer)
+          }
+        }
+      }
+
+      // Open the new group's controller + hashTree.
+      if (group !== undefined) {
+        const memberCount = group.requestIndices.length
+        if (memberCount > 1) {
+          parts.push(
+            serializeTransactionControllerElement(
+              createTransactionController(group.name, {
+                parent: true,
+                includeTimers: true,
+              })
+            )
+          )
+        } else {
+          parts.push(serializeSimpleControllerElement(createSimpleController(group.name)))
+        }
+        parts.push('<hashTree>')
+      }
+      currentGroup = group
+    }
+
+    groupLastMemberIndex = i
+    parts.push(buildSamplerBlock(req, i, requests, options, effectiveDefaults))
+  }
+
+  // Close the final group's controller hashTree.
+  if (currentGroup !== undefined) {
+    parts.push('</hashTree>')
+  }
+
+  return parts.join('\n')
+}
+
+/**
+ * Build the XML block for a single sampler: think-time timer (if gap),
+ * assertion, duration assertion, the sampler element, its child hashTree,
+ * per-sampler assertions, and per-sampler extractors.
+ *
+ * This is the per-request unit of `buildSamplerSequence`. Extracted so the
+ * grouped and flat paths share identical sampler logic — the flat path is
+ * byte-identical to the original inline implementation.
+ */
+function buildSamplerBlock(
+  req: CapturedRequest,
+  idx: number,
+  requests: CapturedRequest[],
+  options?: JmxSerializerOptions,
+  effectiveDefaults?: { domain: string; port: string; protocol: string }
+): string {
+  const prev = idx > 0 ? requests[idx - 1] : undefined
+  const gap =
+    prev !== undefined ? new Date(req.timestamp).getTime() - new Date(prev.timestamp).getTime() : 0
+  const timerXml = gap > 0 ? buildThinkTimeTimer(gap, options?.thinkTime) : ''
+  const assertionXml = buildAssertionXml(options)
+  const durationAssertionXml = buildDurationAssertionXml(options)
+
+  // Per-sampler extractors (from plan) — placed as children of this sampler's
+  // hashTree. Falls back to ThreadGroup-level extractors when no plan applies.
+  const samplerExtractors = options?.perSamplerExtractors?.get(idx)
+  const extractorsXml = (samplerExtractors ?? options?.extractors ?? [])
+    .map((ext) => EXTRACTOR_BUILDERS.get(ext.type)?.(ext) ?? '')
     .join('\n')
+
+  // Per-sampler assertions (from plan) — placed as children of this sampler's
+  // hashTree after the sampler element.
+  const samplerAssertionsXml = buildSamplerAssertions(options?.perSamplerAssertions, idx)
+
+  // Apply consumer variable substitutions during sampler creation
+  const substitutedReq = applyConsumerSubstitutions(req, options?.consumerSubstitutions)
+  const samplerModel = createHTTPSampler(
+    substitutedReq,
+    idx,
+    processHeaders(substitutedReq.headers, options),
+    effectiveDefaults
+  )
+  const samplerXml = serializeHTTPSampler(samplerModel)
+  const assertionSection = samplerAssertionsXml.length > 0 ? `\n${samplerAssertionsXml}` : ''
+  const extractorSection = extractorsXml.length > 0 ? `\n${extractorsXml}` : ''
+
+  return `${timerXml}${assertionXml}${durationAssertionXml}${samplerXml}<hashTree/>${assertionSection}${extractorSection}`
 }
 
 export function buildJmx(

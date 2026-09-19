@@ -11,6 +11,8 @@ import {
   createCacheManager,
   createJSONPostProcessor,
   createRegexExtractor,
+  createTransactionController,
+  createSimpleController,
   isValidElementNesting,
   ELEMENT_HIERARCHY,
   serializeTestPlan,
@@ -25,6 +27,8 @@ import {
   serializeCacheManager,
   serializeJSONPostProcessor,
   serializeRegexExtractor,
+  serializeTransactionController,
+  serializeSimpleController,
   createTestPlan,
   createThreadGroup,
   createHTTPSampler,
@@ -994,5 +998,127 @@ describe('XML 1.0 sanitization', () => {
 
     expect(xml).not.toContain('\x00')
     expect(xml).toContain('Cookie.value">abcdef')
+  })
+})
+
+describe('TransactionController and SimpleController', () => {
+  describe('createTransactionController', () => {
+    it('creates a controller with JMeter defaults', () => {
+      const controller = createTransactionController('Login Flow')
+
+      expect(controller.type).toBe('TransactionController')
+      expect(controller.testClass).toBe('TransactionController')
+      expect(controller.guiClass).toBe('TransactionControllerGui')
+      expect(controller.name).toBe('Login Flow')
+      expect(controller.enabled).toBe(true)
+      expect(controller.parent).toBe(true)
+      expect(controller.includeTimers).toBe(true)
+    })
+
+    it('honours parent and includeTimers overrides', () => {
+      const controller = createTransactionController('Group', {
+        parent: false,
+        includeTimers: false,
+      })
+
+      expect(controller.parent).toBe(false)
+      expect(controller.includeTimers).toBe(false)
+    })
+  })
+
+  describe('createSimpleController', () => {
+    it('creates a controller emitted as GenericController', () => {
+      const controller = createSimpleController('Section')
+
+      expect(controller.type).toBe('SimpleController')
+      expect(controller.testClass).toBe('GenericController')
+      expect(controller.guiClass).toBe('LogicControllerGroupGui')
+      expect(controller.name).toBe('Section')
+      expect(controller.enabled).toBe(true)
+      expect(controller.parent).toBe(false)
+      expect(controller.includeTimers).toBe(false)
+    })
+  })
+
+  describe('serializeTransactionController', () => {
+    it('produces valid TransactionController XML', () => {
+      const xml = serializeTransactionController(createTransactionController('Login Flow'))
+
+      expect(xml).toContain('<TransactionController guiclass="TransactionControllerGui"')
+      expect(xml).toContain('testclass="TransactionController"')
+      expect(xml).toContain('testname="Login Flow"')
+      expect(xml).toContain('<stringProp name="TransactionController.parent">true</stringProp>')
+      expect(xml).toContain('<boolProp name="TransactionController.includeTimers">true</boolProp>')
+      expect(xml).toContain('</TransactionController>')
+    })
+
+    it('emits parent=false and includeTimers=false when overridden', () => {
+      const xml = serializeTransactionController(
+        createTransactionController('Group', { parent: false, includeTimers: false })
+      )
+
+      expect(xml).toContain('<stringProp name="TransactionController.parent">false</stringProp>')
+      expect(xml).toContain('<boolProp name="TransactionController.includeTimers">false</boolProp>')
+    })
+
+    it('escapes XML special characters in the testname', () => {
+      const xml = serializeTransactionController(createTransactionController('A & B <test>'))
+
+      expect(xml).toContain('testname="A &amp; B &lt;test&gt;"')
+    })
+  })
+
+  describe('serializeSimpleController', () => {
+    it('produces valid GenericController XML', () => {
+      const xml = serializeSimpleController(createSimpleController('Section'))
+
+      expect(xml).toContain('<GenericController guiclass="LogicControllerGroupGui"')
+      expect(xml).toContain('testclass="GenericController"')
+      expect(xml).toContain('testname="Section"')
+      expect(xml).toContain('<boolProp name="TransactionController.includeTimers">false</boolProp>')
+      expect(xml).toContain('<stringProp name="TransactionController.parent">false</stringProp>')
+      expect(xml).toContain('</GenericController>')
+    })
+
+    it('escapes XML special characters in the testname', () => {
+      const xml = serializeSimpleController(createSimpleController('A & B <test>'))
+
+      expect(xml).toContain('testname="A &amp; B &lt;test&gt;"')
+    })
+  })
+
+  describe('ELEMENT_HIERARCHY', () => {
+    it('allows TransactionController inside ThreadGroup', () => {
+      expect(isValidElementNesting('ThreadGroup', 'TransactionController')).toBe(true)
+    })
+
+    it('allows GenericController inside ThreadGroup', () => {
+      expect(isValidElementNesting('ThreadGroup', 'GenericController')).toBe(true)
+    })
+
+    it('allows HTTPSamplerProxy inside TransactionController', () => {
+      expect(isValidElementNesting('TransactionController', 'HTTPSamplerProxy')).toBe(true)
+    })
+
+    it('allows HTTPSamplerProxy inside GenericController', () => {
+      expect(isValidElementNesting('GenericController', 'HTTPSamplerProxy')).toBe(true)
+    })
+
+    it('allows ConstantTimer inside TransactionController', () => {
+      expect(isValidElementNesting('TransactionController', 'ConstantTimer')).toBe(true)
+    })
+
+    it('allows nested controllers', () => {
+      expect(isValidElementNesting('TransactionController', 'GenericController')).toBe(true)
+      expect(isValidElementNesting('GenericController', 'TransactionController')).toBe(true)
+    })
+
+    it('rejects TransactionController inside HTTPSamplerProxy', () => {
+      expect(isValidElementNesting('HTTPSamplerProxy', 'TransactionController')).toBe(false)
+    })
+
+    it('rejects TransactionController inside TestPlan', () => {
+      expect(isValidElementNesting('TestPlan', 'TransactionController')).toBe(false)
+    })
   })
 })

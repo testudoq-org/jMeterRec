@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { readFileSync, writeFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { buildTransformationPlan } from './plan-builder'
 import type { AnalysisDraftState } from './plan-builder'
 import { applyPlan, buildProducerIndexMap } from './jmx-plan-applier'
@@ -9,6 +11,14 @@ import type { PlanMeta } from '../models/captured-request'
 import type { ScriptTransformationPlan } from './types'
 import { MemoryPlanStore, PlanStore } from './plan-store'
 type ExtractorType = JmxExtractor['type']
+
+function normalizeJmx(contents: string): string {
+  return contents
+    .split(/\r?\n/)
+    .map((line) => line.trimStart())
+    .join('\n')
+    .trimEnd()
+}
 
 /**
  * Integration tests covering the full transformation pipeline:
@@ -593,5 +603,146 @@ describe('transformation plan integration', () => {
 
     // Default value present
     expect(jmx).toContain('defaultValues">NOT_FOUND')
+  })
+
+  // Feature 21 V4.3 — user-path grouping integration
+  describe('user-path grouping (Feature 21)', () => {
+    function makeGroupedExchange(
+      id: string,
+      opts: {
+        url?: string
+        method?: string
+        timestamp?: string
+        headers?: Record<string, string>
+      }
+    ): CapturedRequest {
+      return makeExchange(id, opts)
+    }
+
+    it('wraps group members in TransactionController elements', () => {
+      const producer = makeGroupedExchange('login-get', {
+        url: 'https://example.com/login',
+        method: 'GET',
+        timestamp: '2024-01-01T00:00:00.000Z',
+      })
+      const loginPost = makeGroupedExchange('login-post', {
+        url: 'https://example.com/login',
+        method: 'POST',
+        timestamp: '2024-01-01T00:00:02.000Z',
+      })
+      const dashboard = makeGroupedExchange('dashboard', {
+        url: 'https://example.com/dashboard',
+        method: 'GET',
+        timestamp: '2024-01-01T00:00:07.000Z',
+      })
+
+      const plan: ScriptTransformationPlan = {
+        version: 1,
+        correlations: [],
+        parameterizations: [],
+        replacements: [],
+        warnings: [],
+        groups: [
+          {
+            id: 'g1',
+            name: 'Login Flow',
+            memberExchangeIds: ['login-get', 'login-post'],
+            controllerKind: 'TransactionController',
+            locked: true,
+            thinkTimeEnabled: false,
+          },
+          {
+            id: 'g2',
+            name: 'Dashboard',
+            memberExchangeIds: ['dashboard'],
+            controllerKind: 'SimpleController',
+            locked: false,
+            thinkTimeEnabled: false,
+          },
+        ],
+      }
+
+      const producerIndexMap = buildProducerIndexMap([producer, loginPost, dashboard])
+      const { groups } = applyPlan(plan, producerIndexMap)
+
+      const jmx = buildJmx(
+        { name: 'Grouped Plan', threadGroup: { threads: 1, rampUp: 1, loops: 1 } },
+        [producer, loginPost, dashboard],
+        { groups, groupSeparator: true }
+      )
+
+      expect(jmx).toContain('TransactionController')
+      expect(jmx).toContain('testname="Login Flow"')
+      expect(jmx).toContain('testname="Dashboard"')
+      expect(jmx).toContain('GenericController')
+      expect((jmx.match(/<HTTPSamplerProxy\b/g) ?? []).length).toBe(3)
+    })
+
+    it('matches the golden grouped JMX fixture', () => {
+      const producer = makeGroupedExchange('login-get', {
+        url: 'https://example.com/login',
+        method: 'GET',
+        timestamp: '2024-01-01T00:00:00.000Z',
+      })
+      const loginPost = makeGroupedExchange('login-post', {
+        url: 'https://example.com/login',
+        method: 'POST',
+        timestamp: '2024-01-01T00:00:02.000Z',
+      })
+      const dashboard = makeGroupedExchange('dashboard', {
+        url: 'https://example.com/dashboard',
+        method: 'GET',
+        timestamp: '2024-01-01T00:00:07.000Z',
+      })
+
+      const plan: ScriptTransformationPlan = {
+        version: 1,
+        correlations: [],
+        parameterizations: [],
+        replacements: [],
+        warnings: [],
+        groups: [
+          {
+            id: 'g1',
+            name: 'Login Flow',
+            memberExchangeIds: ['login-get', 'login-post'],
+            controllerKind: 'TransactionController',
+            locked: true,
+            thinkTimeEnabled: false,
+          },
+          {
+            id: 'g2',
+            name: 'Dashboard',
+            memberExchangeIds: ['dashboard'],
+            controllerKind: 'SimpleController',
+            locked: false,
+            thinkTimeEnabled: false,
+          },
+        ],
+      }
+
+      const producerIndexMap = buildProducerIndexMap([producer, loginPost, dashboard])
+      const { groups } = applyPlan(plan, producerIndexMap)
+
+      const jmx = buildJmx(
+        { name: 'Grouped Plan', threadGroup: { threads: 1, rampUp: 1, loops: 1 } },
+        [producer, loginPost, dashboard],
+        { groups, groupSeparator: true }
+      )
+
+      const goldenPath = fileURLToPath(
+        new URL('../../tests/fixtures/golden/golden-21-grouped.jmx', import.meta.url)
+      )
+
+      // WRITE_GOLDEN flag: generate the golden fixture on first run, then
+      // remove the flag. The golden must NOT include correlation features
+      // (extractors) — grouping only for V4.3.
+      if (process.env.WRITE_GOLDEN === '1') {
+        writeFileSync(goldenPath, jmx, 'utf8')
+      }
+
+      const goldenContents = readFileSync(goldenPath, 'utf8')
+      expect(normalizeJmx(jmx)).toBe(normalizeJmx(goldenContents))
+    })
   })
 })

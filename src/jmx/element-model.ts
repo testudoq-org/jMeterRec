@@ -276,6 +276,45 @@ export interface JmxUniformRandomTimer extends JmxElement {
 }
 
 /**
+ * TransactionController - groups samplers into a named transaction.
+ *
+ * JMeter emits this as a `<TransactionController>` element. When `parent`
+ * is true the controller is treated as a parent (its hashTree holds the
+ * child samplers); `includeTimers` controls whether timers nested under
+ * the controller are honoured during execution.
+ */
+export interface JmxTransactionController extends JmxElement {
+  readonly type: 'TransactionController'
+  readonly testClass: 'TransactionController'
+  readonly guiClass: 'TransactionControllerGui'
+  readonly parent: boolean
+  readonly includeTimers: boolean
+}
+
+/**
+ * SimpleController - a logical grouping wrapper with no per-transaction
+ * timing semantics.
+ *
+ * JMeter represents this internally as a `<GenericController>` element
+ * (testclass="GenericController", guiclass="LogicControllerGroupGui").
+ * The model `type` is `'SimpleController'` for clarity; the serializer
+ * emits the `GenericController` tag name.
+ */
+export interface JmxSimpleController extends JmxElement {
+  readonly type: 'SimpleController'
+  readonly testClass: 'GenericController'
+  readonly guiClass: 'LogicControllerGroupGui'
+  readonly parent: boolean
+  readonly includeTimers: boolean
+}
+
+/**
+ * Union of the two controller element types. Used by the serializer so
+ * controller creation and serialization can share a single typed value.
+ */
+export type JmxController = JmxTransactionController | JmxSimpleController
+
+/**
  * ResponseAssertion - validates response code or content.
  */
 export interface JmxResponseAssertion extends JmxElement {
@@ -420,6 +459,48 @@ export function createUniformRandomTimer(
     enabled: true,
     delay: baseDelay,
     range: upperDelay - baseDelay,
+  }
+}
+
+/**
+ * Creates a TransactionController element for grouping samplers into a
+ * named transaction with optional per-transaction timing.
+ *
+ * @param name - Display name in JMeter GUI (e.g. "Login Flow").
+ * @param options.parent - When true the controller acts as a parent
+ *   container; its hashTree holds the child samplers.
+ * @param options.includeTimers - When true, timers nested under the
+ *   controller are honoured during execution.
+ */
+export function createTransactionController(
+  name: string,
+  options: { parent?: boolean; includeTimers?: boolean } = {}
+): JmxTransactionController {
+  return {
+    type: 'TransactionController',
+    testClass: 'TransactionController',
+    guiClass: 'TransactionControllerGui',
+    name,
+    enabled: true,
+    parent: options.parent ?? true,
+    includeTimers: options.includeTimers ?? true,
+  }
+}
+
+/**
+ * Creates a SimpleController element (emitted as GenericController in JMX).
+ *
+ * @param name - Display name in JMeter GUI.
+ */
+export function createSimpleController(name: string): JmxSimpleController {
+  return {
+    type: 'SimpleController',
+    testClass: 'GenericController',
+    guiClass: 'LogicControllerGroupGui',
+    name,
+    enabled: true,
+    parent: false,
+    includeTimers: false,
   }
 }
 
@@ -742,6 +823,8 @@ export const ELEMENT_HIERARCHY: Record<string, string[]> = {
     'HeaderManager',
     'CookieManager',
     'CacheManager',
+    'TransactionController',
+    'GenericController',
   ],
   LoopController: [],
   HTTPRequestDefaults: [],
@@ -760,6 +843,28 @@ export const ELEMENT_HIERARCHY: Record<string, string[]> = {
   CacheManager: [],
   JSONPostProcessor: [],
   RegexExtractor: [],
+  TransactionController: [
+    'HTTPSamplerProxy',
+    'ResponseAssertion',
+    'DurationAssertion',
+    'JSONPostProcessor',
+    'RegexExtractor',
+    'ConstantTimer',
+    'UniformRandomTimer',
+    'GenericController',
+    'TransactionController',
+  ],
+  GenericController: [
+    'HTTPSamplerProxy',
+    'ResponseAssertion',
+    'DurationAssertion',
+    'JSONPostProcessor',
+    'RegexExtractor',
+    'ConstantTimer',
+    'UniformRandomTimer',
+    'GenericController',
+    'TransactionController',
+  ],
 } as const
 
 /**
@@ -934,6 +1039,35 @@ export function serializeConstantTimer(element: JmxConstantTimer): string {
   return `<${element.type} guiclass="${element.guiClass}" testclass="${element.testClass}" testname="${xmlEsc(element.name)}" enabled="${element.enabled}">
 <stringProp name="${element.type}.delay">${element.delay}</stringProp>
 </${element.type}>`
+}
+
+/**
+ * Serializes a JmxTransactionController element to XML.
+ *
+ * The element tag is `TransactionController` (JMeter 5.6.3 alias in
+ * saveservice.properties). `parent` is emitted as a stringProp and
+ * `includeTimers` as a boolProp, matching JMeter's native template.
+ */
+export function serializeTransactionController(element: JmxTransactionController): string {
+  return `<${element.type} guiclass="${element.guiClass}" testclass="${element.testClass}" testname="${xmlEsc(element.name)}" enabled="${element.enabled}">
+<stringProp name="TransactionController.parent">${element.parent ? 'true' : 'false'}</stringProp>
+<boolProp name="TransactionController.includeTimers">${element.includeTimers ? 'true' : 'false'}</boolProp>
+</${element.type}>`
+}
+
+/**
+ * Serializes a JmxSimpleController element to XML.
+ *
+ * JMeter represents a simple logical controller as a `<GenericController>`
+ * element (testclass="GenericController", guiclass="LogicControllerGroupGui").
+ * The model `type` is `'SimpleController'` for clarity, but the emitted tag
+ * name is `GenericController` to match JMeter's saveservice aliases.
+ */
+export function serializeSimpleController(element: JmxSimpleController): string {
+  return `<GenericController guiclass="${element.guiClass}" testclass="${element.testClass}" testname="${xmlEsc(element.name)}" enabled="${element.enabled}">
+<boolProp name="TransactionController.includeTimers">${element.includeTimers ? 'true' : 'false'}</boolProp>
+<stringProp name="TransactionController.parent">${element.parent ? 'true' : 'false'}</stringProp>
+</GenericController>`
 }
 
 /**
